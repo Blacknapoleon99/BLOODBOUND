@@ -52,10 +52,12 @@ func _build() -> void:
     restart_button = _button(column, "Restart run", "Restart")
     restart_button.pressed.connect(func() -> void:
         close()
-        get_tree().reload_current_scene())
+        RunState.end_run()
+        get_tree().change_scene_to_file("res://scenes/draft.tscn"))
     menu_button = _button(column, "Main menu", "MainMenu")
     menu_button.pressed.connect(func() -> void:
         close()
+        RunState.end_run()
         get_tree().change_scene_to_file(MENU_SCENE))
     settings = SettingsPanel.create()
     settings.visible = false

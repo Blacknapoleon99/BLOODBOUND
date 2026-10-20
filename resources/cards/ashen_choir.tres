@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"ashen_choir"
+display_name = "Ashen Choir"
+description = "Summon a phantom that hurls blood shards (1 damage) at the nearest enemy every 0.8 s for 6 s."
+cost = 3
+cooldown = 10.0
+targeting = 0
+effect = &"ashen_choir"
+tags = PackedStringArray("summon", "attack")
+damage = 1
+duration = 6.0
+card_range = 10.0
+amount = 0.8
+ui_color = Color(0.45, 0.45, 0.55, 1)
+offer_weight = 0.8

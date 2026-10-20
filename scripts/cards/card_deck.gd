@@ -38,6 +38,21 @@ func play_slot(slot: int) -> CardData:
     return card
 
 
+## Adds a card mid-run (altar reward) at a random position in the draw pile.
+func add_card(card: CardData) -> void:
+    draw_pile.insert(_rng.randi_range(0, draw_pile.size()), card)
+
+
+func all_cards() -> Array[CardData]:
+    var cards: Array[CardData] = []
+    cards.append_array(draw_pile)
+    cards.append_array(discard_pile)
+    for card: CardData in hand:
+        if card != null:
+            cards.append(card)
+    return cards
+
+
 func total_cards() -> int:
     var in_hand: int = 0
     for card: CardData in hand:

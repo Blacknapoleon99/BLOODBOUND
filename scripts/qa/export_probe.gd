@@ -31,8 +31,23 @@ func _run() -> void:
     start.pressed.emit()
     for i in 15:
         await tree.process_frame
+    _check(tree.current_scene != null and tree.current_scene.scene_file_path.ends_with("draft.tscn"), "Start opens the card draft")
+    for round in RunState.DRAFT_ROUNDS:
+        var view: CardOfferView = tree.current_scene.find_child("Offers", true, false) as CardOfferView
+        if view == null or view.offers.is_empty():
+            break
+        view.buttons[0].pressed.emit()
+        for i in 6:
+            await tree.process_frame
+    for i in 15:
+        await tree.process_frame
     var main: Node = tree.current_scene
-    _check(main.scene_file_path.ends_with("main.tscn"), "Start loads the game scene")
+    if main == null or not main.scene_file_path.ends_with("main.tscn"):
+        _check(false, "the draft leads into the game scene")
+        print("EXPORT PROBE RESULT: %d/%d checks passed" % [_checks - _failures, _checks])
+        tree.quit(1)
+        return
+    _check(RunState.deck.size() == RunState.DRAFT_ROUNDS, "three drafted cards form the run deck")
     var player: CharacterBody3D = main.get("player")
     for i in 60:
         await tree.physics_frame

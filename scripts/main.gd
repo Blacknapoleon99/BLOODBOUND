@@ -32,6 +32,11 @@ var portcullis: StaticBody3D
 var boss_bar: ProgressBar
 var boss_label: Label
 var fracture: RealityFracture
+var altars: Array[BloodAltar] = []
+var offer_overlay: CardOfferOverlay
+var card_system: CardSystem
+var _pending_altar: BloodAltar
+var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
 var enemy_alive: bool = true
@@ -50,6 +55,13 @@ func _ready() -> void:
     _build_greybox()
     player = PLAYER_SCENE.instantiate() as CharacterBody3D
     player.add_to_group(&"player")
+    card_system = player.get_node("Cards") as CardSystem
+    if RunState.active and not RunState.deck.is_empty():
+        card_system.starter_cards = RunState.deck.duplicate()  # the drafted deck
+        card_system.deck_seed = RunState.seed_value
+        _reward_rng.seed = RunState.seed_value + 1
+    else:
+        _reward_rng.seed = 4242
     add_child(player)
     player.global_position = SPAWN_POSITION
     player.connect("died", _on_player_died)
@@ -87,7 +99,6 @@ func _ready() -> void:
     canvas.add_child(hurt_vignette)
     canvas.move_child(hurt_vignette, 0)
     player.connect("hurt", func(_info: DamageInfo) -> void: hurt_vignette.color.a = 0.55)
-    var card_system: CardSystem = player.get_node("Cards") as CardSystem
     var card_ui: CardHandUI = CardHandUI.create(card_system)
     canvas.add_child(card_ui)
     var targeting: CardTargeting = CardTargeting.create(card_system, card_ui, camera, boss)
@@ -96,6 +107,9 @@ func _ready() -> void:
     card_system.card_played.connect(_on_card_played)
     card_system.card_failed.connect(_on_card_failed)
     add_child(PauseMenu.create())
+    offer_overlay = CardOfferOverlay.create()
+    offer_overlay.resolved.connect(_on_offer_resolved)
+    add_child(offer_overlay)
     _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
 
 
@@ -141,6 +155,11 @@ func _process(delta: float) -> void:
     elif in_arena:
         arena_state = "GUARDIAN: DEFEATED — ENTER THE PORTAL" if fracture.portal_open else "GUARDIAN: %d HP" % fracture.guardian.health.current
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
+    checkpoint_state += "    DECK %d" % card_system.deck.total_cards()
+    for altar: BloodAltar in altars:
+        if altar.player_in_reach(player) and _message == "":
+            _message = "E: offer blood at the altar for a new card"
+            _message_until = 0.2
     hud.text = "BLOODBOUND — GREYBOX VERTICAL SLICE\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
 
@@ -148,12 +167,18 @@ func _unhandled_input(event: InputEvent) -> void:
     if event.is_echo():
         return
     if event.is_action_pressed(&"restart") and game_won:
-        get_tree().reload_current_scene()
+        RunState.end_run()
+        get_tree().change_scene_to_file("res://scenes/draft.tscn")  # a new run starts with a new draft
         return
     if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
         return
     if fracture.is_transitioning():
         return
+    for altar: BloodAltar in altars:
+        if altar.player_in_reach(player):
+            _pending_altar = altar
+            offer_overlay.open("BLOOD ALTAR — choose a card for your deck", _reward_offer())
+            return
     if bool(player.get("in_3d_mode")):
         if fracture.portal_open:
             _flash("Step into the burning portal to return.", 2.0)
@@ -194,6 +219,29 @@ func _on_fracture_entered() -> void:
 func _on_fracture_exited(cleared: bool) -> void:
     if cleared:
         _flash("The fracture seals behind you. Blood and vigour restored.", 3.5)
+        _pending_altar = null
+        offer_overlay.open("THE FRACTURE YIELDS A RELIC — choose a card", _reward_offer())
+
+
+## Next reward offer: from the run's seeded stream when a run is active, else a local one.
+func _reward_offer() -> Array[CardData]:
+    if RunState.active:
+        return RunState.next_offer()
+    var owned: Array = card_system.deck.all_cards().map(func(c: CardData) -> StringName: return c.id)
+    return CardPool.offer(_reward_rng, RunState.OFFER_SIZE, owned)
+
+
+func _on_offer_resolved(card: CardData) -> void:
+    if _pending_altar:
+        _pending_altar.consume()
+        _pending_altar = null
+    if card == null:
+        _flash("You leave the offering untouched.", 2.0)
+        return
+    card_system.add_card(card)
+    if RunState.active:
+        RunState.deck.append(card)
+    _flash("%s joins your deck (%d cards)." % [card.display_name, card_system.deck.total_cards()], 3.0)
 
 
 func _camera_goal() -> Vector3:
@@ -240,6 +288,10 @@ func _on_card_failed(card: CardData, _slot: int, reason: StringName) -> void:
             why = "still recovering"
         &"blocked":
             why = "you cannot act right now"
+        &"too_weak":
+            why = "it would cost the last of your life"
+        &"full_health":
+            why = "you are already at full health"
     _flash("%s: %s" % [card.display_name, why], 2.0)
 
 
@@ -419,6 +471,10 @@ func _build_greybox() -> void:
     _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, 3.6), Color(0.32, 0.3, 0.34), portcullis)
 
     _build_approach()
+    for spot: Vector3 in [Vector3(16.8, 0.0, 0.0), Vector3(40.7, 0.0, 0.0)]:
+        var altar: BloodAltar = BloodAltar.create("Blood Altar %d" % (altars.size() + 1), spot)
+        add_child(altar)
+        altars.append(altar)
 
     # The Hollow Bishop's causeway and the colossus itself, 22 m behind the play plane.
     boss_arena = BossArena.new()

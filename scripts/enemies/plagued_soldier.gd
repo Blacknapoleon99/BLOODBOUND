@@ -62,10 +62,12 @@ var poise: int = 3
 var _poise_regen_left: float = 0.0
 var _flash_left: float = 0.0
 var _flinch_left: float = 0.0
+var _silenced_left: float = 0.0
 
 
 func _ready() -> void:
     add_to_group(&"enemy")
+    add_to_group(&"silenceable")
     poise = poise_max
     hurtbox.hit_received.connect(_on_hit_received)
     health.died.connect(_on_died)
@@ -107,6 +109,21 @@ func teleport_to(target: Vector3) -> void:
     velocity = Vector3.ZERO
 
 
+## Bell of Silence: no new attacks for `seconds`; an attack still winding up is cancelled.
+func silence(seconds: float) -> void:
+    if state == State.DEAD:
+        return
+    _silenced_left = maxf(_silenced_left, seconds)
+    if melee.phase == MeleeAttack.Phase.STARTUP:
+        melee.cancel()
+        telegraph_marker.visible = false
+        _set_state(State.CHASE if ai_enabled else State.IDLE)
+
+
+func is_silenced() -> bool:
+    return _silenced_left > 0.0
+
+
 func is_dead() -> bool:
     return state == State.DEAD
 
@@ -136,6 +153,7 @@ func _physics_process(delta: float) -> void:
     _stun_left = maxf(0.0, _stun_left - delta)
     _cooldown_left = maxf(0.0, _cooldown_left - delta)
     _flash_left = maxf(0.0, _flash_left - delta)
+    _silenced_left = maxf(0.0, _silenced_left - delta)
     _flinch_left = maxf(0.0, _flinch_left - delta)
     if poise < poise_max:
         _poise_regen_left -= delta
@@ -233,7 +251,7 @@ func _chase() -> void:
     var distance: float = offset.length()
     if distance > 0.01:
         facing = offset / distance
-    if distance <= attack_range and _cooldown_left <= 0.0:
+    if distance <= attack_range and _cooldown_left <= 0.0 and _silenced_left <= 0.0:
         velocity.x = 0.0
         velocity.z = 0.0
         if melee.start(slash, facing):
@@ -330,6 +348,8 @@ func _update_visual() -> void:
         emission = Color(1.0, 0.1, 0.05) * 1.5
     elif state == State.HITSTUN:
         color = Color(0.9, 0.85, 0.8)
+    if _silenced_left > 0.0:
+        emission = Color(0.25, 0.3, 0.8) * 0.6
     if _flash_left > 0.0:
         color = Color(1.0, 1.0, 1.0)
         emission = Color(1.0, 0.95, 0.9) * 0.8

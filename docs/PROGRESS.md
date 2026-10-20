@@ -81,3 +81,12 @@ User playtest pass (feel, difficulty, slice length). Then M7: asset pipeline. Bl
 
 - Blood Spear now hits any enemy, attacks and cards buffer through hitstun, the Bishop is retuned (36 HP), and damage numbers plus refusal reasons were added. See DEC-021 and TEST_RESULTS.
 - Fixed build: `build/windows-fix1/Bloodbound.exe` (the original exe was in use during the playtest).
+
+## 2026-10-20 — Playtest round 3: combat feel + roguelike loop
+
+- Step 1 (committed 187f5c4): 3-hit combo, hold-to-chain, auto-attack, poise, hit reactions; Bishop 60 HP.
+- Step 2: draft before every run, 8-card pool (5 new cards), Blood Altars and a fracture relic, restart → new draft. Card reference: `docs/CARDS.md`.
+- Build: `build/windows-run1/Bloodbound.exe`.
+
+### Next action
+Step 3: bigger Bishop (more attacks, abilities and phases). Step 4: more mid-run content (enemy variety, encounters between set-pieces).

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"epitaph"
+display_name = "Epitaph"
+description = "Mark the ground beneath an enemy; 0.6 s later a bone spike erupts for 4 damage and breaks poise."
+cost = 3
+cooldown = 4.0
+targeting = 3
+effect = &"epitaph"
+tags = PackedStringArray("attack", "delayed")
+damage = 4
+duration = 0.6
+card_range = 12.0
+ui_color = Color(0.75, 0.7, 0.6, 1)
+offer_weight = 1.0

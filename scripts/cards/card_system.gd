@@ -13,12 +13,15 @@ extends Node
 ##   &"not_exposed" the chosen target is currently invulnerable (e.g. the Bishop's closed stigmata)
 ##   &"out_of_range" a target exists but is beyond the card's range
 ##   &"energy"    not enough blood energy
+##   &"too_weak"  the card costs HP the player cannot spare (Hemorrhage Pact)
+##   &"full_health" a healing card at full health (Transfusion)
 ## Success returns &"ok". A press while the player is in hitstun is not a failure: it is held
 ## (&"queued") and played when the stun ends, as long as that is within the stun plus
 ## `stun_buffer_time` (the same courtesy melee attacks get).
 
 signal card_played(card: CardData, slot: int)
 signal card_failed(card: CardData, slot: int, reason: StringName)
+signal deck_changed
 
 const SLOT_ACTIONS: Array[StringName] = [&"card_1", &"card_2", &"card_3"]
 ## Used when no starter deck is assigned in the scene.
@@ -124,7 +127,26 @@ func _validate(card: CardData) -> StringName:
         return &"blocked"
     if cooldown_left(card) > 0.0:
         return &"cooldown"
+    if card.hp_cost > 0 and health.current <= card.hp_cost:
+        return &"too_weak"
+    if card.effect == &"transfusion" and health.current >= health.max_health:
+        return &"full_health"
     return &"ok"
+
+
+## Adds a card to the deck mid-run (Blood Altar reward).
+func add_card(card: CardData) -> void:
+    deck.add_card(card)
+    deck_changed.emit()
+
+
+## Public target query for summons (Ashen Choir): same rules as enemy-targeting cards.
+func find_enemy_target(card_range: float, from: Vector3 = Vector3.INF) -> Dictionary:
+    return _find_enemy_target(card_range, from)
+
+
+func aim_point(hurtbox: Hurtbox) -> Vector3:
+    return _aim_point(hurtbox)
 
 
 func _find_target(card: CardData) -> Dictionary:
@@ -160,7 +182,8 @@ func _find_target(card: CardData) -> Dictionary:
 
 ## Nearest living, hittable enemy hurtbox in range. An exposed weak point anywhere in range
 ## wins over ordinary enemies (it is the reason to hold a spear during a boss fight).
-func _find_enemy_target(card_range: float) -> Dictionary:
+func _find_enemy_target(card_range: float, from: Vector3 = Vector3.INF) -> Dictionary:
+    var origin: Vector3 = player.global_position if from == Vector3.INF else from
     var in_3d: bool = bool(player.get("in_3d_mode"))
     var nearest: Hurtbox = null
     var nearest_distance: float = INF
@@ -179,7 +202,7 @@ func _find_enemy_target(card_range: float) -> Dictionary:
         var aim: Vector3 = _aim_point(hurtbox)
         if not in_3d and absf(aim.z - player.global_position.z) > plane_target_depth:
             continue
-        var distance: float = aim.distance_to(player.global_position)
+        var distance: float = aim.distance_to(origin)
         if distance > card_range:
             any_out_of_range = true
             continue
@@ -226,6 +249,26 @@ func _apply(card: CardData, target: Variant) -> void:
             player.call("raise_shield", card.blocks_category, card.duration)
         &"ritual_chains":
             target.call("interrupt_with_chains", card.duration)
+        &"hemorrhage_pact":
+            (player.get("health") as Health).apply_damage(card.hp_cost)
+            energy.add(card.amount)
+        &"transfusion":
+            (player.get("health") as Health).heal(int(card.amount))
+        &"epitaph":
+            var spot: Vector3 = _aim_point(target as Hurtbox)
+            get_tree().current_scene.add_child(EpitaphSpike.create(spot, card))
+        &"ashen_choir":
+            get_tree().current_scene.add_child(AshenPhantom.create(self, player, card))
+        &"bell_of_silence":
+            for node: Node in get_tree().get_nodes_in_group(&"silenceable"):
+                var foe: Node3D = node as Node3D
+                if foe == null:
+                    continue
+                # The Bishop stands 22 m back but fights on the play plane: always in earshot.
+                var in_reach: bool = foe is HollowBishop or foe.global_position.distance_to(player.global_position) <= card.card_range
+                if in_reach:
+                    foe.call("silence", card.duration)
+            get_tree().call_group(&"camera_shaker", &"add_trauma", 0.2)
 
 
 func _unhandled_input(event: InputEvent) -> void:

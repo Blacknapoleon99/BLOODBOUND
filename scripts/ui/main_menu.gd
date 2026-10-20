@@ -2,7 +2,8 @@ extends Control
 ## Title screen: Start / Settings / Quit. Loads saved settings before anything else runs.
 ## Quit is hidden on the web build, where a page cannot close itself.
 
-const GAME_SCENE: String = "res://scenes/main.tscn"
+## Start goes through the pre-run card draft, which then loads the level.
+const GAME_SCENE: String = "res://scenes/draft.tscn"
 
 var start_button: Button
 var settings_button: Button
@@ -68,6 +69,7 @@ func _add_button(parent: Control, text: String, node_name: String) -> Button:
 
 
 func _on_start() -> void:
+    RunState.end_run()
     get_tree().change_scene_to_file(GAME_SCENE)
 
 

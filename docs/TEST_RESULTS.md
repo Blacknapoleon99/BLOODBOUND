@@ -197,3 +197,21 @@
   - Bishop window bound: 9 of 60 per window.
 - `tools/run_checks.ps1` → **212/212**. Visible run 212/212 (screenshot `02_soldier_hit.png` shows the recoil lean, vignette and spray).
 - Build `build/windows-fix3/Bloodbound.exe`, export probe exit 0.
+
+## Playtest request — roguelike run loop (2026-10-20)
+
+- `tools/run_checks.ps1` → **242/242** (243 s). Visible run **242/242** (240 s).
+- New checks:
+  - Start opens the draft; each round offers 3 distinct cards and skips already-picked ones. The drafted cards are the starting hand.
+  - The card pool has 8 cards, and the same run seed gives the same offers.
+  - Clearing the fracture offers a relic (pick 1 of 3, game paused), and taking nothing resumes play.
+  - R after victory starts a new run with a fresh draft.
+  - Blood Altar: E offers 3 cards and pauses. Picking adds the card (deck 4) and spends the altar, which then offers nothing more. The new card cycles into the hand when a card is played.
+  - Hemorrhage Pact is refused at 1 HP, otherwise HP 5 → 4 and blood +4.
+  - Transfusion is refused at full HP, otherwise +2 HP.
+  - Epitaph marks first, then erupts for 4 and staggers (6 → 2).
+  - Ashen Choir's phantom fires 3 shards (6 → 3) and then fades.
+  - Bell of Silence cancels the soldier's wind-up, and the soldier doesn't attack for 3 s.
+- Export probe updated for the draft flow (Start → draft → 3 picks → level): 11/11 in the editor and in the QA build. Release `build/windows-run1/Bloodbound.exe` probe exit 0 on 3 of 3 runs.
+  - The first probe of this build crashed (0xC0000005) because the old probe called into a level that wasn't loaded yet (Start now opens the draft); fixed in the probe.
+- Screenshots: `docs/screenshots/09_draft.png`, `09_altar_offer.png` (captured with `tests/shot_draft.gd`).

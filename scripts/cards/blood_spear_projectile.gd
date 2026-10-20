@@ -11,7 +11,7 @@ var hitbox: Hitbox
 var _arrived_frames: int = 0
 
 
-static func create(from: Vector3, to: Vector3, card: CardData) -> BloodSpearProjectile:
+static func create(from: Vector3, to: Vector3, card: CardData, poise: int = 2) -> BloodSpearProjectile:
     var spear: BloodSpearProjectile = BloodSpearProjectile.new()
     spear.name = "BloodSpear"
     spear.add_to_group(&"blood_spear")
@@ -25,7 +25,7 @@ static func create(from: Vector3, to: Vector3, card: CardData) -> BloodSpearProj
     spear.hitbox.knockback = 2.0
     spear.hitbox.knockback_up = 1.0
     spear.hitbox.hitstun = 0.35
-    spear.hitbox.poise_damage = 2
+    spear.hitbox.poise_damage = poise
     spear.hitbox.attack_id = card.id
     spear.hitbox.start_active = true
     var shape: CollisionShape3D = CollisionShape3D.new()

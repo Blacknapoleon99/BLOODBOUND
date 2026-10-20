@@ -26,6 +26,13 @@ enum Targeting {
 @export var card_range: float = 0.0
 ## Damage category a defensive card blocks (Grave Shield).
 @export var blocks_category: StringName = &""
+## Generic magnitude for effects that are not damage (blood gained, HP healed, radius...).
+@export var amount: float = 0.0
+## Health the card costs to play (Hemorrhage Pact). Refused if it would kill the player.
+@export var hp_cost: int = 0
+@export_group("Draft")
+## Relative chance to appear in a random offer (draft, altars).
+@export var offer_weight: float = 1.0
 @export_group("Presentation")
 @export var ui_color: Color = Color(0.6, 0.1, 0.12)
 ## Hook for later authored VFX; unused by the greybox.

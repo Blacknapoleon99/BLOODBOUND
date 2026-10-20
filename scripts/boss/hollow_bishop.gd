@@ -89,6 +89,7 @@ var _chain_window: float = 3.0
 
 func _ready() -> void:
     add_to_group(&"interruptible")
+    add_to_group(&"silenceable")
     health = Health.new()
     health.name = "Health"
     health.max_health = max_health
@@ -151,6 +152,18 @@ func set_ai_enabled(enabled: bool) -> void:
 ## Starts `attack` (&"slam", &"sunder", &"lance", &"lance_volley") aimed at `x` right away.
 func debug_attack(attack: StringName, x: float) -> bool:
     return _start_attack(attack, x)
+
+
+## Bell of Silence: a slam/sunder still in its telegraph, or a lance volley still being thrown,
+## is cancelled (no weak point is opened — that is Ritual Chains' job), and no new attack starts
+## for `seconds`.
+func silence(seconds: float) -> void:
+    if not (is_active() or phase == Phase.PURSUIT):
+        return
+    var cancellable: bool = can_be_interrupted() or ((_attack == &"lance" or _attack == &"lance_volley") and _lance_index < _lance_plan.size())
+    if cancellable:
+        _cancel_attack()
+    _cooldown = maxf(_cooldown, seconds)
 
 
 ## True while a Slam/Sunder has not started its descent (the telegraph window).

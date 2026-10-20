@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"bell_of_silence"
+display_name = "Bell of Silence"
+description = "Toll the bell: enemies within 15 m cannot attack for 4 s, and attacks still winding up are cancelled."
+cost = 2
+cooldown = 12.0
+targeting = 0
+effect = &"bell_of_silence"
+tags = PackedStringArray("control")
+duration = 4.0
+card_range = 15.0
+ui_color = Color(0.3, 0.35, 0.6, 1)
+offer_weight = 0.8

@@ -140,6 +140,8 @@ func _run() -> void:
     await _shot("08_victory")
     _tap(KEY_R)
     await _frames(10)
+    _check(current_scene.scene_file_path == "res://scenes/draft.tscn", "R after victory starts a new run with a fresh draft")
+    await _draft_three()
     _bind()
     await _seconds(0.5)
     _check(bool(_main.get("enemy_alive")) and not bool(_main.get("game_won")), "R restarts with fresh state")
@@ -150,6 +152,7 @@ func _run() -> void:
     pause_menu.menu_button.pressed.emit()
     await _frames(10)
     _check(current_scene.scene_file_path == "res://scenes/main_menu.tscn" and not paused, "pause → Main menu returns to the title screen, unpaused")
+    await _m7_altar_and_new_card_checks()
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -739,6 +742,14 @@ func _m4_data_and_deck_checks() -> void:
     ids.sort()  # StringName sorts by pointer; compare as Strings
     _check(ids == ["blood_spear", "grave_shield", "ritual_chains"], "starting hand holds the three starter cards (%s)" % [ids])
 
+    _check(CardPool.ALL.size() >= 8, "the card pool holds %d cards" % CardPool.ALL.size())
+    RunState.new_run(99)
+    var offer_a: Array = RunState.next_offer().map(func(c: CardData) -> StringName: return c.id)
+    RunState.new_run(99)
+    var offer_b: Array = RunState.next_offer().map(func(c: CardData) -> StringName: return c.id)
+    RunState.end_run()
+    _check(offer_a == offer_b and offer_a.size() == 3, "the same run seed makes the same offers (%s)" % [offer_a])
+
     var pool: Array[CardData] = []
     for i in 10:
         var card: CardData = CardData.new()
@@ -999,6 +1010,11 @@ func _m5_fracture_checks() -> void:
     _check(home and not bool(_player.get("in_3d_mode")), "walking into the open portal returns to 2.5D")
     _check(absf(_player.global_position.x - entry_x) < 0.3 and absf(_player.global_position.z) < 0.001, "returned to the exact entry spot (x=%.2f)" % _player.global_position.x)
     _check(player_health.current == player_health.max_health and is_equal_approx(energy.current, 4.0), "clearing the fracture heals fully and grants 3 blood (blood=%.1f)" % energy.current)
+    var overlay: CardOfferOverlay = _main.get("offer_overlay")
+    _check(overlay.is_open() and paused and overlay.offer_view.offers.size() == 3, "clearing the fracture offers a relic (pick 1 of 3, game paused)")
+    overlay.skip_button.pressed.emit()
+    await _frames(3)
+    _check(not overlay.is_open() and not paused, "taking nothing resumes play")
     await _seconds(1.5)
     var side_offset: Vector3 = cam.global_position - _player.global_position
     _check(absf(side_offset.z - 22.0) < 1.0, "camera returns to side-view framing (offset=%s)" % side_offset)
@@ -1043,7 +1059,42 @@ func _m6_menu_checks() -> void:
     start.grab_focus()
     _tap(KEY_ENTER)
     await _frames(12)
-    _check(current_scene.scene_file_path == "res://scenes/main.tscn", "Enter on Start loads the game")
+    _check(current_scene.scene_file_path == "res://scenes/draft.tscn" and RunState.active, "Enter on Start opens the card draft for a new run")
+    var picked: Array[StringName] = await _draft_three()
+    _check(current_scene.scene_file_path == "res://scenes/main.tscn", "finishing the draft loads the level")
+    _bind()
+    var hand: Array[String] = []
+    for id: StringName in _hand_ids():
+        hand.append(String(id))
+    hand.sort()
+    var want: Array[String] = []
+    for id: StringName in picked:
+        want.append(String(id))
+    want.sort()
+    _check(hand == want, "the drafted cards are the starting hand (%s)" % [hand])
+    # The rest of the suite runs on the default deck for deterministic checks.
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+
+
+## Picks one card in each of the three draft rounds (a different offer position each round).
+func _draft_three() -> Array[StringName]:
+    var picked: Array[StringName] = []
+    for round in RunState.DRAFT_ROUNDS:
+        var view: CardOfferView = current_scene.find_child("Offers", true, false) as CardOfferView
+        if view == null or view.offers.size() != RunState.OFFER_SIZE:
+            _check(false, "draft round %d offers %d cards" % [round + 1, RunState.OFFER_SIZE])
+            return picked
+        var ids: Array = view.offers.map(func(c: CardData) -> StringName: return c.id)
+        if round == 0:
+            _check(ids.size() == 3 and ids[0] != ids[1] and ids[1] != ids[2] and ids[0] != ids[2], "each draft offer shows 3 different cards (%s)" % [ids])
+        _check(not picked.has(ids[round % 3]) or round == 0, "draft offers skip cards already picked")
+        picked.append(ids[round % 3])
+        _tap(CARD_KEYS[round % 3])
+        await _frames(6)
+    await _frames(10)
+    return picked
 
 
 func _m6_pause_checks() -> void:
@@ -1309,6 +1360,106 @@ func _fix_mouse_cards_vs_bishop(boss: HollowBishop) -> void:
     await _seconds(0.6)
     _check(boss.health.current == hp0 - spear.damage, "clicking the exposed stigmata spears it (%d → %d)" % [hp0, boss.health.current])
     await _boss_idle(boss)
+    energy.regen_per_second = 0.25
+
+
+## Deals `id` into hand slot 0 (test setup: the card pool is random in real runs).
+func _deal(id: StringName) -> int:
+    _cards().deck.hand[0] = CardPool.by_id(id)
+    return 0
+
+
+func _m7_altar_and_new_card_checks() -> void:
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    await _seconds(0.6)
+    var cards: CardSystem = _cards()
+    var energy: BloodEnergy = _energy()
+    var health: Health = _player.get("health")
+    energy.regen_per_second = 0.0
+    _enemy.set_ai_enabled(false)
+
+    # Blood Altar: E opens a pick-1-of-3 overlay; the chosen card joins the deck and cycles in.
+    var overlay: CardOfferOverlay = _main.get("offer_overlay")
+    var altar: BloodAltar = (_main.get("altars") as Array)[0]
+    _player.call("teleport_to", altar.global_position + Vector3(0.0, 1.0, 0.0))
+    await _seconds(0.4)
+    _tap(KEY_E)
+    await _frames(4)
+    _check(overlay.is_open() and paused and overlay.offer_view.offers.size() == 3, "E at a Blood Altar offers 3 cards and pauses the game")
+    var chosen: CardData = overlay.offer_view.offers[0]
+    _tap(KEY_1)
+    await _frames(4)
+    _check(not overlay.is_open() and not paused and altar.used and cards.deck.total_cards() == 4, "picking adds %s to the deck (%d cards) and spends the altar" % [chosen.display_name, cards.deck.total_cards()])
+    _tap(KEY_E)
+    await _frames(4)
+    _check(not overlay.is_open(), "a spent altar offers nothing more")
+    energy.set_amount(6.0)
+    var shield_slot: int = _slot_of(&"grave_shield")
+    cards.play_slot(shield_slot)
+    _check(_hand_ids().has(chosen.id), "the new card cycles into the hand when a card is played (%s)" % [_hand_ids()])
+    await _seconds(0.5)
+
+    # Hemorrhage Pact: 1 HP for 4 blood, never lethal.
+    var slot: int = _deal(&"hemorrhage_pact")
+    health.apply_damage(health.current - 1)
+    energy.set_amount(0.0)
+    _check(cards.play_slot(slot) == &"too_weak" and health.current == 1, "Hemorrhage Pact is refused at 1 HP")
+    health.restore_full()
+    _check(cards.play_slot(slot) == &"ok" and health.current == 4 and is_equal_approx(energy.current, 4.0), "Hemorrhage Pact trades 1 HP for 4 blood (hp=%d, blood=%.1f)" % [health.current, energy.current])
+
+    # Transfusion: heals 2, refused at full health.
+    slot = _deal(&"transfusion")
+    health.restore_full()
+    energy.set_amount(6.0)
+    _check(cards.play_slot(slot) == &"full_health", "Transfusion is refused at full health")
+    health.apply_damage(3)
+    _check(cards.play_slot(slot) == &"ok" and health.current == 4, "Transfusion heals 2 HP (hp=%d)" % health.current)
+    health.restore_full()
+
+    # Epitaph: delayed spike under the target, 4 damage, breaks poise.
+    _enemy.revive_at_home()
+    await _place(3.2, 6.0, false)
+    slot = _deal(&"epitaph")
+    energy.set_amount(6.0)
+    var hp0: int = _enemy.health.current
+    _check(cards.play_slot(slot) == &"ok" and not root.get_tree().get_nodes_in_group(&"epitaph_spike").is_empty() and _enemy.health.current == hp0, "Epitaph marks the ground under the soldier (no damage yet)")
+    var staggered: bool = false
+    for i in 60:
+        await physics_frame
+        staggered = staggered or _enemy.state_name() == "HITSTUN"
+    _check(_enemy.health.current == hp0 - 4 and staggered, "the spike erupts for 4 and staggers it (%d → %d)" % [hp0, _enemy.health.current])
+
+    # Ashen Choir: a phantom that shoots shards at the nearest enemy for a while.
+    _enemy.revive_at_home()
+    await _place(3.2, 6.0, false)
+    slot = _deal(&"ashen_choir")
+    energy.set_amount(6.0)
+    hp0 = _enemy.health.current
+    _check(cards.play_slot(slot) == &"ok", "Ashen Choir summons a phantom")
+    await _seconds(2.6)
+    var phantoms: Array[Node] = root.get_tree().get_nodes_in_group(&"ashen_phantom")
+    var fired: int = (phantoms[0] as AshenPhantom).shards_fired if not phantoms.is_empty() else 0
+    _check(fired >= 2 and _enemy.health.current < hp0, "the phantom fires shards that hurt the soldier (%d shards, hp %d → %d)" % [fired, hp0, _enemy.health.current])
+    await _seconds(4.0)
+    _check(root.get_tree().get_nodes_in_group(&"ashen_phantom").is_empty(), "the phantom fades after its duration")
+
+    # Bell of Silence: cancels a soldier wind-up and stops new attacks.
+    _enemy.revive_at_home()
+    await _place(3.2, 4.6, true)
+    _heal()
+    await _wait_until(func() -> bool: return _enemy.melee.phase == MeleeAttack.Phase.STARTUP, 4.0)
+    slot = _deal(&"bell_of_silence")
+    energy.set_amount(6.0)
+    _check(cards.play_slot(slot) == &"ok" and _enemy.melee.phase == MeleeAttack.Phase.IDLE and _enemy.is_silenced(), "Bell of Silence cancels the soldier's wind-up")
+    var attacked: bool = false
+    for i in int(3.0 * PHYSICS_HZ):
+        await physics_frame
+        attacked = attacked or _enemy.state_name() == "ATTACK"
+    _check(not attacked, "silenced soldier does not attack for the duration")
+    _enemy.set_ai_enabled(false)
     energy.regen_per_second = 0.25
 
 

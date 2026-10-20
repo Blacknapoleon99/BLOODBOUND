@@ -123,3 +123,12 @@ Playtester: melee too slow, wants an auto/filler attack to earn blood, and hit r
 - **Bishop HP 36 → 60** (Collapse ≤40, Covenant ≤18). Held-combo spam deals about 9 per weak window, and a test bounds that at ≤1/5 of max HP.
 - The dormant Bishop is hidden until it rises; its sunk silhouette was poking into early shots.
 - Tests disable auto-attack (`_test_defaults`), except in the checks written for it.
+
+## DEC-024 — Roguelike run loop: draft, altars, eight cards (playtest 2026-10-20)
+
+Playtester wants a roguelike side-scroller: choose cards before the run from a random offer, more cards, and more happening between the set-pieces.
+- `RunState` (static): run seed, the drafted deck, and a seeded RNG for every offer in that run. `CardPool.offer()` gives a weighted sample without replacement, preferring cards not already owned.
+- **Draft** (`scenes/draft.tscn`): three rounds of "pick 1 of 3"; the result is the starting deck. Start, Restart run (pause menu) and R after victory all begin a new run through the draft. Opening `main.tscn` directly (tests) uses the default three cards.
+- **Blood Altars** (x 16.8 and 40.7) and a cleared Reality Fracture open `CardOfferOverlay`: pause, pick 1 of 3 or take nothing. The card is added at a random point in the draw pile. The hand stays 3 slots and rotates through the growing deck.
+- **New cards:** Hemorrhage Pact (HP for blood; answers blood starvation), Epitaph (delayed spike, 4 damage, breaks poise), Ashen Choir (summoned shard phantom), Bell of Silence (cancels wind-ups, blocks new attacks for 4 s; the Bishop is always in reach), Transfusion (heal). New refusal reasons: `too_weak` and `full_health`.
+- Player-facing reference: `docs/CARDS.md`.

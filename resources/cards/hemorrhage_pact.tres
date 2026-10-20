@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"hemorrhage_pact"
+display_name = "Hemorrhage Pact"
+description = "Open a vein: lose 1 HP, gain 4 blood. Refused if it would kill you."
+cost = 0
+cooldown = 8.0
+targeting = 0
+effect = &"hemorrhage_pact"
+tags = PackedStringArray("resource")
+amount = 4.0
+hp_cost = 1
+ui_color = Color(0.55, 0.0, 0.05, 1)
+offer_weight = 1.0
