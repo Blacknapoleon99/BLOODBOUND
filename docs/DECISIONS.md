@@ -15,3 +15,15 @@ Tripo/Blender pipeline is designed, not run. Placeholder assets enable continuou
 ## DEC-004 — Jev AI identity pending
 
 No uniquely verified integration endpoint found at packaging time. Ask the user for the official service link before connecting it.
+
+## DEC-005 — Input actions registered by `InputBindings`
+
+Gameplay reads only action names (`move_left`, `jump`, `dodge`, …). `scripts/input_bindings.gd` registers keyboard and gamepad defaults at runtime, but only for actions that Project Settings does not already define. A rebinding menu can then edit `InputMap` directly, and editor-defined bindings always win. Keys use `physical_keycode`, so the WASD layout holds on non-QWERTY keyboards.
+
+## DEC-006 — Automated input-driven smoke test as the gameplay gate
+
+`tests/gameplay_smoke.gd` drives the real main scene with `Input.parse_input_event` and asserts outcomes. Every milestone extends it, and `tools/run_checks.ps1` runs it. This makes "playable" claims reproducible without an MCP or desktop-control dependency. It does not replace hand-play for feel.
+
+## DEC-007 — Second causeway gap widened to 1.5 m
+
+The starter's second gap was 0.5 m, narrower than the 0.7 m player capsule, so it was not a real hazard. Widening it gives the M1 checkpoint (on the broken span) a meaningful job.

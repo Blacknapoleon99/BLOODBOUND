@@ -20,3 +20,12 @@ Agent: execute `prompts/FIRST_RUN.md`, run real Godot checks on the user's machi
 
 ### Next action
 M1 platformer quality: input map actions, coyote time, jump buffer, variable jump, dodge with i-frames, checkpoint. Extend the smoke test for each item.
+
+## 2026-10-20 — M1 platformer quality closed
+
+- Changed: `scripts/player.gd` (rewritten motor: actions, coyote, buffer, variable jump, ground/air acceleration, dodge with i-frames and cooldown, `teleport_to`), `scripts/main.gd` (action-based interact/restart, checkpoint respawn, wider gap, HUD), new `scripts/input_bindings.gd` and `scripts/checkpoint.gd`, `tests/gameplay_smoke.gd` (44 checks), `docs/.gdignore`.
+- Evidence: `docs/TEST_RESULTS.md` (M1 run).
+- Blockers for later milestones: Blender MCP needs Blender + addon running; the Godot runtime MCP needs a reconnect; Tripo has 0 credits.
+
+### Next action
+M2 combat: hitbox/hurtbox/health components, a state-driven player attack with startup/active/recovery windows, and one patrolling enemy (plagued soldier) with telegraph → attack → recover → death. The enemy replaces the dummy, and the smoke test grows to match.

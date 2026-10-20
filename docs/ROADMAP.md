@@ -9,11 +9,11 @@ This list reflects **planned** work. Mark `[x]` only after tests recorded in `do
 - [x] Agent documents platform, engine version, tests and observed results. *(2026-10-20, TEST_RESULTS M0)*
 
 ## M1 — Platformer quality
-- [ ] Dedicated input map / rebinding-ready input abstraction.
-- [ ] Coyote time, jump buffer, variable jump height, acceleration and air control.
-- [ ] Dodge with clear invulnerability semantics.
-- [ ] At least one solid checkpoint and stable death/respawn.
-- [ ] One coherent traversal route, no softlocks.
+- [x] Dedicated input map / rebinding-ready input abstraction. *(2026-10-20, TEST_RESULTS M1)*
+- [x] Coyote time, jump buffer, variable jump height, acceleration and air control. *(2026-10-20, TEST_RESULTS M1)*
+- [x] Dodge with clear invulnerability semantics. *(2026-10-20, TEST_RESULTS M1)*
+- [x] At least one solid checkpoint and stable death/respawn. *(2026-10-20, TEST_RESULTS M1)*
+- [x] One coherent traversal route, no softlocks. *(2026-10-20, TEST_RESULTS M1)*
 
 ## M2 — Combat
 - [ ] Modular hitbox/hurtbox/health/damage interface and state-driven attacks.

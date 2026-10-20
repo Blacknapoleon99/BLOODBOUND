@@ -7,10 +7,13 @@ const SPAWN_POSITION: Vector3 = Vector3(-16.0, 2.0, 0.0)
 const ENEMY_POSITION: Vector3 = Vector3(5.0, 0.95, 0.0)
 const GATE_POSITION: Vector3 = Vector3(13.0, 1.0, 0.0)
 const ARENA_SPAWN: Vector3 = Vector3(34.0, 2.0, 0.0)
+const CHECKPOINT_POSITION: Vector3 = Vector3(-4.5, 1.2, 0.0)
 
 var player: CharacterBody3D
 var camera: Camera3D
 var dummy: Node3D
+var checkpoint: Checkpoint
+var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
 var enemy_alive: bool = true
 var arena_visited: bool = false
@@ -20,8 +23,10 @@ var _message_until: float = 0.0
 
 
 func _ready() -> void:
+    InputBindings.ensure_defaults()
     _build_greybox()
     player = PLAYER_SCENE.instantiate() as CharacterBody3D
+    player.add_to_group(&"player")
     add_child(player)
     player.global_position = SPAWN_POSITION
     player.connect("attack_requested", Callable(self, "_on_player_attack"))
@@ -74,29 +79,28 @@ func _process(delta: float) -> void:
         if _message_until <= 0.0:
             _message = ""
 
-    var state: String = "3D ARENA — WASD move / SPACE jump / E return" if in_arena else "2.5D — A/D move / SPACE jump / J attack / E near amber gate"
+    var state: String = "3D ARENA — WASD move / SPACE jump / K dodge / E return" if in_arena else "2.5D — A/D move / SPACE jump / K dodge / J attack / E near amber gate"
     var objective: String = "ENEMY: DEFEATED" if not enemy_alive else "ENEMY: ACTIVE"
     var arena_state: String = "ARENA: VISITED" if arena_visited else "ARENA: OPTIONAL"
-    hud.text = "BLOODBOUND — GREYBOX STARTER (not full game)\n" + state + "\n" + objective + "    " + arena_state + "\n" + _message
+    var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
+    hud.text = "BLOODBOUND — GREYBOX STARTER (not full game)\n" + state + "\n" + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
 
-func _unhandled_key_input(event: InputEvent) -> void:
-    if not (event is InputEventKey and event.pressed and not event.echo):
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_echo():
         return
-    if event.physical_keycode == KEY_R and game_won:
+    if event.is_action_pressed(&"restart") and game_won:
         get_tree().reload_current_scene()
         return
-    if event.physical_keycode != KEY_E or game_won or not is_instance_valid(player):
+    if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
         return
     if bool(player.get("in_3d_mode")):
         player.set("in_3d_mode", false)
-        player.global_position = Vector3(14.5, 2.0, 0.0)
-        player.velocity = Vector3.ZERO
+        player.call("teleport_to", Vector3(14.5, 2.0, 0.0))
         _flash("Returned to 2.5D corridor.", 3.0)
     elif player.global_position.distance_to(GATE_POSITION) < 2.7:
         player.set("in_3d_mode", true)
-        player.global_position = ARENA_SPAWN
-        player.velocity = Vector3.ZERO
+        player.call("teleport_to", ARENA_SPAWN)
         arena_visited = true
         _flash("3D movement active. Press E to return.", 4.0)
     else:
@@ -120,11 +124,19 @@ func _on_player_attack(origin: Vector3, facing_direction: float) -> void:
 
 func _respawn() -> void:
     if bool(player.get("in_3d_mode")):
-        player.global_position = ARENA_SPAWN
+        player.call("teleport_to", ARENA_SPAWN)
+        _flash("Fell from the arena — returned to its centre.", 3.5)
+        return
+    player.call("teleport_to", respawn_point)
+    if checkpoint.is_active:
+        _flash("Fell into the abyss — returned to the checkpoint.", 3.5)
     else:
-        player.global_position = SPAWN_POSITION
-    player.velocity = Vector3.ZERO
-    _flash("Fell into the abyss — returned to the safe start.", 3.5)
+        _flash("Fell into the abyss — returned to the safe start.", 3.5)
+
+
+func _on_checkpoint_activated(reached: Checkpoint) -> void:
+    respawn_point = reached.respawn_position
+    _flash("Checkpoint reached.", 2.5)
 
 
 func _flash(message: String, seconds: float) -> void:
@@ -152,7 +164,8 @@ func _build_greybox() -> void:
     # Side-scrolling platforms, with a gap narrow enough for the starter jump.
     _make_solid("Starting causeway", Vector3(-13.0, -0.5, 0.0), Vector3(12.0, 1.0, 4.0), Color(0.18, 0.19, 0.23))
     _make_solid("Broken stone span", Vector3(-4.5, 0.0, 0.0), Vector3(3.0, 0.7, 3.7), Color(0.23, 0.23, 0.28))
-    _make_solid("Battle causeway", Vector3(3.5, -0.5, 0.0), Vector3(12.0, 1.0, 4.0), Color(0.17, 0.18, 0.21))
+    # Starts at x=-1.5, leaving a 1.5 m gap after the broken span (wider than the player capsule).
+    _make_solid("Battle causeway", Vector3(4.0, -0.5, 0.0), Vector3(11.0, 1.0, 4.0), Color(0.17, 0.18, 0.21))
     _make_solid("Gate causeway", Vector3(13.7, -0.5, 0.0), Vector3(9.0, 1.0, 4.0), Color(0.20, 0.19, 0.23))
     _make_solid("Raised step", Vector3(0.0, 1.15, -0.2), Vector3(2.0, 0.3, 2.6), Color(0.31, 0.27, 0.29))
 
@@ -160,6 +173,10 @@ func _build_greybox() -> void:
     _make_visual("Distant Gothic silhouette (decorative only)", Vector3(5.0, 6.0, -22.0), Vector3(3.0, 12.0, 2.8), Color(0.10, 0.065, 0.09))
     _make_visual("Left tower", Vector3(-12.0, 5.0, -18.0), Vector3(3.5, 10.0, 3.0), Color(0.07, 0.085, 0.12))
     _make_visual("Distant tower", Vector3(11.0, 7.0, -26.0), Vector3(3.5, 14.0, 3.0), Color(0.055, 0.071, 0.09))
+
+    checkpoint = Checkpoint.create(CHECKPOINT_POSITION)
+    checkpoint.activated.connect(_on_checkpoint_activated)
+    add_child(checkpoint)
 
     dummy = Node3D.new()
     dummy.name = "OneHitCrimsonPracticeDummy"
