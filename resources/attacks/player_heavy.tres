@@ -13,6 +13,7 @@ category = &"heavy"
 knockback = 7.0
 knockback_up = 3.0
 hitstun = 0.5
+poise_damage = 3
 reach_offset = 1.1
 reach = 1.6
 width = 1.2

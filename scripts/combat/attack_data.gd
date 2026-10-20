@@ -17,6 +17,11 @@ extends Resource
 @export var knockback: float = 4.0
 @export var knockback_up: float = 2.0
 @export var hitstun: float = 0.3
+## How much this hit wears down an enemy's poise (stagger meter). See PlaguedSoldier.
+@export var poise_damage: int = 1
+@export_group("Combo")
+## Next step when the attack is pressed again (or held) within the combo window.
+@export var next_combo: AttackData
 @export_group("Hitbox (attacker-local, along facing)")
 ## Distance from the attacker's centre to the hitbox centre along facing.
 @export var reach_offset: float = 0.9

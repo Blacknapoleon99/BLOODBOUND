@@ -24,7 +24,8 @@ static func create(from: Vector3, to: Vector3, card: CardData) -> BloodSpearProj
     spear.hitbox.category = &"card"
     spear.hitbox.knockback = 2.0
     spear.hitbox.knockback_up = 1.0
-    spear.hitbox.hitstun = 0.2
+    spear.hitbox.hitstun = 0.35
+    spear.hitbox.poise_damage = 2
     spear.hitbox.attack_id = card.id
     spear.hitbox.start_active = true
     var shape: CollisionShape3D = CollisionShape3D.new()

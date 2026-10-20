@@ -15,6 +15,7 @@ var category: StringName = &"melee"
 var knockback: float = 4.0
 var knockback_up: float = 2.0
 var hitstun: float = 0.25
+var poise_damage: int = 1
 var attack_id: StringName = &""
 
 var _active: bool = false
@@ -49,6 +50,7 @@ func configure_from(data: AttackData) -> void:
     knockback = data.knockback
     knockback_up = data.knockback_up
     hitstun = data.hitstun
+    poise_damage = data.poise_damage
     attack_id = data.id
 
 
@@ -85,6 +87,7 @@ func _build_info(target: Hurtbox) -> DamageInfo:
     info.amount = damage
     info.category = category
     info.hitstun = hitstun
+    info.poise_damage = poise_damage
     info.knockback = away * knockback + Vector3.UP * knockback_up
     info.source = source
     info.hit_position = target.global_position.lerp(origin, 0.3) + Vector3.UP * 0.3

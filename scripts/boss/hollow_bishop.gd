@@ -39,11 +39,11 @@ const PHASE_TITLES: Dictionary = {
     Phase.COVENANT: "III · THE COVENANT",
 }
 
-## Tuned (2026-10-20 playtest): optimal melee spam deals ~6 per weak-point window, so 36 HP is
-## at least six windows of pure melee; a typical mix of hits and Blood Spears takes 5-7.
-@export var max_health: int = 36
-@export var collapse_at: int = 24
-@export var covenant_at: int = 10
+## Tuned for the 3-hit combo (2026-10-20): optimal held-combo spam deals ~9 per weak-point
+## window, so 60 HP is at least six windows; a typical player (travel time, spears) needs ~8-10.
+@export var max_health: int = 60
+@export var collapse_at: int = 40
+@export var covenant_at: int = 18
 @export var depth: float = -22.0
 @export var min_x: float = 22.0
 @export var max_x: float = 42.0
@@ -100,6 +100,7 @@ func _ready() -> void:
     hand.weak_point.hit_received.connect(_on_weak_point_hit)
     _rest_y = position.y
     position.y = _rest_y - 14.0  # sunk in the abyss until awakened
+    visible = false  # its sunk silhouette would otherwise poke into early camera shots
     hand.global_position = _hand_rest()
     _update_arm()
 
@@ -129,6 +130,7 @@ func current_attack() -> StringName:
 func awaken() -> void:
     if phase == Phase.DORMANT:
         _intro_t = 0.0
+        visible = true
         _set_phase(Phase.INTRO)
 
 

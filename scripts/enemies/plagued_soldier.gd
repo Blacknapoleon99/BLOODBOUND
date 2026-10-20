@@ -4,7 +4,10 @@ extends CharacterBody3D
 ##
 ## States: PATROL → CHASE (player within aggro range) → ATTACK (MeleeAttack phases:
 ## STARTUP is the telegraph, ACTIVE hits, RECOVERY is the punish window) → back to CHASE.
-## Any hit that lands cancels the attack and causes HITSTUN with knockback.
+## Poise: every hit flashes the soldier and makes it flinch, but only breaking its poise
+## (sum of DamageInfo.poise_damage >= `poise_max`; light 1, finisher/spear 2, heavy 3) cancels its
+## attack and staggers it (HITSTUN + knockback). Poise refills after `poise_regen_delay` s
+## without being hit — so fast combos cannot stun-lock it, but they do wear it down.
 ## DEAD disables hurt/contact boxes and body collision, so the corpse never blocks the route.
 ## Touching the soldier deals light contact damage (`contact_damage`, at most once per second).
 ## Leash: the soldier never moves outside [patrol_min_x - leash_margin, patrol_max_x + leash_margin],
@@ -27,6 +30,8 @@ enum State { IDLE, PATROL, CHASE, ATTACK, HITSTUN, DEAD }
 @export var attack_range: float = 1.7
 @export var attack_cooldown: float = 0.5
 @export var leash_margin: float = 0.5
+@export var poise_max: int = 3
+@export var poise_regen_delay: float = 1.5
 ## Free-movement leash (used when plane_locked is false); 0 disables it.
 @export var leash_radius: float = 0.0
 @export var kill_plane_y: float = -9.0
@@ -53,10 +58,15 @@ var _body_material: StandardMaterial3D
 var _base_color: Color
 var _home: Vector3
 var _death_tween: Tween
+var poise: int = 3
+var _poise_regen_left: float = 0.0
+var _flash_left: float = 0.0
+var _flinch_left: float = 0.0
 
 
 func _ready() -> void:
     add_to_group(&"enemy")
+    poise = poise_max
     hurtbox.hit_received.connect(_on_hit_received)
     health.died.connect(_on_died)
     melee.phase_changed.connect(_on_attack_phase)
@@ -116,6 +126,7 @@ func revive_at_home() -> void:
     telegraph_marker.visible = false
     _stun_left = 0.0
     _cooldown_left = 0.0
+    poise = poise_max
     teleport_to(_home)
     state = State.IDLE  # force a state_changed below even if it was already IDLE
     _set_state(State.PATROL if ai_enabled else State.IDLE)
@@ -124,6 +135,12 @@ func revive_at_home() -> void:
 func _physics_process(delta: float) -> void:
     _stun_left = maxf(0.0, _stun_left - delta)
     _cooldown_left = maxf(0.0, _cooldown_left - delta)
+    _flash_left = maxf(0.0, _flash_left - delta)
+    _flinch_left = maxf(0.0, _flinch_left - delta)
+    if poise < poise_max:
+        _poise_regen_left -= delta
+        if _poise_regen_left <= 0.0:
+            poise = poise_max
 
     match state:
         State.IDLE, State.DEAD:
@@ -255,6 +272,17 @@ func _on_attack_finished(_data: AttackData) -> void:
 func _on_hit_received(info: DamageInfo) -> void:
     if state == State.DEAD:
         return
+    _flash_left = 0.12
+    _flinch_left = 0.2
+    poise -= info.poise_damage
+    _poise_regen_left = poise_regen_delay
+    if poise > 0:
+        # Flinch only: keep any attack going, small shove if not mid-swing.
+        if state != State.ATTACK:
+            velocity.x = info.knockback.x * 0.3
+            velocity.z = info.knockback.z * 0.3
+        return
+    poise = poise_max
     melee.cancel()
     telegraph_marker.visible = false
     velocity = info.knockback
@@ -289,6 +317,9 @@ func _update_visual() -> void:
         return
     if absf(facing.x) > 0.01 or absf(facing.z) > 0.01:
         visual.basis = Basis.looking_at(Vector3(facing.x, 0.0, facing.z), Vector3.UP)
+        if _flinch_left > 0.0:
+            # Recoil: lean back away from facing for a moment.
+            visual.basis = visual.basis * Basis(Vector3.RIGHT, 0.35 * (_flinch_left / 0.2))
     var color: Color = _base_color
     var emission: Color = Color.BLACK
     if melee.phase == MeleeAttack.Phase.STARTUP:
@@ -299,6 +330,9 @@ func _update_visual() -> void:
         emission = Color(1.0, 0.1, 0.05) * 1.5
     elif state == State.HITSTUN:
         color = Color(0.9, 0.85, 0.8)
+    if _flash_left > 0.0:
+        color = Color(1.0, 1.0, 1.0)
+        emission = Color(1.0, 0.95, 0.9) * 0.8
     _body_material.albedo_color = color
     _body_material.emission_enabled = emission != Color.BLACK
     _body_material.emission = emission

@@ -184,3 +184,16 @@
   - Clicking the exposed stigmata spears it (19 → 16).
 - `tools/run_checks.ps1` → **202/202** headless (clicks routed to the same handlers) and **202/202 in a visible window** (real mouse events through Godot input and GUI picking).
 - Build: `build/windows-fix2/Bloodbound.exe`, export probe exit 0. QA build probe 10/10.
+
+## Playtest request — combat feel (2026-10-20)
+
+- Combo diagnostic before the lunge fix: held J went light → light_2 → (player hit by soldier contact, dist 0.97) → combo reset to light, and the finisher never landed. After the fix: light, light_2, finisher, light…, 1.5 blood in 1.2 s.
+- New checks:
+  - Holding J chains light → light_2 → finisher and repeats (5 attacks in 1.6 s); releasing J stops it.
+  - Auto-attack turns to and hits a soldier behind the player (6 → 2). With it off, nothing swings; it never swings at empty air.
+  - A single quick hit doesn't interrupt the soldier's wind-up (poise). A light hit flashes the soldier and chips poise (3 → 2). The heavy breaks poise: stagger plus 2.66 m knockback.
+  - Being hit flashes the player and pulses the vignette (alpha 0.54).
+  - The held combo kills the 2.5D soldier and the 3D guardian.
+  - Bishop window bound: 9 of 60 per window.
+- `tools/run_checks.ps1` → **212/212**. Visible run 212/212 (screenshot `02_soldier_hit.png` shows the recoil lean, vignette and spray).
+- Build `build/windows-fix3/Bloodbound.exe`, export probe exit 0.

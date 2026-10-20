@@ -9,6 +9,7 @@ var hitbox: Hitbox
 var weak_point: Hurtbox
 var marker: MeshInstance3D
 var weak_open: bool = false
+var _flash_left: float = 0.0
 var _stigmata_material: StandardMaterial3D
 
 
@@ -72,6 +73,16 @@ static func create(boss_health: Health) -> BishopHand:
 
 func _ready() -> void:
     weak_point.set_enabled(false)
+    weak_point.hit_received.connect(func(_info: DamageInfo) -> void: _flash_left = 0.12)
+
+
+func _process(delta: float) -> void:
+    if _flash_left <= 0.0:
+        return
+    _flash_left = maxf(0.0, _flash_left - delta)
+    # Stigmata flares white on each hit, then settles back to its open glow.
+    var open_color: Color = Color(1.0, 0.1, 0.15) * 2.0
+    _stigmata_material.emission = open_color.lerp(Color(1.0, 1.0, 0.9) * 4.0, _flash_left / 0.12) if weak_open else Color(0.3, 0.02, 0.04)
 
 
 ## Hurtbox asks the parent: the stigmata only takes damage while exposed.

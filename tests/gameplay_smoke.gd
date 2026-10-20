@@ -26,7 +26,7 @@ func _initialize() -> void:
 func _run() -> void:
     # Never touch the player's real settings file; start from defaults.
     GameSettings.persistence_enabled = false
-    GameSettings.reset_defaults()
+    _test_defaults()
     await _m6_menu_checks()
     _bind()
     await _seconds(1.0)
@@ -123,6 +123,7 @@ func _run() -> void:
     await _m2_contact_damage_check()
     await _m2_leash_check()
     await _m2_player_hits_enemy_checks()
+    await _fix_combat_feel_checks()
     await _fix_spear_hits_enemies()
     await _fix_mouse_cards_vs_soldier()
 
@@ -273,6 +274,13 @@ func _m1_dodge_checks() -> void:
     await _seconds(0.6)
 
 
+## Settings for scripted checks: game defaults, but auto-attack off (the checks press keys
+## themselves; auto-attack has its own checks that switch it on).
+func _test_defaults() -> void:
+    GameSettings.reset_defaults()
+    GameSettings.auto_attack = false
+
+
 func _bind() -> void:
     _main = current_scene as Node3D
     _player = _main.get("player") as CharacterBody3D
@@ -338,7 +346,7 @@ func _m2_attack_phase_checks() -> void:
     _check(got == expected, "light attack phases match AttackData exactly: %s frames (expected %s)" % [got, expected])
     _check(hitbox_wrong == 0, "hitbox is live only during ACTIVE (%d wrong frames)" % hitbox_wrong)
     _check(melee.phase == MeleeAttack.Phase.IDLE, "attack returns to idle")
-    _check(_enemy.health.current == 3, "whiff out of reach deals no damage")
+    _check(_enemy.health.current == _enemy.health.max_health, "whiff out of reach deals no damage")
 
     # Heavy attack has a longer, committed wind-up.
     var heavy_startup: int = 0
@@ -479,22 +487,24 @@ func _m2_leash_check() -> void:
 
 
 func _m2_player_hits_enemy_checks() -> void:
+    var hp_max: int = _enemy.health.max_health
     await _place(3.2, 4.3, false)
     _player.set("facing_direction", -1.0)
     _tap(KEY_J)
     await _seconds(0.6)
-    _check(_enemy.health.current == 3, "attacking while facing away misses")
+    _check(_enemy.health.current == hp_max, "attacking while facing away misses")
 
+    # A single light hit flinches (flash) but does not stagger: poise absorbs it.
     _player.set("facing_direction", 1.0)
-    var ex: float = _enemy.global_position.x
+    var flashed: bool = false
     var stunned: bool = false
     _tap(KEY_J)
     for i in 30:
         await physics_frame
+        flashed = flashed or float(_enemy.get("_flash_left")) > 0.0
         stunned = stunned or _enemy.state_name() == "HITSTUN"
-    _check(_enemy.health.current == 2, "light attack deals 1 damage (hp=%d)" % _enemy.health.current)
-    _check(stunned, "hit soldier enters HITSTUN")
-    _check(_enemy.global_position.x > ex + 0.3, "hit soldier is knocked back (dx=%.2f)" % (_enemy.global_position.x - ex))
+    _check(_enemy.health.current == hp_max - 1, "light attack deals 1 damage (hp=%d)" % _enemy.health.current)
+    _check(flashed and not stunned and _enemy.poise == _enemy.poise_max - 1, "a light hit flashes the soldier but only chips its poise (poise=%d)" % _enemy.poise)
     var c: Color = _newest_fx_color()
     _check(c.r > 0.4 and c.g < 0.1, "default spray is blood red")
 
@@ -504,16 +514,98 @@ func _m2_player_hits_enemy_checks() -> void:
     await _seconds(0.5)
     c = _newest_fx_color()
     GameSettings.reduced_gore = false
-    _check(_enemy.health.current == 1, "second light hit lands (hp=%d)" % _enemy.health.current)
+    _check(_enemy.health.current == hp_max - 2, "second light hit lands (hp=%d)" % _enemy.health.current)
     _check(c.r < 0.3 and absf(c.r - c.b) < 0.1, "reduced-gore spray is ash grey (color=%s)" % c)
 
+    # Heavy breaks the (already chipped) poise: stagger + knockback.
     await _place(3.2, 4.4, false)
+    var ex: float = _enemy.global_position.x
+    stunned = false
     _tap(KEY_L)
-    await _seconds(1.0)
-    _check(_enemy.health.current == 0 and _enemy.state_name() == "DEAD", "heavy attack deals 2 damage and kills (hp=%d, state=%s)" % [_enemy.health.current, _enemy.state_name()])
+    for i in 60:
+        await physics_frame
+        stunned = stunned or _enemy.state_name() == "HITSTUN"
+    _check(_enemy.health.current == hp_max - 4, "heavy attack deals 2 damage (hp=%d)" % _enemy.health.current)
+    _check(stunned and _enemy.global_position.x > ex + 0.3, "heavy breaks poise: the soldier staggers and is knocked back (dx=%.2f)" % (_enemy.global_position.x - ex))
+
+    # Finish it by holding J: the combo chains until it drops.
+    await _place(3.2, 4.3, false)
+    _key(KEY_J, true)
+    await _wait_until(func() -> bool: return _enemy.is_dead(), 3.0)
+    _key(KEY_J, false)
+    await _seconds(0.6)
+    _check(_enemy.health.current == 0 and _enemy.state_name() == "DEAD", "holding J chains the combo and kills the soldier (hp=%d, state=%s)" % [_enemy.health.current, _enemy.state_name()])
     _check(not bool(_main.get("enemy_alive")), "level registers the soldier as defeated")
     _check(_enemy.collision_layer == 0 and not _enemy.hurtbox.monitorable, "corpse no longer blocks or takes hits")
     await _shot("03_soldier_dead")
+
+
+## Playtest request: faster melee, an auto-attack, and hit reactions on both sides.
+func _fix_combat_feel_checks() -> void:
+    var energy: BloodEnergy = _energy()
+    var melee: MeleeAttack = _melee()
+    energy.regen_per_second = 0.0
+    _enemy.revive_at_home()
+    await _place(3.2, 4.3, false)
+    energy.set_amount(0.0)
+    var ids: Array[StringName] = []
+    var on_start: Callable = func(id: StringName) -> void: ids.append(id)
+    _player.connect("attack_started", on_start)
+    var hp0: int = _enemy.health.current
+    _key(KEY_J, true)
+    await _seconds(1.2)
+    var blood_after_1_2s: float = energy.current
+    await _seconds(0.4)
+    _key(KEY_J, false)
+    var chain_ok: bool = ids.size() >= 4 and ids.slice(0, 3) == [&"player_light", &"player_light_2", &"player_light_finisher"]
+    _check(chain_ok, "holding J chains light → light → finisher and keeps going (%d attacks: %s)" % [ids.size(), ids.slice(0, 4)])
+    _check(blood_after_1_2s >= 1.5, "a held combo earns blood quickly (%.1f blood in 1.2 s)" % blood_after_1_2s)
+    _check(_enemy.health.current < hp0, "the combo damages the soldier (%d → %d)" % [hp0, _enemy.health.current])
+    await _seconds(0.3)
+    ids.clear()
+    await _seconds(0.6)
+    _check(ids.is_empty() and not melee.is_busy(), "releasing J stops the combo")
+    _player.disconnect("attack_started", on_start)
+
+    # Auto-attack: turns to and hits an enemy in reach with no keys pressed.
+    _enemy.revive_at_home()
+    await _place(3.2, 1.9, false)  # soldier behind the player
+    _player.set("facing_direction", 1.0)
+    GameSettings.auto_attack = true
+    hp0 = _enemy.health.current
+    await _seconds(1.0)
+    GameSettings.auto_attack = false
+    _check(_enemy.health.current < hp0 and float(_player.get("facing_direction")) < 0.0, "auto-attack turns and hits an enemy in reach (%d → %d)" % [hp0, _enemy.health.current])
+    _enemy.revive_at_home()
+    await _place(3.2, 1.9, false)
+    await _seconds(1.0)
+    _check(_enemy.health.current == _enemy.health.max_health, "with auto-attack off nothing swings on its own")
+    GameSettings.auto_attack = true
+    _player.call("teleport_to", Vector3(-16.0, 2.0, 0.0))
+    var swung: bool = false
+    for i in 60:
+        await physics_frame
+        swung = swung or melee.is_busy()
+    GameSettings.auto_attack = false
+    _check(not swung, "auto-attack does not swing at empty air")
+
+    # Poise vs telegraph, then hit reactions on the player.
+    _enemy.revive_at_home()
+    await _place(3.2, 4.6, true)
+    _heal()
+    var winding: bool = await _wait_until(func() -> bool: return _enemy.melee.phase == MeleeAttack.Phase.STARTUP, 4.0)
+    _player.set("facing_direction", 1.0)
+    _tap(KEY_J)
+    await _seconds(0.15)
+    _check(winding and _enemy.state_name() == "ATTACK", "a single quick hit does not interrupt the soldier's wind-up (poise)")
+    var player_hp: int = _player_hp()
+    var hit: bool = await _wait_until(func() -> bool: return _player_hp() < player_hp, 3.0)
+    var vignette: ColorRect = _main.get("hurt_vignette")
+    _check(hit and bool(_player.call("is_hurt_flashing")) and vignette.color.a > 0.3, "getting hit flashes the player red and pulses the screen edges (a=%.2f)" % vignette.color.a)
+    _enemy.set_ai_enabled(false)
+    _enemy.health.apply_damage(_enemy.health.current)
+    await _seconds(0.6)
+    energy.regen_per_second = 0.25
 
 
 func _check(ok: bool, label: String) -> void:
@@ -885,10 +977,12 @@ func _m5_fracture_checks() -> void:
     _tap(KEY_J)
     await _seconds(0.5)
     var facing: Vector3 = _player.call("get_facing_vector")
-    _check(guardian.health.current == 2 and facing.z < -0.5, "soft lock-on turns an undirected attack onto the guardian (hp=%d, facing=%s)" % [guardian.health.current, facing])
-    _tap(KEY_L)
-    await _seconds(1.0)
-    _check(guardian.is_dead() and fracture.portal_open, "heavy hit slays the guardian and the return portal opens")
+    _check(guardian.health.current == guardian.health.max_health - 1 and facing.z < -0.5, "soft lock-on turns an undirected attack onto the guardian (hp=%d, facing=%s)" % [guardian.health.current, facing])
+    _key(KEY_J, true)
+    await _wait_until(func() -> bool: return guardian.is_dead(), 4.0)
+    _key(KEY_J, false)
+    await _seconds(0.5)
+    _check(guardian.is_dead() and fracture.portal_open, "a held combo slays the guardian and the return portal opens")
     await _shot("05_fracture_cleared")
 
     # Walk into the portal: back to the entry spot, rewarded, fracture sealed.
@@ -938,11 +1032,11 @@ func _m6_menu_checks() -> void:
     panel.shake_slider.value = 0.5
     panel.hitstop_toggle.button_pressed = false
     _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled, "settings controls change gore / shake / hit-stop immediately")
-    GameSettings.reset_defaults()
+    _test_defaults()
     GameSettings.load_settings("user://test_settings.cfg")
     _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled, "settings persist through save and reload")
     DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_settings.cfg"))
-    GameSettings.reset_defaults()
+    _test_defaults()
     _tap(KEY_ESCAPE)
     await _frames(3)
     _check(not panel.visible and (menu.get("_menu") as Control).visible, "Esc closes Settings back to the title menu")

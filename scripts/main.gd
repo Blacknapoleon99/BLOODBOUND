@@ -40,6 +40,7 @@ var game_won: bool = false
 var _message: String = ""
 var _message_until: float = 0.0
 var _trauma: float = 0.0
+var hurt_vignette: ColorRect
 
 
 func _ready() -> void:
@@ -77,6 +78,15 @@ func _ready() -> void:
     hud.add_theme_constant_override("shadow_offset_y", 2)
     canvas.add_child(hud)
     _build_boss_bar(canvas)
+    hurt_vignette = ColorRect.new()
+    hurt_vignette.name = "HurtVignette"
+    hurt_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+    hurt_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    hurt_vignette.material = _vignette_material()
+    hurt_vignette.color = Color(0.7, 0.0, 0.02, 0.0)
+    canvas.add_child(hurt_vignette)
+    canvas.move_child(hurt_vignette, 0)
+    player.connect("hurt", func(_info: DamageInfo) -> void: hurt_vignette.color.a = 0.55)
     var card_system: CardSystem = player.get_node("Cards") as CardSystem
     var card_ui: CardHandUI = CardHandUI.create(card_system)
     canvas.add_child(card_ui)
@@ -96,6 +106,7 @@ func _process(delta: float) -> void:
     camera.global_position = camera.global_position.lerp(_camera_goal(), minf(1.0, 4.0 * delta))
     camera.look_at(_camera_look_target(), Vector3.UP)
     _apply_shake(delta)
+    hurt_vignette.color.a = move_toward(hurt_vignette.color.a, 0.0, 1.4 * delta)
 
     if player.global_position.y < -9.0:
         _respawn()
@@ -259,6 +270,22 @@ func _open_portcullis() -> void:
     (portcullis.get_child(0) as CollisionShape3D).set_deferred(&"disabled", true)
     var tween: Tween = create_tween()
     tween.tween_property(portcullis, "position:y", 6.5, 1.2).set_ease(Tween.EASE_OUT)
+
+
+## Red edges, clear centre: the screen "bleeds" when the player is hit.
+static func _vignette_material() -> ShaderMaterial:
+    var shader: Shader = Shader.new()
+    shader.code = """
+shader_type canvas_item;
+void fragment() {
+    vec2 d = UV - vec2(0.5);
+    float edge = smoothstep(0.28, 0.75, length(d * vec2(1.25, 1.0)));
+    COLOR = vec4(COLOR.rgb, COLOR.a * edge);
+}
+"""
+    var material: ShaderMaterial = ShaderMaterial.new()
+    material.shader = shader
+    return material
 
 
 func _build_boss_bar(canvas: CanvasLayer) -> void:

@@ -9,6 +9,10 @@ extends CharacterBody3D
 ## - Variable jump: releasing jump while rising multiplies upward speed by `jump_cut_factor`.
 ## - Dodge: `dodge_duration` burst along facing/input; invulnerable for `dodge_invulnerable_time`
 ##   from the start of the dodge; usable again after `dodge_cooldown`; one dodge per airtime.
+## - Light attack is a 3-step combo (AttackData.next_combo): pressing again — or simply holding
+##   the button — within `combo_window` of the previous step continues the chain.
+## - Auto-attack (GameSettings.auto_attack): with no attack pressed, the player swings at the
+##   nearest enemy within `auto_attack_reach`, turning to face it, unless moving away from it.
 ## - Attacks (see AttackData): no jumping, turning or new attacks until the attack ends.
 ##   An attack pressed while busy is buffered for `attack_buffer_time` and starts on the
 ##   first free frame (only the latest press is kept).
@@ -50,6 +54,8 @@ signal died
 @export var heavy_attack: AttackData
 @export var hurt_invulnerable_time: float = 0.8
 @export var attack_buffer_time: float = 0.15
+@export var combo_window: float = 0.35
+@export var auto_attack_reach: float = 1.8
 ## 3D only: attacking with no movement input turns toward the nearest enemy within this range.
 @export var soft_lock_range: float = 3.5
 @export var health: Health
@@ -76,6 +82,11 @@ var _queued_left: float = 0.0
 var _shield_category: StringName = &""
 var _shield_left: float = 0.0
 var _shield_visual: MeshInstance3D
+var _combo_prev: AttackData
+var _combo_left: float = 0.0
+var _hurt_flash_left: float = 0.0
+var _body_material: StandardMaterial3D
+const BODY_COLOR: Color = Color(0.55, 0.6, 0.85)
 
 
 func _ready() -> void:
@@ -83,7 +94,13 @@ func _ready() -> void:
     hurtbox.hit_received.connect(_on_hit_received)
     hurtbox.hit_blocked.connect(func(info: DamageInfo) -> void: blocked.emit(info))
     health.died.connect(_on_died)
+    melee.attack_finished.connect(_on_attack_finished)
     _build_shield_visual()
+    var knight: MeshInstance3D = get_node_or_null("VisualRoot/PlaceholderKnight") as MeshInstance3D
+    if knight:
+        _body_material = StandardMaterial3D.new()
+        _body_material.albedo_color = BODY_COLOR
+        knight.material_override = _body_material
 
 
 func is_invulnerable() -> bool:
@@ -177,6 +194,11 @@ func _physics_process(delta: float) -> void:
         _queued_attack = null
         if _queued_left > 0.0:
             _try_attack(queued)
+    if controllable and not melee.is_busy() and _queued_attack == null and not is_dodging():
+        if Input.is_action_pressed(&"attack"):
+            _try_attack(light_attack)  # holding J keeps the combo going
+        elif GameSettings.auto_attack:
+            _try_auto_attack(input_x, input_z)
 
     if is_dodging():
         velocity.x = _dodge_direction.x * dodge_speed
@@ -201,7 +223,112 @@ func _physics_process(delta: float) -> void:
     if not in_3d_mode:
         position.z = 0.0
     _was_on_floor = is_on_floor()
+    _update_reaction_visuals(delta)
 
+
+func is_hurt_flashing() -> bool:
+    return _hurt_flash_left > 0.0
+
+
+## Nearest hittable enemy hurtbox within auto-attack reach (and roughly level with the player).
+func _auto_attack_target() -> Hurtbox:
+    var best: Hurtbox = null
+    var best_distance: float = auto_attack_reach
+    for node: Node in get_tree().get_nodes_in_group(&"hurtboxes"):
+        var hurtbox: Hurtbox = node as Hurtbox
+        if hurtbox == null or hurtbox.team == &"player" or not hurtbox.monitorable:
+            continue
+        if hurtbox.health == null or hurtbox.health.is_dead():
+            continue
+        var owner_node: Node = hurtbox.get_parent()
+        if owner_node.has_method("is_invulnerable") and owner_node.call("is_invulnerable"):
+            continue
+        var shape: CollisionShape3D = hurtbox.get_child(0) as CollisionShape3D
+        var offset: Vector3 = (shape.global_position if shape else hurtbox.global_position) - global_position
+        if absf(offset.y) > 1.7:
+            continue
+        var distance: float
+        if in_3d_mode:
+            distance = Vector2(offset.x, offset.z).length()
+        else:
+            if absf(offset.z) > 1.5:
+                continue
+            distance = absf(offset.x)
+        if distance < best_distance:
+            best = hurtbox
+            best_distance = distance
+    return best
+
+
+func _enemy_body_ahead(distance: float) -> bool:
+    var ahead: Vector3 = melee.facing
+    for node: Node in get_tree().get_nodes_in_group(&"enemy"):
+        var enemy: Node3D = node as Node3D
+        if enemy == null or (enemy.has_method("is_dead") and enemy.call("is_dead")):
+            continue
+        var offset: Vector3 = enemy.global_position - global_position
+        offset.y = 0.0
+        if offset.length() < distance and offset.dot(ahead) > 0.0:
+            return true
+    return false
+
+
+func _try_auto_attack(input_x: float, input_z: float) -> void:
+    var target: Hurtbox = _auto_attack_target()
+    if target == null:
+        return
+    var shape: CollisionShape3D = target.get_child(0) as CollisionShape3D
+    var to_target: Vector3 = (shape.global_position if shape else target.global_position) - global_position
+    to_target.y = 0.0
+    if not in_3d_mode:
+        to_target.z = 0.0
+    if to_target.length_squared() < 0.0001:
+        to_target = get_facing_vector()
+    # Retreating takes priority: never auto-swing at something the player is moving away from.
+    var move: Vector3 = Vector3(input_x, 0.0, input_z)
+    if move.length_squared() > 0.01 and move.dot(to_target) < 0.0:
+        return
+    var dir: Vector3 = to_target.normalized()
+    if absf(dir.x) > 0.01:
+        facing_direction = signf(dir.x)
+    _facing_3d = dir if in_3d_mode else Vector3(facing_direction, 0.0, 0.0)
+    _try_attack(light_attack)
+
+
+func _on_attack_finished(data: AttackData) -> void:
+    _combo_prev = data if data.next_combo != null else null
+    _combo_left = combo_window
+
+
+## Light presses continue the chain: from the attack in progress (buffered press) or from the
+## one that just ended (within combo_window).
+func _resolve_light(data: AttackData) -> AttackData:
+    if data != light_attack:
+        return data
+    if melee.is_busy() and melee.current != null and melee.current.next_combo != null:
+        return melee.current.next_combo
+    if not melee.is_busy() and _combo_prev != null and _combo_left > 0.0:
+        return _combo_prev.next_combo
+    return light_attack
+
+
+func _update_reaction_visuals(delta: float) -> void:
+    _hurt_flash_left = maxf(0.0, _hurt_flash_left - delta)
+    var visual: Node3D = get_node_or_null("VisualRoot") as Node3D
+    if visual == null:
+        return
+    # Lean into swings, recoil when hurt.
+    var lean: float = 0.0
+    if melee.is_busy() and melee.phase == MeleeAttack.Phase.ACTIVE:
+        lean = -0.3 * facing_direction
+    elif is_stunned():
+        lean = 0.35 * facing_direction
+    visual.rotation.z = lerpf(visual.rotation.z, lean, minf(1.0, 18.0 * delta))
+    if _body_material:
+        var t: float = _hurt_flash_left / 0.18
+        _body_material.albedo_color = BODY_COLOR.lerp(Color(1.0, 0.25, 0.2), t)
+        _body_material.emission_enabled = t > 0.0
+        _body_material.emission = Color(1.0, 0.1, 0.05) * t
 
 func _tick_timers(delta: float) -> void:
     _coyote_left = maxf(0.0, _coyote_left - delta)
@@ -213,6 +340,7 @@ func _tick_timers(delta: float) -> void:
     _dodge_cooldown_left = maxf(0.0, _dodge_cooldown_left - delta)
     _stun_left = maxf(0.0, _stun_left - delta)
     _queued_left = maxf(0.0, _queued_left - delta)
+    _combo_left = maxf(0.0, _combo_left - delta)
     if _shield_left > 0.0:
         _shield_left = maxf(0.0, _shield_left - delta)
         _shield_visual.visible = _shield_left > 0.0
@@ -240,7 +368,9 @@ func _apply_run(input_x: float, input_z: float, on_floor: bool, delta: float) ->
 
 func _apply_attack_motion(input_x: float, input_z: float, on_floor: bool, delta: float) -> void:
     var data: AttackData = melee.current
-    if melee.phase == MeleeAttack.Phase.ACTIVE and data.lunge_speed > 0.0:
+    # Plant your feet when already in reach: lunging into an enemy's body only earns you its
+    # contact damage (and that hit would break your combo).
+    if melee.phase == MeleeAttack.Phase.ACTIVE and data.lunge_speed > 0.0 and not _enemy_body_ahead(1.3):
         var lunge: Vector3 = melee.facing * data.lunge_speed
         velocity.x = lunge.x
         if in_3d_mode:
@@ -335,6 +465,7 @@ func _end_dodge() -> void:
 func _try_attack(data: AttackData) -> void:
     if data == null or is_dodging() or health.is_dead():
         return
+    data = _resolve_light(data)
     if is_stunned():
         # Held until the stun ends (same idea as the card buffer), not silently dropped.
         _queued_attack = data
@@ -361,6 +492,8 @@ func _on_hit_received(info: DamageInfo) -> void:
         velocity.z = 0.0
     _stun_left = info.hitstun
     _invulnerable_left = hurt_invulnerable_time
+    _hurt_flash_left = 0.18
+    _combo_prev = null
     hurt.emit(info)
 
 

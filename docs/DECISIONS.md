@@ -111,3 +111,15 @@ Second playtest report: the cards show READY but say "no target", even though th
 - Clicking the Bishop's body explains that only the stigmata can be wounded. Clicking a sealed stigmata returns the new reason `not_exposed`.
 - Keys 1–3 keep auto-targeting (nearest enemy, exposed weak point first).
 - Testing: Godot's headless display server drops mouse input, so headless runs route clicks to the same signal and handler; the visible run uses real mouse events.
+
+## DEC-023 — Combat feel: 3-hit combo, hold-to-chain, auto-attack, poise, hit reactions (playtest 2026-10-20)
+
+Playtester: melee too slow, wants an auto/filler attack to earn blood, and hit reactions on both sides.
+- **Light combo:** `player_light` → `player_light_2` → `player_light_finisher` via `AttackData.next_combo`. Pressing again, or just holding J, within 0.35 s chains the next step. Each light step takes 0.28 s; the finisher takes 0.44 s, deals 2 damage and 2 poise.
+- **Auto-attack:** `GameSettings.auto_attack`, default on, toggle in Settings. With no attack pressed, the player swings at the nearest hittable enemy hurtbox within 1.8 m and turns to face it, but never while moving away from it.
+- **Lunge gating:** a swing doesn't lunge when an enemy body is within 1.3 m ahead. Lunging into the soldier triggered its contact damage, which broke the combo before the finisher (found by diagnostic).
+- **Poise:** every hit flashes the soldier white and makes it flinch. Only breaking poise (3 points; light 1, finisher/spear 2, heavy 3) cancels its attack and staggers it. Poise refills after 1.5 s without hits, so combos can't stun-lock it. Soldier HP 3 → 6.
+- **Player reactions:** a red flash, a recoil lean, and a red screen-edge vignette when hurt. Swings lean forward. The Bishop's stigmata flares white per hit.
+- **Bishop HP 36 → 60** (Collapse ≤40, Covenant ≤18). Held-combo spam deals about 9 per weak window, and a test bounds that at ≤1/5 of max HP.
+- The dormant Bishop is hidden until it rises; its sunk silhouette was poking into early shots.
+- Tests disable auto-attack (`_test_defaults`), except in the checks written for it.
