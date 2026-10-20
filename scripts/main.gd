@@ -37,6 +37,7 @@ var offer_overlay: CardOfferOverlay
 var card_system: CardSystem
 var _pending_altar: BloodAltar
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var ambushes: Array[Ambush] = []
 var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
 var enemy_alive: bool = true
@@ -150,6 +151,11 @@ func _process(delta: float) -> void:
         boss.begin_fight()
         _flash("The Bishop turns to face you. Strike the stigmata when its hand falls.", 3.5)
     _update_boss_bar()
+    var ambush_now: Ambush = _active_ambush()
+    boss.pursuit_hold = ambush_now != null
+    if ambush_now != null and _message == "":
+        _message = "AMBUSH — %d foe(s) remain" % ambush_now.alive_count()
+        _message_until = 0.2
 
     if _message_until > 0.0:
         _message_until -= delta
@@ -188,6 +194,9 @@ func _unhandled_input(event: InputEvent) -> void:
         return
     if fracture.is_transitioning():
         return
+    if _active_ambush() != null:
+        _flash("The bone walls hold until every foe is slain.", 2.0)
+        return
     for altar: BloodAltar in altars:
         if altar.player_in_reach(player):
             _pending_altar = altar
@@ -211,6 +220,21 @@ func _on_enemy_defeated() -> void:
     enemy_alive = false
     _open_portcullis()
     _flash("The plagued soldier falls. The portcullis grinds open.", 4.0)
+
+
+func _active_ambush() -> Ambush:
+    for ambush: Ambush in ambushes:
+        if ambush.is_active():
+            return ambush
+    return null
+
+
+func _on_ambush_started(ambush: Ambush) -> void:
+    _flash("AMBUSH — bone walls rise! Slay them all.", 3.0)
+
+
+func _on_ambush_cleared(_ambush: Ambush) -> void:
+    _flash("The walls crumble. The way is open.", 3.0)
 
 
 func _on_player_died() -> void:
@@ -338,6 +362,8 @@ func _on_sunder_impact(x: float) -> void:
 
 ## Death and falls reset every temporary hazard so the route is always recoverable.
 func _reset_hazards() -> void:
+    for ambush: Ambush in ambushes:
+        ambush.reset()
     boss_arena.restore_all()
     for slab: CollapsingSlab in collapsing_slabs:
         slab.restore()
@@ -497,6 +523,15 @@ func _build_greybox() -> void:
     _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, 3.6), Color(0.32, 0.3, 0.34), portcullis)
 
     _build_approach()
+    # Ambushes: E1 after the soldier (its altar is the reward), E2 on the landing mid-pursuit.
+    var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"husk", "x": 16.0}, {"type": &"archer", "x": 17.5}]
+    var e2_spawns: Array[Dictionary] = [{"type": &"husk", "x": 40.8}, {"type": &"archer", "x": 42.2}, {"type": &"archer", "x": 43.2}]
+    for spec: Array in [["Ambush: Gate ossuary", 10.0, 9.3, 18.3, e1_spawns], ["Ambush: Landing", 38.6, 37.8, 43.8, e2_spawns]]:
+        var ambush: Ambush = Ambush.create(spec[0], spec[1], spec[2], spec[3], spec[4])
+        ambush.started.connect(_on_ambush_started)
+        ambush.cleared.connect(_on_ambush_cleared)
+        add_child(ambush)
+        ambushes.append(ambush)
     for spot: Vector3 in [Vector3(16.8, 0.0, 0.0), Vector3(40.7, 0.0, 0.0)]:
         var altar: BloodAltar = BloodAltar.create("Blood Altar %d" % (altars.size() + 1), spot)
         add_child(altar)

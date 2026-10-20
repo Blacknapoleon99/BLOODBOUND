@@ -90,3 +90,12 @@ User playtest pass (feel, difficulty, slice length). Then M7: asset pipeline. Bl
 
 ### Next action
 Step 3: bigger Bishop (more attacks, abilities and phases). Step 4: more mid-run content (enemy variety, encounters between set-pieces).
+
+## 2026-10-21 — Steps 3 and 4
+
+- Step 3 (e868e1c): Hollow Bishop at 90 HP, four phases with roars and banners, Censer Sweep, Requiem Beam, Grasping Dead.
+- Step 4: Bone Archer enemy and two ambush rooms (gate ossuary, landing), each rewarded by its Blood Altar.
+- Build: `build/windows-run2/Bloodbound.exe`.
+
+### Next action
+Playtest the full run (draft → ambushes → fracture → pursuit → four-phase Bishop) and retune from the report: Bishop HP, card costs, ambush density.

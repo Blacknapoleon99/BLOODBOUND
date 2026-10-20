@@ -228,3 +228,13 @@
   - Phase III AI uses summon and beam. Phase IV (HP 12) brings the roar, the banner and a 5.0 s window (vs 4.0 s in III).
   - The Husks crumble when the Bishop falls.
 - Screenshots: `docs/screenshots/11_censer.png`, `12_requiem_beam.png`, `13_husks.png`.
+
+## Step 4 — Bone Archer and ambush rooms (2026-10-21)
+
+- `tools/run_checks.ps1` → **269/269**. Visible run **269/269**. Release `build/windows-run2/Bloodbound.exe` export probe exit 0.
+- New checks:
+  - The archer draws (aim line) when the player is in range. Jumping the arrow avoids it; standing costs 1 HP.
+  - Gate ossuary: walls rise and 2 Husks + an archer spawn. The fracture gate waits while the ambush holds, and the wall keeps the player in (x 9.95 > 9.3). Slaying every foe drops the walls (CLEARED).
+  - Landing ambush springs with 3 foes. Dying mid-fight clears it and re-arms it (0 leftover).
+- Fixed during testing: `Ambush.alive_count()` touched freed Husks (script errors). It now prunes freed references; archers also free themselves after death.
+- Screenshot: `docs/screenshots/14_ambush.png`.

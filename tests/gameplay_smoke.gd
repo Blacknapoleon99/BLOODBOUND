@@ -153,6 +153,7 @@ func _run() -> void:
     await _frames(10)
     _check(current_scene.scene_file_path == "res://scenes/main_menu.tscn" and not paused, "pause → Main menu returns to the title screen, unpaused")
     await _m7_altar_and_new_card_checks()
+    await _m9_archer_and_ambush_checks()
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -282,6 +283,7 @@ func _m1_dodge_checks() -> void:
 func _test_defaults() -> void:
     GameSettings.reset_defaults()
     GameSettings.auto_attack = false
+    Ambush.enabled = false  # scripted checks walk the level freely; ambushes have their own checks
 
 
 func _bind() -> void:
@@ -1547,6 +1549,106 @@ func _m8_new_attack_checks(boss: HollowBishop) -> void:
     boss.clear_minions()
     await _seconds(1.6)
     _heal()
+
+
+## Step 4: Bone Archers and ambush rooms between the set-pieces (fresh level, ambushes on).
+func _m9_archer_and_ambush_checks() -> void:
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    await _seconds(0.6)
+    _enemy.set_ai_enabled(false)
+    var health: Health = _player.get("health")
+
+    # Bone Archer on its own: telegraphs, looses an arrow; jump it, or take 1 if you stand.
+    var archer: BoneArcher = EnemyFactory.archer(_main, -10.0, -18.0, -7.5)
+    _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    _heal()
+    var aimed: bool = await _wait_until(func() -> bool: return archer.state_name() == "AIM", 3.0)
+    _check(aimed, "the Bone Archer draws (red aim line) when the player is in range")
+    var hp0: int = _player_hp()
+    var close: bool = await _wait_until(func() -> bool:
+        for n: Node in root.get_tree().get_nodes_in_group(&"bone_arrow"):
+            if absf((n as Node3D).global_position.x - _player.global_position.x) < 3.2:
+                return true
+        return false, 3.0)
+    _key(KEY_SPACE, true)
+    await _seconds(0.45)
+    _key(KEY_SPACE, false)
+    await _seconds(0.6)
+    _check(close and _player_hp() == hp0 and archer.arrows_fired >= 1, "jumping over the arrow avoids it (hp=%d, arrows=%d)" % [_player_hp(), archer.arrows_fired])
+    hp0 = _player_hp()
+    await _wait_until(func() -> bool: return _player_hp() < hp0, 5.0)
+    _check(_player_hp() == hp0 - 1, "standing in the arrow's path costs 1 HP (%d → %d)" % [hp0, _player_hp()])
+    archer.queue_free()
+    for n: Node in root.get_tree().get_nodes_in_group(&"bone_arrow"):
+        n.queue_free()
+    await _seconds(0.3)
+
+    # Gate ossuary: walls rise, foes spawn, the gate and altar wait, killing all drops the walls.
+    Ambush.enabled = true
+    var ambushes: Array = _main.get("ambushes")
+    var e1: Ambush = ambushes[0]
+    _heal()
+    _player.call("teleport_to", Vector3(9.6, 1.0, 0.0))
+    await _seconds(0.4)
+    await _hold(KEY_D, 0.3)
+    await _frames(3)
+    _check(e1.is_active() and e1.wall_collision_enabled() and e1.alive_count() == 3, "entering the gate ossuary raises bone walls and spawns 2 Husks + an archer (%d foes)" % e1.alive_count())
+    await _seconds(0.8)
+    await _shot("14_ambush")
+    _player.call("teleport_to", Vector3(12.9, 1.0, 0.0))
+    await _seconds(0.2)
+    _tap(KEY_E)
+    await _frames(3)
+    var fracture: RealityFracture = _main.get("fracture")
+    _check(not fracture.is_transitioning() and "bone walls" in str(_main.get("_message")), "the fracture gate waits while the ambush holds")
+    _player.call("teleport_to", Vector3(10.0, 1.0, 0.0))
+    await _hold(KEY_A, 1.2)
+    _check(_player.global_position.x > 9.3, "the bone wall keeps the player in (x=%.2f)" % _player.global_position.x)
+    GameSettings.auto_attack = true
+    for i in int(25.0 * PHYSICS_HZ):
+        await physics_frame
+        if _player_hp() < 3:
+            _heal()
+        if e1.alive_count() == 0:
+            break
+        _chase_nearest(e1)
+    _key(KEY_A, false)
+    _key(KEY_D, false)
+    GameSettings.auto_attack = false
+    await _frames(5)
+    _check(e1.state == Ambush.State.CLEARED and not e1.wall_collision_enabled(), "slaying every foe drops the walls (state=%s)" % Ambush.State.keys()[e1.state])
+
+    # Landing ambush: dying mid-fight resets it for a retry.
+    var e2: Ambush = ambushes[1]
+    _heal()
+    _player.call("teleport_to", Vector3(38.2, 1.0, 0.0))
+    await _seconds(0.4)
+    await _hold(KEY_D, 0.25)
+    await _frames(3)
+    _check(e2.is_active() and e2.alive_count() == 3, "the landing ambush springs (%d foes)" % e2.alive_count())
+    health.apply_damage(health.current)  # debug: lethal
+    await _frames(6)
+    var leftover: int = root.get_tree().get_nodes_in_group(&"ambush_enemy").filter(func(n: Node) -> bool: return not n.is_queued_for_deletion() and not bool(n.call("is_dead"))).size()
+    _check(e2.state == Ambush.State.ARMED and not e2.wall_collision_enabled() and leftover == 0, "dying mid-ambush clears it and re-arms it (state=%s, leftover=%d)" % [Ambush.State.keys()[e2.state], leftover])
+    Ambush.enabled = false
+
+
+## Walk toward the nearest living foe of an ambush; auto-attack does the swinging.
+func _chase_nearest(ambush: Ambush) -> void:
+    var best: Node3D = null
+    ambush.alive_count()  # prunes freed corpses
+    for e: Node3D in ambush.enemies:
+        if not bool(e.call("is_dead")):
+            if best == null or absf(e.global_position.x - _player.global_position.x) < absf(best.global_position.x - _player.global_position.x):
+                best = e
+    if best == null:
+        return
+    var dx: float = best.global_position.x - _player.global_position.x
+    _key(KEY_D, dx > 1.2)
+    _key(KEY_A, dx < -1.2)
 
 
 func _m3_boss_checks() -> void:

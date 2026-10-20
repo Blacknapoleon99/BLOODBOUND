@@ -145,3 +145,13 @@ Playtester: give the Bishop more HP, more mechanics, abilities and phases.
 - **Patterns:** II summon/sunder/censer/volley/slam; III summon/beam/slam/censer/volley/sunder; IV beam/slam/censer/volley/slam with a 0.7 s cooldown.
 - Silence (Bell of Silence) also cancels a censer or beam still telegraphing, and a summon still rising.
 - Fix found by test: Husks were first leashed ±3 m around their spawn, so they hovered out of reach. They now roam the whole arena.
+
+## DEC-026 — Encounters between the set-pieces: Bone Archer and ambush rooms (2026-10-21)
+
+Playtester: more mechanics and things to do between the start and the Bishop.
+- **Bone Archer** (`BoneArcher`, 3 HP, poise 2): keeps its distance, backing away when closer than 3.5 m unless cornered. It draws for 0.9 s with a red aim line, then looses a chest-high arrow (`BoneArrow`, 14 m/s, 1 damage, category `projectile`). Jump it, dodge it, or block with nothing; Grave Shield is heavy-only. It can be silenced.
+- **Ambush rooms** (`Ambush`): crossing the trigger raises bone walls on both sides and spawns the room's foes. The walls drop when every foe is dead. Dying or falling mid-fight clears and re-arms the room. While a room holds you, the fracture gate and Blood Altars refuse, and the Bishop's pursuit lances wait.
+  - **E1, Gate ossuary** (x 9.3–18.3): 2 Husks + an archer. Its altar (x 16.8) is the reward.
+  - **E2, Landing** (x 37.8–43.8, mid-pursuit): a Husk + 2 archers. Its altar (x 40.7) is the reward, and the ferry waits behind the wall.
+- `EnemyFactory` builds Husks and archers for both the ambushes and the Bishop's Grasping Dead. Dead foes free themselves after 1.5 s; `Ambush` prunes freed references before touching them (found by test: script errors on freed Husks).
+- `Ambush.enabled` (static) is off in scripted tests and on in the game.

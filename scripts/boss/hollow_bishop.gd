@@ -40,7 +40,6 @@ signal defeated
 
 enum Phase { DORMANT, INTRO, PURSUIT, PROCESSION, COLLAPSE, COVENANT, UNMAKING, DEFEATED }
 
-const SOLDIER_SCENE: PackedScene = preload("res://scenes/enemies/plagued_soldier.tscn")
 const ACTOR_ATTACKS: Array[StringName] = [&"censer", &"beam"]
 const ALL_ATTACKS: Array[StringName] = [&"slam", &"sunder", &"lance", &"lance_volley", &"censer", &"beam", &"summon"]
 
@@ -87,6 +86,8 @@ var hand: BishopHand
 var weak_open_seconds: float = 0.0
 ## True once the player has reached the arena; INTRO then leads straight into the fight.
 var fight_started: bool = false
+## Set by the level while an ambush holds the player: pursuit lances wait.
+var pursuit_hold: bool = false
 
 var _attack: StringName = &""
 var _t: float = 0.0
@@ -283,7 +284,7 @@ func _physics_process(delta: float) -> void:
             _cooldown -= delta
             if _cooldown <= 0.0:
                 _start_attack(_next_pattern_attack(), player.global_position.x)
-        elif ai_enabled and phase == Phase.PURSUIT and player != null:
+        elif ai_enabled and phase == Phase.PURSUIT and player != null and not pursuit_hold:
             _cooldown -= delta
             if _cooldown <= 0.0:
                 _start_attack(&"lance", player.global_position.x)
@@ -501,27 +502,10 @@ func _tick_summon(delta: float) -> void:
         _finish_attack()
 
 
-## A Husk: a weak, pale Plagued Soldier clawing up from the causeway (2 HP, no poise, slower).
+## A Husk (see EnemyFactory) clawing up from the causeway; roams the whole arena.
 func _spawn_husk(x: float) -> void:
-    var husk: PlaguedSoldier = SOLDIER_SCENE.instantiate() as PlaguedSoldier
-    husk.name = "Husk"
+    var husk: PlaguedSoldier = EnemyFactory.husk(get_parent(), x, min_x - 3.0, max_x + 3.0)
     husk.add_to_group(&"bishop_minion")
-    husk.plane_locked = true
-    # Husks roam the whole arena (a tight leash made them hover out of reach instead of fighting).
-    husk.patrol_min_x = min_x - 3.0
-    husk.patrol_max_x = max_x + 3.0
-    husk.aggro_range = 9.0
-    husk.chase_speed = 2.6
-    husk.attack_cooldown = 1.2
-    husk.poise_max = 1
-    (husk.get_node("Health") as Health).max_health = 2
-    get_parent().add_child(husk)
-    husk.global_position = Vector3(x, 1.0, 0.0)
-    husk.set("_home", husk.position)
-    var visual: Node3D = husk.get("visual")
-    visual.scale = Vector3(0.85, 0.85, 0.85)
-    husk.set("_base_color", Color(0.55, 0.52, 0.45))
-    husk.defeated.connect(func() -> void: husk.get_tree().create_timer(1.5).timeout.connect(husk.queue_free))
 
 
 func _clear_summon_markers() -> void:
