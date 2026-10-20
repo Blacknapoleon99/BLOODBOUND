@@ -78,7 +78,11 @@ func _ready() -> void:
     canvas.add_child(hud)
     _build_boss_bar(canvas)
     var card_system: CardSystem = player.get_node("Cards") as CardSystem
-    canvas.add_child(CardHandUI.create(card_system))
+    var card_ui: CardHandUI = CardHandUI.create(card_system)
+    canvas.add_child(card_ui)
+    var targeting: CardTargeting = CardTargeting.create(card_system, card_ui, camera, boss)
+    targeting.hint.connect(func(text: String) -> void: _flash(text, 2.5))
+    add_child(targeting)
     card_system.card_played.connect(_on_card_played)
     card_system.card_failed.connect(_on_card_failed)
     add_child(PauseMenu.create())
@@ -113,7 +117,7 @@ func _process(delta: float) -> void:
         if _message_until <= 0.0:
             _message = ""
 
-    var state: String = "REALITY FRACTURE — WASD move / SPACE jump / J light / L heavy / K dodge / 1-3 cards" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E amber gate"
+    var state: String = "REALITY FRACTURE — WASD move / SPACE jump / J light / L heavy / K dodge / cards: 1-3 or click" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / cards: 1-3 or click / E amber gate"
     var player_health: Health = player.get("health")
     # ASCII only: the web build ships just Godot's default font (no box-drawing glyphs).
     var hp: String = "HP %d/%d" % [player_health.current, player_health.max_health]
@@ -217,6 +221,8 @@ func _on_card_failed(card: CardData, _slot: int, reason: StringName) -> void:
                     why = "no target"
         &"out_of_range":
             why = "target is beyond %d m — move closer" % int(card.card_range)
+        &"not_exposed":
+            why = "the stigmata is sealed — wait for the Bishop's hand to fall onto the causeway"
         &"energy":
             why = "needs %d blood (land hits to earn more)" % card.cost
         &"cooldown":
@@ -267,6 +273,7 @@ func _build_boss_bar(canvas: CanvasLayer) -> void:
     box.offset_top = -86.0
     box.offset_bottom = -24.0
     box.visible = false
+    box.mouse_filter = Control.MOUSE_FILTER_IGNORE
     canvas.add_child(box)
     boss_label = Label.new()
     boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -276,6 +283,7 @@ func _build_boss_bar(canvas: CanvasLayer) -> void:
     boss_bar = ProgressBar.new()
     boss_bar.custom_minimum_size = Vector2(480, 18)
     boss_bar.show_percentage = false
+    boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
     var fill: StyleBoxFlat = StyleBoxFlat.new()
     fill.bg_color = Color(0.62, 0.05, 0.08)
     var back: StyleBoxFlat = StyleBoxFlat.new()

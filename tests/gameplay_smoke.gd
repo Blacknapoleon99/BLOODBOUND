@@ -124,6 +124,7 @@ func _run() -> void:
     await _m2_leash_check()
     await _m2_player_hits_enemy_checks()
     await _fix_spear_hits_enemies()
+    await _fix_mouse_cards_vs_soldier()
 
     # --- M5 Reality Fracture: cross into 3D and back ---------------------------
     reached = await _run_right_until(12.6, 6.0)
@@ -760,6 +761,7 @@ func _m4_card_checks(boss: HollowBishop) -> void:
     _check(not boss.can_be_interrupted(), "nothing is interruptible once the Bishop is idle")
     _check(_hand_ids() == hand_before, "played cards return to the same slots (%s)" % [_hand_ids()])
     await _fix_stun_buffer_checks(boss)
+    await _fix_mouse_cards_vs_bishop(boss)
     energy.regen_per_second = 0.25
 
 
@@ -776,6 +778,7 @@ func _m5_fracture_checks() -> void:
     var entry_x: float = _player.global_position.x
     var shield_slot: int = _slot_of(&"grave_shield")
     var shield_card: CardData = cards.deck.card_in_slot(shield_slot)
+    await _wait_until(func() -> bool: return cards.cooldown_left(shield_card) == 0.0, 7.0)  # an earlier check may have used it
     energy.set_amount(4.0)
     _check(cards.play_slot(shield_slot) == &"ok", "Grave Shield played before crossing (puts it on cooldown)")
     var hp_before: int = _player_hp()
@@ -1101,6 +1104,118 @@ func _fix_tuning_checks(boss: HollowBishop) -> void:
     _check(dealt >= 3, "a weak-point window rewards melee (%d damage)" % dealt)
     _check(dealt * 5 <= boss.max_health, "optimal melee spam takes at most 1/5 of the Bishop per window (%d of %d)" % [dealt, boss.max_health])
     await _boss_idle(boss)
+
+
+## Mouse click. With a window it goes through the real input pipeline (GUI picking included).
+## Godot's headless display server drops mouse input, so headless runs route the same click to
+## the card slot under the cursor or to CardTargeting directly (same logic, no OS input path).
+func _click(at: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
+    if DisplayServer.get_name() == "headless":
+        var ui: CardHandUI = _main.find_child("CardHand", true, false) as CardHandUI
+        for i in ui.slots.size():
+            if button == MOUSE_BUTTON_LEFT and ui.slots[i].get_global_rect().has_point(at):
+                ui.slot_clicked.emit(i)
+                await process_frame
+                return
+        var ev: InputEventMouseButton = InputEventMouseButton.new()
+        ev.button_index = button
+        ev.pressed = true
+        ev.position = at
+        _targeting()._unhandled_input(ev)
+        await process_frame
+        return
+    var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+    motion.position = at
+    motion.global_position = at
+    Input.parse_input_event(motion)
+    await process_frame
+    for pressed: bool in [true, false]:
+        var ev: InputEventMouseButton = InputEventMouseButton.new()
+        ev.button_index = button
+        ev.pressed = pressed
+        ev.position = at
+        ev.global_position = at
+        Input.parse_input_event(ev)
+        await process_frame
+
+
+func _click_slot(slot: int) -> void:
+    var ui: CardHandUI = _main.find_child("CardHand", true, false) as CardHandUI
+    await _click(ui.slots[slot].get_global_rect().get_center())
+
+
+func _screen_of(world: Vector3) -> Vector2:
+    return (_main.get("camera") as Camera3D).unproject_position(world)
+
+
+func _targeting() -> CardTargeting:
+    return _main.find_child("CardTargeting", true, false) as CardTargeting
+
+
+## Playtest fix: cards and targets can be used with the mouse (the playtester clicked them).
+func _fix_mouse_cards_vs_soldier() -> void:
+    var energy: BloodEnergy = _energy()
+    var spear_slot: int = _slot_of(&"blood_spear")
+    var spear: CardData = _cards().deck.card_in_slot(spear_slot)
+    energy.regen_per_second = 0.0
+    _enemy.revive_at_home()
+    await _place(3.2, 7.0, false)
+    energy.set_amount(6.0)
+    await _frames(5)
+
+    await _click_slot(spear_slot)
+    _check(_targeting() != null and _targeting().armed_slot == spear_slot, "clicking the Blood Spear card arms it for targeting")
+    await _click(Vector2(1240, 40))  # empty night sky
+    await _frames(3)
+    _check(is_equal_approx(energy.current, 6.0) and root.get_tree().get_nodes_in_group(&"blood_spear").is_empty(), "clicking empty space fires nothing and spends nothing")
+    _check(_targeting().armed_slot == spear_slot and "target" in str(_main.get("_message")).to_lower(), "a miss-click keeps the card armed and says so (%s)" % _main.get("_message"))
+    await _click(Vector2(640, 360), MOUSE_BUTTON_RIGHT)
+    _check(_targeting().armed_slot == -1, "right-click cancels targeting")
+
+    var hp0: int = _enemy.health.current
+    await _click_slot(spear_slot)
+    await _click(_screen_of(_enemy.global_position))
+    await _frames(3)
+    _check(is_equal_approx(energy.current, 4.0) and _targeting().armed_slot == -1, "clicking the soldier fires the armed spear at it (2 blood spent)")
+    await _seconds(0.6)
+    _check(_enemy.health.current == maxi(0, hp0 - spear.damage), "the clicked target takes the spear (%d → %d)" % [hp0, _enemy.health.current])
+
+    var shield_slot: int = _slot_of(&"grave_shield")
+    await _seconds(0.4)
+    await _click_slot(shield_slot)
+    await _frames(3)
+    _check(bool(_player.call("is_shielded")) and _targeting().armed_slot == -1, "clicking Grave Shield plays it immediately (no target needed)")
+    if not _enemy.is_dead():
+        _enemy.health.apply_damage(_enemy.health.current)
+    await _seconds(0.5)
+    energy.regen_per_second = 0.25
+
+
+func _fix_mouse_cards_vs_bishop(boss: HollowBishop) -> void:
+    var energy: BloodEnergy = _energy()
+    var spear_slot: int = _slot_of(&"blood_spear")
+    var spear: CardData = _cards().deck.card_in_slot(spear_slot)
+    energy.regen_per_second = 0.0
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(30.0), 1.0, 0.0))
+    await _seconds(2.0)  # let the spear cooldown from the previous checks expire
+    energy.set_amount(6.0)
+    var heart: Vector3 = boss.global_position + Vector3(0.0, 6.8, 1.6)
+    await _click_slot(spear_slot)
+    await _click(_screen_of(heart))
+    await _frames(3)
+    _check(is_equal_approx(energy.current, 6.0) and "stigmata" in str(_main.get("_message")), "clicking the Bishop's body refuses and points to the stigmata (%s)" % _main.get("_message"))
+    await _click(Vector2(640, 360), MOUSE_BUTTON_RIGHT)
+
+    boss.debug_attack(&"slam", _bx(25.5))
+    await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
+    var hp0: int = boss.health.current
+    await _click_slot(spear_slot)
+    await _click(_screen_of(boss.hand.global_position + Vector3(0.0, 0.5, 0.4)))
+    await _seconds(0.6)
+    _check(boss.health.current == hp0 - spear.damage, "clicking the exposed stigmata spears it (%d → %d)" % [hp0, boss.health.current])
+    await _boss_idle(boss)
+    energy.regen_per_second = 0.25
 
 
 func _m3_boss_checks() -> void:

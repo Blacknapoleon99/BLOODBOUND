@@ -10,6 +10,7 @@ extends Node
 ##   &"cooldown"  that card's cooldown is still running
 ##   &"no_target" targeting rule found nothing legal (no living enemy or exposed weak point /
 ##                no interruptible action)
+##   &"not_exposed" the chosen target is currently invulnerable (e.g. the Bishop's closed stigmata)
 ##   &"out_of_range" a target exists but is beyond the card's range
 ##   &"energy"    not enough blood energy
 ## Success returns &"ok". A press while the player is in hitstun is not a failure: it is held
@@ -38,6 +39,7 @@ const DEFAULT_CARDS: Array[CardData] = [
 var deck: CardDeck = CardDeck.new()
 var _cooldowns: Dictionary = {}  # card id -> seconds left
 var _queued_slot: int = -1
+var _queued_target: Hurtbox
 var _queued_left: float = 0.0
 
 
@@ -58,8 +60,10 @@ func _physics_process(delta: float) -> void:
             _queued_slot = -1
         elif not bool(player.call("is_stunned")):
             var slot: int = _queued_slot
+            var target: Hurtbox = _queued_target if is_instance_valid(_queued_target) else null
             _queued_slot = -1
-            play_slot(slot)
+            _queued_target = null
+            play_slot(slot, target)
 
 
 func cooldown_left(card: CardData) -> float:
@@ -78,16 +82,19 @@ func slot_status(slot: int) -> StringName:
     return &"ready"
 
 
-func play_slot(slot: int) -> StringName:
+## `chosen_target` (optional) is a Hurtbox the player picked, e.g. by clicking it. It is validated
+## exactly like an automatic target; without it, enemy-targeting cards pick the nearest enemy.
+func play_slot(slot: int, chosen_target: Hurtbox = null) -> StringName:
     var card: CardData = deck.card_in_slot(slot)
     if card != null and _is_only_stunned():
         _queued_slot = slot
+        _queued_target = chosen_target
         _queued_left = float(player.call("stun_time_left")) + stun_buffer_time
         return &"queued"
     var reason: StringName = _validate(card)
     var target: Variant = null
     if reason == &"ok":
-        var found: Dictionary = _find_target(card)
+        var found: Dictionary = _check_chosen_target(card, chosen_target) if chosen_target != null else _find_target(card)
         reason = found["reason"]
         target = found.get("target")
     if reason == &"ok" and not energy.can_afford(card.cost):
@@ -186,6 +193,22 @@ func _find_enemy_target(card_range: float) -> Dictionary:
     if best != null:
         return {"reason": &"ok", "target": best}
     return {"reason": &"out_of_range" if any_out_of_range else &"no_target"}
+
+
+func _check_chosen_target(card: CardData, hurtbox: Hurtbox) -> Dictionary:
+    if card.targeting != CardData.Targeting.ENEMY and card.targeting != CardData.Targeting.BOSS_WEAK_POINT:
+        return _find_target(card)  # self / telegraph cards have only one possible target
+    if hurtbox.team == &"player" or hurtbox.health == null or hurtbox.health.is_dead():
+        return {"reason": &"no_target"}
+    var owner_node: Node = hurtbox.get_parent()
+    if not hurtbox.monitorable or (owner_node.has_method("is_invulnerable") and owner_node.call("is_invulnerable")):
+        return {"reason": &"not_exposed"}
+    var aim: Vector3 = _aim_point(hurtbox)
+    if not bool(player.get("in_3d_mode")) and absf(aim.z - player.global_position.z) > plane_target_depth:
+        return {"reason": &"no_target"}
+    if aim.distance_to(player.global_position) > card.card_range:
+        return {"reason": &"out_of_range"}
+    return {"reason": &"ok", "target": hurtbox}
 
 
 func _aim_point(hurtbox: Hurtbox) -> Vector3:

@@ -169,3 +169,18 @@
 - Builds:
   - `build/windows-fix1/Bloodbound.exe` export probe 10/10 (exit 0). Written to a new folder because the playtest copy in `build/windows/` was running and locked.
   - QA build probe 10/10.
+
+## Playtest fix — mouse card targeting (2026-10-20)
+
+- Report: cards show READY but say "no target" even after clicking the target.
+- Evidence: there was no mouse handling in `scripts/` (grep for `InputEventMouse`, `gui_input`, `MOUSE_BUTTON` found nothing). Clicks were never read.
+- Click diagnostic: headless, a click on a card slot reaches no Control (`gui_get_hovered_control()` is null for both `Input.parse_input_event` and `Viewport.push_input`). With a window, the same click reaches `CardSlot1` and emits `slot_clicked`. So headless Godot drops mouse input.
+- New checks (`_fix_mouse_cards_vs_soldier`, `_fix_mouse_cards_vs_bishop`):
+  - Clicking the Blood Spear card arms it.
+  - Clicking empty space spends nothing; the card stays armed and the HUD says why. Right-click cancels.
+  - Clicking the soldier spears it (3 → 0).
+  - Clicking Grave Shield plays it immediately.
+  - Clicking the Bishop's body refuses and points to the stigmata.
+  - Clicking the exposed stigmata spears it (19 → 16).
+- `tools/run_checks.ps1` → **202/202** headless (clicks routed to the same handlers) and **202/202 in a visible window** (real mouse events through Godot input and GUI picking).
+- Build: `build/windows-fix2/Bloodbound.exe`, export probe exit 0. QA build probe 10/10.

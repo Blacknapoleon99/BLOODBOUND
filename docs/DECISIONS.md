@@ -101,3 +101,13 @@ User playtest: "the damaging abilities don't seem to work". Diagnosed with `test
 3. Tuning: optimal melee did about 6 damage per weak window against 12 HP, so the Bishop died in about 2 windows (11 s). New values: Bishop 36 HP (Collapse ≤24, Covenant ≤10), 0.5 blood per melee hit, Blood Spear 3 damage. A test bounds optimal melee to at most 1/5 of the Bishop per window.
 
 Readability: enemy hits show floating damage numbers (gold for weak points), and a refused card prints the reason in the HUD ("Blood Spear: no enemy or exposed stigmata within 14 m").
+
+## DEC-022 — Mouse play for cards: click a card, then click the target
+
+Second playtest report: the cards show READY but say "no target", even though the player clicked the target. Root cause: the game had no mouse input at all (no `InputEventMouse*` handling). Cards were keyboard-only and auto-targeted, so the playtester's clicks did nothing.
+- `CardHandUI` slots are clickable. `CardTargeting` arms enemy-targeting cards: the slot gets a white outline and "AIM: CLICK TARGET", and the cursor becomes a crosshair.
+- The next left-click picks the enemy hurtbox nearest the cursor (within 90 px on screen), and `CardSystem.play_slot(slot, chosen_target)` validates that exact target. Self and telegraph cards play on click.
+- Right-click, clicking the same card again, or 8 s idle cancels. A miss keeps the card armed and says so.
+- Clicking the Bishop's body explains that only the stigmata can be wounded. Clicking a sealed stigmata returns the new reason `not_exposed`.
+- Keys 1–3 keep auto-targeting (nearest enemy, exposed weak point first).
+- Testing: Godot's headless display server drops mouse input, so headless runs route clicks to the same signal and handler; the visible run uses real mouse events.

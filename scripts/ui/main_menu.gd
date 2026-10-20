@@ -48,7 +48,7 @@ func _ready() -> void:
     quit_button.pressed.connect(func() -> void: get_tree().quit())
     quit_button.visible = not OS.has_feature("web")
 
-    column.add_child(MenuStyle.label("Greybox vertical slice — keyboard: A/D move · Space jump · J/L attack · K dodge · 1-3 cards · Esc pause", 14, Color(0.6, 0.56, 0.52)))
+    column.add_child(MenuStyle.label("Greybox vertical slice — keyboard: A/D move · Space jump · J/L attack · K dodge · cards: 1-3 or click card, then click target · Esc pause", 14, Color(0.6, 0.56, 0.52)))
 
     settings = SettingsPanel.create()
     settings.visible = false

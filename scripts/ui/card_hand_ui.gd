@@ -1,7 +1,10 @@
 class_name CardHandUI
 extends VBoxContainer
 ## Bottom-left HUD for Bloodbound Cards: blood-energy bar plus one panel per hand slot.
-## Read-only view of CardSystem; a failed play flashes its slot and shows the reason.
+## View of CardSystem; slots are clickable (`slot_clicked`), a failed play flashes its slot
+## and shows the reason, and the slot being aimed (`armed_slot`) is outlined in white.
+
+signal slot_clicked(slot: int)
 
 const REASON_TEXT: Dictionary = {
     &"empty": "NO CARD",
@@ -9,10 +12,12 @@ const REASON_TEXT: Dictionary = {
     &"cooldown": "COOLING",
     &"no_target": "NO TARGET",
     &"out_of_range": "TOO FAR",
+    &"not_exposed": "NOT EXPOSED",
     &"energy": "NEED BLOOD",
 }
 
 var cards: CardSystem
+var armed_slot: int = -1
 var energy_bar: ProgressBar
 var energy_label: Label
 var slots: Array[PanelContainer] = []
@@ -33,6 +38,7 @@ static func create(card_system: CardSystem) -> CardHandUI:
     ui.offset_top = -150.0
     ui.offset_bottom = -20.0
     ui.add_theme_constant_override("separation", 6)
+    ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
     ui._build()
     card_system.card_failed.connect(ui._on_card_failed)
     return ui
@@ -48,6 +54,7 @@ func _build() -> void:
     energy_bar.name = "EnergyBar"
     energy_bar.custom_minimum_size = Vector2(250, 14)
     energy_bar.show_percentage = false
+    energy_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
     var fill: StyleBoxFlat = StyleBoxFlat.new()
     fill.bg_color = Color(0.75, 0.04, 0.09)
     var back: StyleBoxFlat = StyleBoxFlat.new()
@@ -57,12 +64,22 @@ func _build() -> void:
     energy_row.add_child(energy_bar)
 
     var row: HBoxContainer = HBoxContainer.new()
+    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
     row.add_theme_constant_override("separation", 8)
     add_child(row)
     for i in CardSystem.SLOT_ACTIONS.size():
         var panel: PanelContainer = PanelContainer.new()
         panel.name = "CardSlot%d" % (i + 1)
         panel.custom_minimum_size = Vector2(118, 96)
+        panel.mouse_filter = Control.MOUSE_FILTER_STOP
+        panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+        panel.tooltip_text = "Click to use (or press %d)" % (i + 1)
+        var slot_index: int = i
+        panel.gui_input.connect(func(event: InputEvent) -> void:
+            var mb: InputEventMouseButton = event as InputEventMouseButton
+            if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+                accept_event()
+                slot_clicked.emit(slot_index))
         var style: StyleBoxFlat = StyleBoxFlat.new()
         style.bg_color = Color(0.1, 0.07, 0.08, 0.9)
         style.set_border_width_all(2)
@@ -72,6 +89,7 @@ func _build() -> void:
         style.content_margin_top = 4
         panel.add_theme_stylebox_override("panel", style)
         var column: VBoxContainer = VBoxContainer.new()
+        column.mouse_filter = Control.MOUSE_FILTER_IGNORE
         panel.add_child(column)
         var name_label: Label = _label("", 14, Color(0.97, 0.92, 0.86))
         name_label.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -109,12 +127,15 @@ func _process(delta: float) -> void:
                 text = "Cost %d  NEED" % card.cost
         _flash_left[i] = maxf(0.0, _flash_left[i] - delta)
         var border: Color = card.ui_color if card else Color.DIM_GRAY
+        if i == armed_slot:
+            text = "AIM: CLICK TARGET"
+            border = Color.WHITE
         if _flash_left[i] > 0.0:
             text = _flash_text[i]
             border = Color(1.0, 0.15, 0.1)
         _status_labels[i].text = text
         _styles[i].border_color = border
-        slots[i].modulate.a = 1.0 if status == &"ready" else 0.5
+        slots[i].modulate.a = 1.0 if (status == &"ready" or i == armed_slot) else 0.5
 
 
 func _on_card_failed(_card: CardData, slot: int, reason: StringName) -> void:
