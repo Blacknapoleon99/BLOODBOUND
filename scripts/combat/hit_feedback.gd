@@ -1,6 +1,7 @@
 class_name HitFeedback
 extends RefCounted
-## Presentation-only hit reactions: blood spray, hitstop and a camera-shake request.
+## Presentation-only hit reactions: blood spray, hitstop, a camera-shake request and, for hits
+## on enemies, a floating damage number (so a landed hit is unmistakable).
 ## Nothing here changes combat outcomes, so it can be swapped for authored VFX later.
 
 const BLOOD_COLOR: Color = Color(0.55, 0.02, 0.04)
@@ -17,6 +18,9 @@ static func play(at_node: Node3D, info: DamageInfo) -> void:
         return
     var strength: float = 1.6 if info.category == &"heavy" else 1.0
     _spawn_spray(tree, info, strength)
+    var hurtbox: Hurtbox = at_node as Hurtbox
+    if hurtbox != null and hurtbox.team != &"player":
+        _spawn_damage_number(tree, info, hurtbox.is_in_group(&"weak_point"))
     if GameSettings.hitstop_enabled:
         _hitstop(tree)
     tree.call_group(&"camera_shaker", &"add_trauma", 0.3 * strength)
@@ -59,6 +63,31 @@ static func _spawn_spray(tree: SceneTree, info: DamageInfo, strength: float) -> 
     spray.global_position = info.hit_position
     spray.emitting = true
     spray.finished.connect(spray.queue_free)
+
+
+static func _spawn_damage_number(tree: SceneTree, info: DamageInfo, weak_point: bool) -> void:
+    var host: Node = tree.current_scene
+    if host == null:
+        return
+    var label: Label3D = Label3D.new()
+    label.name = "DamageNumber"
+    label.add_to_group(&"damage_number")
+    label.text = str(info.amount)
+    label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    label.no_depth_test = true
+    label.fixed_size = true
+    label.pixel_size = 0.0012 if weak_point else 0.0009
+    label.font_size = 64
+    label.outline_size = 14
+    label.modulate = Color(1.0, 0.85, 0.3) if weak_point else Color(1.0, 0.95, 0.9)
+    label.outline_modulate = Color(0.25, 0.0, 0.02)
+    host.add_child(label)
+    label.global_position = info.hit_position + Vector3(randf_range(-0.2, 0.2), 0.9, 0.0)
+    var tween: Tween = label.create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(label, "global_position:y", label.global_position.y + 1.1, 0.7).set_ease(Tween.EASE_OUT)
+    tween.tween_property(label, "modulate:a", 0.0, 0.7).set_delay(0.25)
+    tween.chain().tween_callback(label.queue_free)
 
 
 static func _hitstop(tree: SceneTree) -> void:

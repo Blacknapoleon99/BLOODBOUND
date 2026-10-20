@@ -8,10 +8,13 @@ extends Node
 ##   &"empty"     no card in that slot
 ##   &"blocked"   player cannot act (dead, stunned, frozen)
 ##   &"cooldown"  that card's cooldown is still running
-##   &"no_target" targeting rule found nothing legal (no exposed weak point / no interruptible action)
+##   &"no_target" targeting rule found nothing legal (no living enemy or exposed weak point /
+##                no interruptible action)
 ##   &"out_of_range" a target exists but is beyond the card's range
 ##   &"energy"    not enough blood energy
-## Success returns &"ok".
+## Success returns &"ok". A press while the player is in hitstun is not a failure: it is held
+## (&"queued") and played when the stun ends, as long as that is within the stun plus
+## `stun_buffer_time` (the same courtesy melee attacks get).
 
 signal card_played(card: CardData, slot: int)
 signal card_failed(card: CardData, slot: int, reason: StringName)
@@ -28,9 +31,14 @@ const DEFAULT_CARDS: Array[CardData] = [
 @export var deck_seed: int = 1337
 @export var energy: BloodEnergy
 @export var player: CharacterBody3D
+@export var stun_buffer_time: float = 0.15
+## 2.5D only: enemies further than this from the play plane (e.g. the Bishop's body) are not targets.
+@export var plane_target_depth: float = 2.5
 
 var deck: CardDeck = CardDeck.new()
 var _cooldowns: Dictionary = {}  # card id -> seconds left
+var _queued_slot: int = -1
+var _queued_left: float = 0.0
 
 
 func _ready() -> void:
@@ -44,6 +52,14 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
     for id: StringName in _cooldowns.keys():
         _cooldowns[id] = maxf(0.0, float(_cooldowns[id]) - delta)
+    if _queued_slot >= 0:
+        _queued_left -= delta
+        if _queued_left <= 0.0:
+            _queued_slot = -1
+        elif not bool(player.call("is_stunned")):
+            var slot: int = _queued_slot
+            _queued_slot = -1
+            play_slot(slot)
 
 
 func cooldown_left(card: CardData) -> float:
@@ -64,6 +80,10 @@ func slot_status(slot: int) -> StringName:
 
 func play_slot(slot: int) -> StringName:
     var card: CardData = deck.card_in_slot(slot)
+    if card != null and _is_only_stunned():
+        _queued_slot = slot
+        _queued_left = float(player.call("stun_time_left")) + stun_buffer_time
+        return &"queued"
     var reason: StringName = _validate(card)
     var target: Variant = null
     if reason == &"ok":
@@ -82,6 +102,11 @@ func play_slot(slot: int) -> StringName:
     _apply(card, target)
     card_played.emit(card, slot)
     return &"ok"
+
+
+func _is_only_stunned() -> bool:
+    var health: Health = player.get("health") as Health
+    return bool(player.call("is_stunned")) and not health.is_dead() and not bool(player.get("game_frozen"))
 
 
 func _validate(card: CardData) -> StringName:
@@ -116,6 +141,8 @@ func _find_target(card: CardData) -> Dictionary:
             if best_distance > card.card_range:
                 return {"reason": &"out_of_range"}
             return {"reason": &"ok", "target": best}
+        CardData.Targeting.ENEMY:
+            return _find_enemy_target(card.card_range)
         CardData.Targeting.BOSS_TELEGRAPH:
             for node: Node in get_tree().get_nodes_in_group(&"interruptible"):
                 if node.has_method("can_be_interrupted") and node.call("can_be_interrupted"):
@@ -124,14 +151,52 @@ func _find_target(card: CardData) -> Dictionary:
     return {"reason": &"no_target"}
 
 
+## Nearest living, hittable enemy hurtbox in range. An exposed weak point anywhere in range
+## wins over ordinary enemies (it is the reason to hold a spear during a boss fight).
+func _find_enemy_target(card_range: float) -> Dictionary:
+    var in_3d: bool = bool(player.get("in_3d_mode"))
+    var nearest: Hurtbox = null
+    var nearest_distance: float = INF
+    var weak: Hurtbox = null
+    var weak_distance: float = INF
+    var any_out_of_range: bool = false
+    for node: Node in get_tree().get_nodes_in_group(&"hurtboxes"):
+        var hurtbox: Hurtbox = node as Hurtbox
+        if hurtbox == null or hurtbox.team == &"player" or not hurtbox.monitorable:
+            continue
+        if hurtbox.health == null or hurtbox.health.is_dead():
+            continue
+        var owner_node: Node = hurtbox.get_parent()
+        if owner_node.has_method("is_invulnerable") and owner_node.call("is_invulnerable"):
+            continue
+        var aim: Vector3 = _aim_point(hurtbox)
+        if not in_3d and absf(aim.z - player.global_position.z) > plane_target_depth:
+            continue
+        var distance: float = aim.distance_to(player.global_position)
+        if distance > card_range:
+            any_out_of_range = true
+            continue
+        if hurtbox.is_in_group(&"weak_point") and distance < weak_distance:
+            weak = hurtbox
+            weak_distance = distance
+        elif distance < nearest_distance:
+            nearest = hurtbox
+            nearest_distance = distance
+    var best: Hurtbox = weak if weak != null else nearest
+    if best != null:
+        return {"reason": &"ok", "target": best}
+    return {"reason": &"out_of_range" if any_out_of_range else &"no_target"}
+
+
+func _aim_point(hurtbox: Hurtbox) -> Vector3:
+    var shape: CollisionShape3D = hurtbox.get_child(0) as CollisionShape3D
+    return shape.global_position if shape else hurtbox.global_position
+
+
 func _apply(card: CardData, target: Variant) -> void:
     match card.effect:
         &"blood_spear":
-            var hurtbox: Hurtbox = target as Hurtbox
-            var aim: Vector3 = hurtbox.global_position
-            var shape: CollisionShape3D = hurtbox.get_child(0) as CollisionShape3D
-            if shape:
-                aim = shape.global_position
+            var aim: Vector3 = _aim_point(target as Hurtbox)
             var from: Vector3 = player.global_position + Vector3(0.0, 0.6, 0.0)
             get_tree().current_scene.add_child(BloodSpearProjectile.create(from, aim, card))
         &"grave_shield":

@@ -76,3 +76,8 @@ M6 vertical slice: main menu (Start / Settings / Quit), pause, a settings screen
 
 ### Next action
 User playtest pass (feel, difficulty, slice length). Then M7: asset pipeline. Blender MCP needs Blender open with its addon started; Tripo needs credits and explicit approval per batch.
+
+## 2026-10-20 — Playtest fix: damaging abilities
+
+- Blood Spear now hits any enemy, attacks and cards buffer through hitstun, the Bishop is retuned (36 HP), and damage numbers plus refusal reasons were added. See DEC-021 and TEST_RESULTS.
+- Fixed build: `build/windows-fix1/Bloodbound.exe` (the original exe was in use during the playtest).

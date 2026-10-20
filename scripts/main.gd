@@ -80,6 +80,7 @@ func _ready() -> void:
     var card_system: CardSystem = player.get_node("Cards") as CardSystem
     canvas.add_child(CardHandUI.create(card_system))
     card_system.card_played.connect(_on_card_played)
+    card_system.card_failed.connect(_on_card_failed)
     add_child(PauseMenu.create())
     _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
 
@@ -198,6 +199,31 @@ func _camera_look_target() -> Vector3:
 func _snap_camera() -> void:
     camera.global_position = _camera_goal() + Vector3(0.0, 1.5, 3.0)  # slightly wide, then eases in
     camera.look_at(_camera_look_target(), Vector3.UP)
+
+
+## Spell out *why* a card was refused, so a refusal never reads as "the card is broken".
+func _on_card_failed(card: CardData, _slot: int, reason: StringName) -> void:
+    if card == null:
+        return
+    var why: String = ""
+    match reason:
+        &"no_target":
+            match card.targeting:
+                CardData.Targeting.ENEMY, CardData.Targeting.BOSS_WEAK_POINT:
+                    why = "no enemy or exposed stigmata within %d m" % int(card.card_range)
+                CardData.Targeting.BOSS_TELEGRAPH:
+                    why = "only while the Bishop's hand is winding up a strike"
+                _:
+                    why = "no target"
+        &"out_of_range":
+            why = "target is beyond %d m — move closer" % int(card.card_range)
+        &"energy":
+            why = "needs %d blood (land hits to earn more)" % card.cost
+        &"cooldown":
+            why = "still recovering"
+        &"blocked":
+            why = "you cannot act right now"
+    _flash("%s: %s" % [card.display_name, why], 2.0)
 
 
 func _on_card_played(card: CardData, _slot: int) -> void:

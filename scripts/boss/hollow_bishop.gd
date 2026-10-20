@@ -39,9 +39,11 @@ const PHASE_TITLES: Dictionary = {
     Phase.COVENANT: "III · THE COVENANT",
 }
 
-@export var max_health: int = 12
-@export var collapse_at: int = 8
-@export var covenant_at: int = 3
+## Tuned (2026-10-20 playtest): optimal melee spam deals ~6 per weak-point window, so 36 HP is
+## at least six windows of pure melee; a typical mix of hits and Blood Spears takes 5-7.
+@export var max_health: int = 36
+@export var collapse_at: int = 24
+@export var covenant_at: int = 10
 @export var depth: float = -22.0
 @export var min_x: float = 22.0
 @export var max_x: float = 42.0

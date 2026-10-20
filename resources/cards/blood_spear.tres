@@ -6,13 +6,13 @@
 script = ExtResource("1_card")
 id = &"blood_spear"
 display_name = "Blood Spear"
-description = "Hurl a spear of your own blood at an exposed weak point."
+description = "Hurl a spear of your own blood at the nearest enemy. Exposed weak points are targeted first."
 cost = 2
 cooldown = 1.5
-targeting = 1
+targeting = 3
 effect = &"blood_spear"
 tags = PackedStringArray("attack", "projectile")
-damage = 2
+damage = 3
 card_range = 14.0
 ui_color = Color(0.7, 0.06, 0.1, 1)
 vfx_id = &"blood_spear"

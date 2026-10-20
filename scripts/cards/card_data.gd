@@ -7,7 +7,9 @@ enum Targeting {
     SELF,              ## always has a target (the player)
     BOSS_WEAK_POINT,   ## needs an exposed weak-point Hurtbox within `card_range`
     BOSS_TELEGRAPH,    ## needs a boss action that is currently interruptible
+    ENEMY,             ## nearest living enemy Hurtbox within `card_range`; exposed weak points first
 }
+## (Append new values at the end: .tres files store these as integers.)
 
 @export var id: StringName = &"card"
 @export var display_name: String = "Card"

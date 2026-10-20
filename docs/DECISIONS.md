@@ -92,3 +92,12 @@ Reaching the arena calls `begin_fight()`. The arena moved by +40 m; boss tests e
 ## DEC-020 — Settings persistence and test isolation
 
 `GameSettings` saves to `user://settings.cfg`. `persistence_enabled = false` makes the default path a no-op, so automated tests never read or overwrite a player's real settings; the round-trip test uses its own file. The pause menu pauses the whole tree; the menu itself and the settings panel run with `PROCESS_MODE_ALWAYS`.
+
+## DEC-021 — Damaging abilities: target any enemy, buffer through hitstun, Bishop retuned (playtest 2026-10-20)
+
+User playtest: "the damaging abilities don't seem to work". Diagnosed with `tests/diag_abilities.gd`, which plays with real keys and the AI on. Three root causes:
+1. Blood Spear only targeted the Bishop's exposed stigmata, so it refused (`no_target`) against every ordinary enemy. It now uses `Targeting.ENEMY`: the nearest living enemy hurtbox within range, with exposed weak points preferred. In 2.5D, targets must be within 2.5 m of the play plane. (New enum values go at the end, because `.tres` files store the integer.)
+2. Cards and attacks pressed during hitstun were dropped. The most natural moment to spear, right after the slam lands on you and opens the stigmata, failed as `blocked`. Both are now held until the stun ends, plus 0.15 s.
+3. Tuning: optimal melee did about 6 damage per weak window against 12 HP, so the Bishop died in about 2 windows (11 s). New values: Bishop 36 HP (Collapse ≤24, Covenant ≤10), 0.5 blood per melee hit, Blood Spear 3 damage. A test bounds optimal melee to at most 1/5 of the Bishop per window.
+
+Readability: enemy hits show floating damage numbers (gold for weak points), and a refused card prints the reason in the HUD ("Blood Spear: no enemy or exposed stigmata within 14 m").

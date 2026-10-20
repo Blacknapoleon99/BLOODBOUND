@@ -148,3 +148,24 @@
 - Test bug fixed: the fracture transition wait counted frames; at 240 fps in the visible run it timed out. It is now time-based.
 - Performance (this PC, visible run, vsync on): 223–240 fps at every screenshot point. Process time is 4.2–4.5 ms in steady play, with spikes of 24.9 ms at the first frame after load and 28.8 ms on entering the fracture (scene and shader setup). Draw calls 46–102, about 2,150 objects, about 45 MB static memory. These are **not** representative mid-range numbers; that benchmark is still open.
 - Not verified: Firefox and Safari, mobile and touch, gamepad, clean-machine install, a human playthrough timing the 5–10 minute target.
+
+## Playtest fix — damaging abilities (2026-10-20)
+
+- Report (user playtest of `build/windows/Bloodbound.exe`): damaging abilities don't seem to work.
+- Reproduction (`godot_console --headless --path . -s res://tests/diag_abilities.gd`, real keys, AI on):
+  - Blood Spear vs a living Plagued Soldier (6 blood, 1.8 m away) → `no_target`.
+  - In the Bishop fight, the spear pressed as the stigmata opened → `blocked` (player in slam hitstun).
+  - Melee spam at the fallen hand killed the 12-HP Bishop in 11.1 s, across two windows.
+  - Instrumented window: 6 attacks / 6 damage per 2.72 s window, about 29 frames per attack.
+- New tests (failed before the fix, pass after):
+  - Spear fires at the soldier and deals 3 (3 → 0), with a floating damage number.
+  - J pressed during hitstun lands after the stun (23 → 22).
+  - Spear pressed during hitstun fires after the stun (22 → 19, no failures).
+  - One window of optimal melee deals 6 of 36 (bound: at least 3, at most 1/5 of max HP).
+  - The HUD explains a refused spear.
+- Same diagnostic after the fix: the spear one-shots the soldier and fires in every Bishop window. A superhuman bot (stands on the impact spot, blood refilled every window) needs 4 windows / 31 s through all three phases. A real player should take longer.
+- Also fixed in the test: the 3D dodge check could be blocked by the patrolling guardian, depending on run timing. The guardian is now parked off the lane.
+- `tools/run_checks.ps1` → **193/193**, exit 0. Visible run 193/193.
+- Builds:
+  - `build/windows-fix1/Bloodbound.exe` export probe 10/10 (exit 0). Written to a new folder because the playtest copy in `build/windows/` was running and locked.
+  - QA build probe 10/10.

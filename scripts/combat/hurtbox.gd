@@ -17,6 +17,7 @@ const COMBAT_LAYER: int = 1 << 2  # physics layer 3: hit/hurt areas only
 
 
 func _ready() -> void:
+    add_to_group(&"hurtboxes")
     collision_layer = COMBAT_LAYER
     collision_mask = 0
     monitoring = false

@@ -7,7 +7,8 @@ signal changed(current: float, maximum: float)
 
 @export var maximum: float = 6.0
 @export var start_amount: float = 2.0
-@export var per_hit: float = 1.0
+## Half a point per landed melee hit: spamming J must not fund endless cards.
+@export var per_hit: float = 0.5
 @export var regen_per_second: float = 0.25
 
 var current: float = 0.0

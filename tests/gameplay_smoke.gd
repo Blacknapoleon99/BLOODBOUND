@@ -123,6 +123,7 @@ func _run() -> void:
     await _m2_contact_damage_check()
     await _m2_leash_check()
     await _m2_player_hits_enemy_checks()
+    await _fix_spear_hits_enemies()
 
     # --- M5 Reality Fracture: cross into 3D and back ---------------------------
     reached = await _run_right_until(12.6, 6.0)
@@ -637,7 +638,7 @@ func _m4_data_and_deck_checks() -> void:
     var shield: CardData = load("res://resources/cards/grave_shield.tres")
     var chains: CardData = load("res://resources/cards/ritual_chains.tres")
     _check([spear.cost, shield.cost, chains.cost] == [2, 2, 3], "card costs come from CardData resources (2/2/3)")
-    _check(spear.targeting == CardData.Targeting.BOSS_WEAK_POINT and shield.targeting == CardData.Targeting.SELF and chains.targeting == CardData.Targeting.BOSS_TELEGRAPH,
+    _check(spear.targeting == CardData.Targeting.ENEMY and shield.targeting == CardData.Targeting.SELF and chains.targeting == CardData.Targeting.BOSS_TELEGRAPH,
         "card targeting rules come from data")
     var ids: Array[String] = []
     for id: StringName in _hand_ids():
@@ -689,7 +690,8 @@ func _m4_card_checks(boss: HollowBishop) -> void:
     energy.set_amount(6.0)
     var spear_card: CardData = cards.deck.card_in_slot(spear_slot)
     _check(cards.play_slot(spear_slot) == &"no_target" and energy.current == 6.0 and cards.cooldown_left(spear_card) == 0.0
-        and root.get_tree().get_nodes_in_group(&"blood_spear").is_empty(), "Blood Spear with no exposed weak point is refused, nothing spent")
+        and root.get_tree().get_nodes_in_group(&"blood_spear").is_empty(), "Blood Spear with no enemy or exposed weak point is refused, nothing spent")
+    _check("Blood Spear: no enemy or exposed stigmata" in str(_main.get("_message")), "the HUD explains why the spear was refused (%s)" % _main.get("_message"))
     _check(cards.play_slot(chains_slot) == &"no_target" and energy.current == 6.0, "Ritual Chains with nothing to interrupt is refused, nothing spent")
     energy.set_amount(1.0)
     _check(cards.play_slot(shield_slot) == &"energy" and energy.current == 1.0 and not bool(_player.call("is_shielded")),
@@ -739,23 +741,25 @@ func _m4_card_checks(boss: HollowBishop) -> void:
     await _shot("07_chained")
     _tap(KEY_J)
     await _seconds(0.5)
-    _check(boss.health.current == boss_hp0 - 1 and energy.current == 4.0, "melee hit on the stigmata damages the Bishop and earns 1 blood (energy=%.1f)" % energy.current)
+    var blood_after_hit: float = 3.0 + energy.per_hit
+    _check(boss.health.current == boss_hp0 - 1 and is_equal_approx(energy.current, blood_after_hit), "melee hit on the stigmata damages the Bishop and earns %.1f blood (energy=%.1f)" % [energy.per_hit, energy.current])
 
     # Blood Spear: range check, then a real projectile into the exposed stigmata.
     _player.call("teleport_to", Vector3(_bx(44.0), 1.0, 0.0))
     await _seconds(0.2)
-    _check(cards.play_slot(spear_slot) == &"out_of_range" and energy.current == 4.0, "Blood Spear beyond its 14 m range is refused, nothing spent")
+    _check(cards.play_slot(spear_slot) == &"out_of_range" and is_equal_approx(energy.current, blood_after_hit), "Blood Spear beyond its 14 m range is refused, nothing spent")
     _player.call("teleport_to", Vector3(_bx(33.0), 1.0, 0.0))
     await _seconds(0.2)
     var boss_hp1: int = boss.health.current
-    _check(cards.play_slot(spear_slot) == &"ok" and energy.current == 2.0, "Blood Spear at an exposed stigmata in range is played, 2 blood spent")
+    _check(cards.play_slot(spear_slot) == &"ok" and is_equal_approx(energy.current, blood_after_hit - 2.0), "Blood Spear at an exposed stigmata in range is played, 2 blood spent")
     _check(root.get_tree().get_nodes_in_group(&"blood_spear").size() == 1, "Blood Spear launches a projectile")
     await _seconds(0.6)
-    _check(boss.health.current == boss_hp1 - 2, "the spear flies to the stigmata and deals 2 (%d → %d)" % [boss_hp1, boss.health.current])
+    _check(boss.health.current == boss_hp1 - spear_card.damage, "the spear flies to the stigmata and deals %d (%d → %d)" % [spear_card.damage, boss_hp1, boss.health.current])
     _check(root.get_tree().get_nodes_in_group(&"blood_spear").is_empty(), "spent spear is cleaned up")
     await _boss_idle(boss)
     _check(not boss.can_be_interrupted(), "nothing is interruptible once the Bishop is idle")
     _check(_hand_ids() == hand_before, "played cards return to the same slots (%s)" % [_hand_ids()])
+    await _fix_stun_buffer_checks(boss)
     energy.regen_per_second = 0.25
 
 
@@ -766,6 +770,8 @@ func _m5_fracture_checks() -> void:
     var cards: CardSystem = _cards()
     var cam: Camera3D = _main.get("camera")
     guardian.set_ai_enabled(false)
+    # Park it off the locomotion lane: where its patrol left it depends on how long earlier tests ran.
+    guardian.teleport_to(fracture.center + Vector3(5.0, 1.0, 4.0))
     energy.regen_per_second = 0.0
     var entry_x: float = _player.global_position.x
     var shield_slot: int = _slot_of(&"grave_shield")
@@ -1010,6 +1016,93 @@ func _m6_approach_checks(boss: HollowBishop) -> bool:
     return reached
 
 
+## Playtest fix: Blood Spear must damage ordinary enemies, not only the Bishop's stigmata.
+func _fix_spear_hits_enemies() -> void:
+    var energy: BloodEnergy = _energy()
+    var cards: CardSystem = _cards()
+    var spear: CardData = cards.deck.card_in_slot(_slot_of(&"blood_spear"))
+    energy.regen_per_second = 0.0
+    _enemy.set_ai_enabled(false)
+    _enemy.revive_at_home()
+    await _place(3.2, 5.6, false)
+    energy.set_amount(6.0)
+    var hp0: int = _enemy.health.current
+    _tap(CARD_KEYS[_slot_of(&"blood_spear")])
+    await _frames(3)
+    _check(is_equal_approx(energy.current, 4.0) and root.get_tree().get_nodes_in_group(&"blood_spear").size() == 1, "Blood Spear fires at a living Plagued Soldier (2 blood spent)")
+    await _seconds(0.6)
+    _check(_enemy.health.current == maxi(0, hp0 - spear.damage), "the spear damages the soldier (%d → %d)" % [hp0, _enemy.health.current])
+    var numbers: Array[Node] = root.get_tree().get_nodes_in_group(&"damage_number")
+    _check(not numbers.is_empty() and (numbers[numbers.size() - 1] as Label3D).text == str(spear.damage), "a floating damage number shows the hit")
+    if not _enemy.is_dead():
+        _enemy.health.apply_damage(_enemy.health.current)
+    await _seconds(0.5)
+    energy.regen_per_second = 0.25
+
+
+## Playtest fix: abilities pressed while recoiling from a hit fire when the stun ends,
+## instead of being silently dropped.
+func _fix_stun_buffer_checks(boss: HollowBishop) -> void:
+    var energy: BloodEnergy = _energy()
+    var cards: CardSystem = _cards()
+    energy.regen_per_second = 0.0
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(24.2), 1.0, 0.0))
+    _player.set("facing_direction", 1.0)
+    await _seconds(1.0)
+    var hp0: int = boss.health.current
+    boss.debug_attack(&"slam", _bx(24.2))
+    var player_hp: int = _player_hp()
+    await _wait_until(func() -> bool: return _player_hp() < player_hp, 3.0)
+    _check(bool(_player.call("is_stunned")), "the slam leaves the player in hitstun")
+    _tap(KEY_J)
+    await _seconds(1.0)
+    _check(boss.health.current == hp0 - 1, "J pressed during hitstun lands once the stun ends (%d → %d)" % [hp0, boss.health.current])
+    await _boss_idle(boss)
+
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(24.2), 1.0, 0.0))
+    await _seconds(1.0)
+    energy.set_amount(6.0)
+    var spear: CardData = cards.deck.card_in_slot(_slot_of(&"blood_spear"))
+    var failures: Array[StringName] = []
+    var on_fail: Callable = func(_c: CardData, _s: int, reason: StringName) -> void: failures.append(reason)
+    cards.card_failed.connect(on_fail)
+    hp0 = boss.health.current
+    boss.debug_attack(&"slam", _bx(24.2))
+    player_hp = _player_hp()
+    await _wait_until(func() -> bool: return _player_hp() < player_hp, 3.0)
+    _tap(CARD_KEYS[_slot_of(&"blood_spear")])
+    await _seconds(1.2)
+    cards.card_failed.disconnect(on_fail)
+    _check(failures.is_empty() and boss.health.current == hp0 - spear.damage,
+        "Blood Spear pressed during hitstun fires when the stun ends (hp %d → %d, failures %s)" % [hp0, boss.health.current, failures])
+    await _boss_idle(boss)
+    energy.regen_per_second = 0.25
+
+
+## Playtest fix: the Bishop must not melt. Optimal melee spam inside one weak-point window may
+## take at most a fifth of its health (so the fight lasts at least five windows), but must
+## still feel rewarding (at least 3 damage).
+func _fix_tuning_checks(boss: HollowBishop) -> void:
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(27.6), 1.0, 0.0))
+    await _seconds(0.6)
+    boss.debug_attack(&"slam", _bx(25.5))
+    await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
+    var hp0: int = boss.health.current
+    var melee: MeleeAttack = _melee()
+    while boss.hand.weak_open:
+        _player.set("facing_direction", -1.0)
+        if not melee.is_busy():
+            _tap(KEY_J)
+        await physics_frame
+    var dealt: int = hp0 - boss.health.current
+    _check(dealt >= 3, "a weak-point window rewards melee (%d damage)" % dealt)
+    _check(dealt * 5 <= boss.max_health, "optimal melee spam takes at most 1/5 of the Bishop per window (%d of %d)" % [dealt, boss.max_health])
+    await _boss_idle(boss)
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
@@ -1024,7 +1117,7 @@ func _m3_boss_checks() -> void:
     await _seconds(1.8)
     _check(boss.phase_name() == "PROCESSION", "Bishop rises into phase I (phase=%s)" % boss.phase_name())
     var bar: ProgressBar = _main.get("boss_bar")
-    _check(bar.get_parent().visible and bar.value == 12 and bar.max_value == 12, "boss HP bar shows 12/12")
+    _check(bar.get_parent().visible and bar.value == boss.max_health and bar.max_value == boss.max_health, "boss HP bar shows %d/%d" % [bar.value, bar.max_value])
     await _boss_idle(boss)
     _check(boss.global_position.z < -20.0 and boss.global_position.y > -1.0, "Bishop stands far behind the play plane (z=%.1f)" % boss.global_position.z)
     await _shot("05_bishop_awake")
@@ -1090,6 +1183,8 @@ func _m3_boss_checks() -> void:
     await _seconds(0.4)
     _check(boss.health.current == boss_hp - 3, "closed stigmata ignores hits (hp=%d)" % boss.health.current)
     await _boss_idle(boss)
+
+    await _fix_tuning_checks(boss)
 
     # Bone Lance: thrown from depth along a telegraphed lane; hits only on the plane.
     _heal()
@@ -1186,6 +1281,7 @@ func _m3_boss_checks() -> void:
     _check(boss.weak_open_seconds > phase1_window + 1.0, "phase III weak window is longer (%.2f s vs %.2f s)" % [boss.weak_open_seconds, phase1_window])
     await _boss_idle(boss)
     _heal()
+    boss.health.apply_damage(boss.health.current - 3)  # debug: skip to the last 3 HP (tuning is checked separately)
     boss.debug_attack(&"slam", _bx(25.5))
     await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
     _player.set("facing_direction", -1.0)

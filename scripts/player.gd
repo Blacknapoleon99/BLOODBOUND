@@ -98,6 +98,10 @@ func is_stunned() -> bool:
     return _stun_left > 0.0
 
 
+func stun_time_left() -> float:
+    return _stun_left
+
+
 func is_shielded() -> bool:
     return _shield_left > 0.0
 
@@ -168,7 +172,7 @@ func _physics_process(delta: float) -> void:
         _buffer_left = jump_buffer_time
     if controllable and Input.is_action_just_pressed(&"dodge"):
         _try_start_dodge(input_x, input_z, on_floor)
-    if _queued_attack != null and not melee.is_busy():
+    if _queued_attack != null and not melee.is_busy() and not is_stunned():
         var queued: AttackData = _queued_attack
         _queued_attack = null
         if _queued_left > 0.0:
@@ -329,7 +333,12 @@ func _end_dodge() -> void:
 
 
 func _try_attack(data: AttackData) -> void:
-    if data == null or is_dodging() or is_stunned() or health.is_dead():
+    if data == null or is_dodging() or health.is_dead():
+        return
+    if is_stunned():
+        # Held until the stun ends (same idea as the card buffer), not silently dropped.
+        _queued_attack = data
+        _queued_left = _stun_left + attack_buffer_time
         return
     if melee.is_busy():
         _queued_attack = data
