@@ -22,7 +22,7 @@ Machine: Windows 11 Pro 10.0.26200. Status vocabulary: `absent / installed / con
 | Windows desktop control | Anthropic `computer-use` MCP available in this app | connected | not used | Per-app approval prompts on first use; not exercised yet |
 | Chrome DevTools MCP | 1.11.0 plugin | connected | not used | |
 | fal.ai MCP (plugin) | — | blocked | — | `FAL_KEY` env var unset; optional |
-| Jev AI | — | NOT VERIFIED | — | Exact provider unknown; ask user for link |
+| Jev (TypeSafe AI) | identified 2026-10-20 from user link: typesafe.ai "System One" model; docs.typesafe.ai, console.typesafe.ai | absent (not needed) | product page read; no signup, no API call | Structured classification/decision model, **not** an image/animation/3D/audio generator. Waitlist early access, paid per token. Not useful for the asset pipeline. A possible future use is AI-decision experiments, which would need user approval. |
 
 ## Known quirk
 
