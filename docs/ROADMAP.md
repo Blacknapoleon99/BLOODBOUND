@@ -40,9 +40,9 @@ This list reflects **planned** work. Mark `[x]` only after tests recorded in `do
 - [x] Enemy encounter with win/exit and return to correct 2.5D location. *(2026-10-20, TEST_RESULTS M5)*
 
 ## M6 — Vertical slice and shipping paths
-- [ ] Main menu, settings, pause, checkpoint, progression, 5–10 minute beginning-to-end flow.
-- [ ] Windows test build and at least one real browser compatibility/export smoke test.
-- [ ] Accessibility settings for gore/shake; performance measurements, no fatal logs.
+- [ ] Main menu, settings, pause, checkpoint, progression, 5–10 minute beginning-to-end flow. *(menus/settings/pause/checkpoints/progression and an automated boot→victory run verified 2026-10-20; the 5–10 minute length still needs a timed human playthrough)*
+- [x] Windows test build and at least one real browser compatibility/export smoke test. *(2026-10-20, TEST_RESULTS M6)*
+- [ ] Accessibility settings for gore/shake; performance measurements, no fatal logs. *(gore/shake/hit-stop settings and no fatal logs verified; dev-PC numbers recorded; representative mid-range measurement still open)*
 
 ## M7 — Production art integration
 - [ ] Asset manifest and audited provider licensing.

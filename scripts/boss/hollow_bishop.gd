@@ -3,8 +3,10 @@ extends Node3D
 ## The Hollow Bishop: a ~30 m skeletal colossus standing `depth` metres behind the play plane.
 ## It cannot be reached directly; it attacks *through* depth and exposes a weak point in reach.
 ##
-## Phases (driven by HP, never by a timer):
-##   DORMANT → INTRO (rises, `intro_time`) → PROCESSION (HP > collapse_at): Hand Slam / Bone Lances
+## Phases (fight phases driven by HP, never by a timer):
+##   DORMANT → INTRO (rises, `intro_time`) → PURSUIT (stalks the approach, single Bone Lances every
+##   `pursuit_interval` s, cannot be damaged, no HP bar) → begin_fight() →
+##   PROCESSION (HP > collapse_at): Hand Slam / Bone Lances
 ##   → COLLAPSE (HP <= collapse_at): adds Sunder, a slam that breaks the causeway segment it hits
 ##   → COVENANT (HP <= covenant_at): faster cadence, longer weak-point windows → DEFEATED (HP 0).
 ##
@@ -29,7 +31,7 @@ signal sunder_impact(x: float)
 signal chained
 signal defeated
 
-enum Phase { DORMANT, INTRO, PROCESSION, COLLAPSE, COVENANT, DEFEATED }
+enum Phase { DORMANT, INTRO, PURSUIT, PROCESSION, COLLAPSE, COVENANT, DEFEATED }
 
 const PHASE_TITLES: Dictionary = {
     Phase.PROCESSION: "I · THE PROCESSION",
@@ -58,11 +60,14 @@ const PHASE_TITLES: Dictionary = {
 @export var lance_speed: float = 16.0
 @export var lance_spacing: float = 0.5
 @export var chain_pull_time: float = 0.3
+@export var pursuit_interval: float = 3.2
 
 var phase: Phase = Phase.DORMANT
 var health: Health
 var hand: BishopHand
 var weak_open_seconds: float = 0.0
+## True once the player has reached the arena; INTRO then leads straight into the fight.
+var fight_started: bool = false
 
 var _attack: StringName = &""
 var _t: float = 0.0
@@ -125,6 +130,16 @@ func awaken() -> void:
         _set_phase(Phase.INTRO)
 
 
+## Ends the pursuit and starts the HP-driven fight (awakens first if still dormant).
+func begin_fight() -> void:
+    fight_started = true
+    if phase == Phase.DORMANT:
+        awaken()
+    elif phase == Phase.PURSUIT:
+        _set_phase(_phase_for_health())
+        _cooldown = 2.0
+
+
 func set_ai_enabled(enabled: bool) -> void:
     ai_enabled = enabled
 
@@ -169,7 +184,8 @@ func _physics_process(delta: float) -> void:
             _intro_t += delta
             position.y = lerpf(_rest_y - 14.0, _rest_y, clampf(_intro_t / intro_time, 0.0, 1.0))
             if _intro_t >= intro_time:
-                _set_phase(_phase_for_health())
+                _set_phase(_phase_for_health() if fight_started else Phase.PURSUIT)
+                _cooldown = 2.0
         Phase.DEFEATED:
             position.y = move_toward(position.y, _rest_y - 40.0, 8.0 * delta)
             hand.global_position = hand.global_position.move_toward(_hand_rest(), 6.0 * delta)
@@ -193,6 +209,10 @@ func _physics_process(delta: float) -> void:
             _cooldown -= delta
             if _cooldown <= 0.0:
                 _start_attack(_next_pattern_attack(), player.global_position.x)
+        elif ai_enabled and phase == Phase.PURSUIT and player != null:
+            _cooldown -= delta
+            if _cooldown <= 0.0:
+                _start_attack(&"lance", player.global_position.x)
     _update_arm()
     _pulse_heart()
 
@@ -220,7 +240,10 @@ func _next_pattern_attack() -> StringName:
 
 
 func _start_attack(attack: StringName, x: float) -> bool:
-    if is_attacking() or not is_active():
+    if is_attacking():
+        return false
+    var pursuit_lance: bool = phase == Phase.PURSUIT and attack == &"lance"
+    if not is_active() and not pursuit_lance:
         return false
     if attack not in [&"slam", &"sunder", &"lance", &"lance_volley"]:
         return false
@@ -240,6 +263,8 @@ func _start_attack(attack: StringName, x: float) -> bool:
 func _finish_attack() -> void:
     _attack = &""
     _cooldown = 1.0 if phase == Phase.COVENANT else (1.5 if phase == Phase.COLLAPSE else 1.8)
+    if phase == Phase.PURSUIT:
+        _cooldown = pursuit_interval - 1.9  # a lance attack itself lasts ~1.9 s
 
 
 func _cancel_attack() -> void:
@@ -361,7 +386,7 @@ func _phase_for_health() -> Phase:
 
 
 func _on_health_changed(_current: int, _maximum: int) -> void:
-    if phase == Phase.DORMANT or phase == Phase.INTRO or phase == Phase.DEFEATED:
+    if phase in [Phase.DORMANT, Phase.INTRO, Phase.PURSUIT, Phase.DEFEATED]:
         return
     var next: Phase = _phase_for_health()
     if next == Phase.DEFEATED:

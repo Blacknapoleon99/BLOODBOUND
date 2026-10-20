@@ -1,5 +1,6 @@
 extends Node3D
-## Procedural greybox level: causeway → Plagued Soldier → portcullis → Hollow Bishop arena.
+## Procedural greybox level: causeway → Plagued Soldier → portcullis → Pursuit Approach
+## (collapsing slabs, moving platform, the Bishop hurling lances) → Hollow Bishop arena.
 ## The optional Reality Fracture (free 3D arena) is entered at the amber gate; see RealityFracture.
 ## Goal: easily replaceable greybox; level rules (checkpoints, resets, victory) live here.
 
@@ -10,15 +11,21 @@ const ENEMY_POSITION: Vector3 = Vector3(5.0, 1.0, 0.0)
 const GATE_POSITION: Vector3 = Vector3(13.0, 1.0, 0.0)
 const CHECKPOINT_POSITION: Vector3 = Vector3(-4.5, 1.2, 0.0)
 const PORTCULLIS_X: float = 18.6
-const BOSS_ARENA_START_X: float = 18.2
-const BOSS_CHECKPOINT_POSITION: Vector3 = Vector3(20.6, 1.2, 0.0)
-const BOSS_AWAKEN_X: float = 20.0
+const APPROACH_START_X: float = 18.2
+const APPROACH_CHECKPOINT_POSITION: Vector3 = Vector3(20.6, 1.2, 0.0)
+const PURSUIT_START_X: float = 20.0
+const BOSS_ARENA_START_X: float = 58.2
+const BOSS_CHECKPOINT_POSITION: Vector3 = Vector3(60.6, 1.2, 0.0)
+const FIGHT_START_X: float = 60.0
 
 var player: CharacterBody3D
 var camera: Camera3D
 var enemy: PlaguedSoldier
 var checkpoint: Checkpoint
 var boss_checkpoint: Checkpoint
+var approach_checkpoint: Checkpoint
+var collapsing_slabs: Array[CollapsingSlab] = []
+var ferry: MovingPlatform
 var boss: HollowBishop
 var boss_arena: BossArena
 var portcullis: StaticBody3D
@@ -37,6 +44,7 @@ var _trauma: float = 0.0
 
 func _ready() -> void:
     InputBindings.ensure_defaults()
+    GameSettings.load_settings()
     add_to_group(&"camera_shaker")
     _build_greybox()
     player = PLAYER_SCENE.instantiate() as CharacterBody3D
@@ -72,6 +80,7 @@ func _ready() -> void:
     var card_system: CardSystem = player.get_node("Cards") as CardSystem
     canvas.add_child(CardHandUI.create(card_system))
     card_system.card_played.connect(_on_card_played)
+    add_child(PauseMenu.create())
     _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
 
 
@@ -88,9 +97,14 @@ func _process(delta: float) -> void:
 
     if not in_arena and enemy_alive and player.global_position.x > PORTCULLIS_X - 1.6:
         _flash("The portcullis is sealed while the plagued soldier stands.", 1.0)
-    if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > BOSS_AWAKEN_X:
+    if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > PURSUIT_START_X:
         boss.awaken()
-        _flash("THE HOLLOW BISHOP rises from the abyss.", 3.0)
+        _flash("THE HOLLOW BISHOP rises from the abyss — run for the cathedral!", 3.5)
+    if not in_arena and not boss.fight_started and player.global_position.x > FIGHT_START_X:
+        boss.min_x = boss_arena.left_x() + 4.0
+        boss.max_x = boss_arena.right_x() - 4.0
+        boss.begin_fight()
+        _flash("The Bishop turns to face you. Strike the stigmata when its hand falls.", 3.5)
     _update_boss_bar()
 
     if _message_until > 0.0:
@@ -100,7 +114,8 @@ func _process(delta: float) -> void:
 
     var state: String = "REALITY FRACTURE — WASD move / SPACE jump / J light / L heavy / K dodge / 1-3 cards" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E amber gate"
     var player_health: Health = player.get("health")
-    var hp: String = "HP " + "■".repeat(player_health.current) + "□".repeat(player_health.max_health - player_health.current)
+    # ASCII only: the web build ships just Godot's default font (no box-drawing glyphs).
+    var hp: String = "HP %d/%d" % [player_health.current, player_health.max_health]
     var objective: String = "SOLDIER: DEFEATED" if not enemy_alive else "SOLDIER: %d HP" % enemy.health.current
     if not enemy_alive:
         objective = "BISHOP: SLAIN" if boss.phase == HollowBishop.Phase.DEFEATED else "GATE: OPEN"
@@ -110,7 +125,7 @@ func _process(delta: float) -> void:
     elif in_arena:
         arena_state = "GUARDIAN: DEFEATED — ENTER THE PORTAL" if fracture.portal_open else "GUARDIAN: %d HP" % fracture.guardian.health.current
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
-    hud.text = "BLOODBOUND — GREYBOX STARTER (not full game)\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
+    hud.text = "BLOODBOUND — GREYBOX VERTICAL SLICE\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -203,6 +218,8 @@ func _on_sunder_impact(x: float) -> void:
 ## Death and falls reset every temporary hazard so the route is always recoverable.
 func _reset_hazards() -> void:
     boss_arena.restore_all()
+    for slab: CollapsingSlab in collapsing_slabs:
+        slab.restore()
     boss.on_player_respawn()
 
 
@@ -246,7 +263,7 @@ func _build_boss_bar(canvas: CanvasLayer) -> void:
 
 func _update_boss_bar() -> void:
     var box: Control = boss_bar.get_parent() as Control
-    box.visible = boss.is_active() or boss.phase == HollowBishop.Phase.INTRO
+    box.visible = boss.is_active() or (boss.phase == HollowBishop.Phase.INTRO and boss.fight_started)
     boss_bar.max_value = boss.health.max_health
     boss_bar.value = boss.health.current
     boss_label.text = "THE HOLLOW BISHOP — " + boss.phase_title()
@@ -340,6 +357,8 @@ func _build_greybox() -> void:
     add_child(portcullis)
     _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, 3.6), Color(0.32, 0.3, 0.34), portcullis)
 
+    _build_approach()
+
     # The Hollow Bishop's causeway and the colossus itself, 22 m behind the play plane.
     boss_arena = BossArena.new()
     boss_arena.name = "BossArena"
@@ -353,6 +372,9 @@ func _build_greybox() -> void:
     boss = HollowBishop.new()
     boss.name = "HollowBishop"
     boss.position = Vector3(32.0, 0.0, -22.0)
+    # While it stalks the approach it follows the player across this span.
+    boss.min_x = APPROACH_START_X + 6.0
+    boss.max_x = BOSS_ARENA_START_X - 2.0
     add_child(boss)
     boss.defeated.connect(_on_boss_defeated)
     boss.sunder_impact.connect(_on_sunder_impact)
@@ -361,6 +383,26 @@ func _build_greybox() -> void:
     fracture = RealityFracture.new()
     fracture.name = "RealityFracture"
     add_child(fracture)
+
+
+## The Pursuit Approach between the portcullis and the arena (x 18.2 → 58.2).
+## Route: causeway → three collapsing slabs over a pit (1 m gaps) → landing → moving platform
+## across a 10 m gap → arena threshold. Every jump fits the ~5.6 m running jump; falling
+## respawns at the approach checkpoint and restores the slabs.
+func _build_approach() -> void:
+    _make_solid("Approach causeway", Vector3(22.2, -0.5, 0.0), Vector3(8.0, 1.0, 4.0), Color(0.19, 0.18, 0.22))
+    approach_checkpoint = Checkpoint.create(APPROACH_CHECKPOINT_POSITION)
+    approach_checkpoint.name = "ApproachCheckpoint"
+    approach_checkpoint.activated.connect(_on_checkpoint_activated)
+    add_child(approach_checkpoint)
+    for i in 3:
+        var slab: CollapsingSlab = CollapsingSlab.create("Collapsing slab %d" % i, Vector3(28.45 + 3.5 * i, -0.5, 0.0), Vector3(2.5, 1.0, 4.0))
+        add_child(slab)
+        collapsing_slabs.append(slab)
+    _make_solid("Approach landing", Vector3(40.7, -0.5, 0.0), Vector3(6.0, 1.0, 4.0), Color(0.18, 0.17, 0.21))
+    ferry = MovingPlatform.create("Bone ferry", Vector3(45.25, -0.3, 0.0), Vector3(52.15, -0.3, 0.0), Vector3(3.0, 0.6, 4.0))
+    add_child(ferry)
+    _make_solid("Arena threshold", Vector3(55.95, -0.5, 0.0), Vector3(4.5, 1.0, 4.0), Color(0.19, 0.17, 0.2))
 
 
 func _make_solid(label: String, center: Vector3, size: Vector3, color: Color) -> void:

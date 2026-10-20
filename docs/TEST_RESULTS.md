@@ -125,3 +125,26 @@
   - Z drift during 2.5D play stays 0 across all transitions.
 - Screenshots: `docs/screenshots/04_fracture.png` (chapel, shield ward, card cooldowns carried across), `05_fracture_cleared.png` (guardian down, portal lit).
 - Limitations: the death setup lowers player and guardian HP directly before the real killing blow, and combat test positions are set up by teleport. The camera has a fixed angle (no orbit or mouse look). Gamepad is untested. Nobody has hand-tested the camera for comfort.
+
+## M6 verification run (2026-10-20)
+
+- Godot `4.7.2.stable.official.ed1daf0bf`, Windows 11, export templates 4.7.2.
+- `tools/run_checks.ps1 -Godot godot_console` → exit 0. `tests/gameplay_smoke.gd` → **184/184** headless and 184/184 in a visible window. No script errors or warnings in the output.
+- Menus and settings: the title screen shows Start (focused), Settings and Quit. Settings changes to gore, shake and hit-stop apply immediately and survive save + reload (separate test file; the player's real settings are untouched). Esc returns from Settings. Enter on Start loads the game.
+- Pause: Esc pauses and the player does not move while paused. Settings opens from pause and Esc goes back. Esc resumes. Pause → Main menu returns to the title screen, unpaused.
+- Pursuit Approach:
+  - The Bishop is dormant until the approach, rises (INTRO), then enters PURSUIT with no HP bar. It throws a lance at the player's lane (dx 0.00).
+  - The player runs the collapsing slabs; slabs crumble behind and return after 4 s. Standing still drops the player, and the respawn at the approach checkpoint restores the slabs.
+  - The bone ferry carries the player over the 10 m gap (x 52.51).
+  - Reaching the arena turns the pursuit into PROCESSION. All M3/M4 boss and card checks pass at the new arena position.
+- **Windows release build** (`build/windows/Bloodbound.exe`, 109 MB, data embedded): export exit 0. Export probe 10/10 (exit 0) both headless and in a visible window. Screenshot: `docs/screenshots/10_windows_release_build.png`.
+- **Windows QA build** (debug, console): export probe printed 10/10.
+- **Web build** (`build/web`, no-threads, 39.5 MB wasm), served with `python -m http.server` on 127.0.0.1:8060 and driven by the Playwright MCP (Chromium):
+  - Console: `WebGL 2.0 … Compatibility`, `single-threaded`, 0 errors and 0 warnings on a normal load.
+  - The title renders and Quit is hidden on web. Browser Enter starts the game, and the causeway, HUD and card hand render. Screenshots: `11_web_title.png`, `12_web_gameplay.png`.
+  - `index.html?export-probe` → **10/10 in the browser** (move dx 2.90, jump 2.13, attack, cards, level objects, pause/resume).
+  - The only console errors appear after the probe calls `quit()` (engine teardown: PagedAllocator/WorkerThreadPool).
+- Bug found and fixed: on web, the ■/□ HP pips and the ◆ cost symbol showed as missing-glyph boxes (no system font fallback). The HUD now uses ASCII (`HP 5/5`, `Cost 2`).
+- Test bug fixed: the fracture transition wait counted frames; at 240 fps in the visible run it timed out. It is now time-based.
+- Performance (this PC, visible run, vsync on): 223–240 fps at every screenshot point. Process time is 4.2–4.5 ms in steady play, with spikes of 24.9 ms at the first frame after load and 28.8 ms on entering the fracture (scene and shader setup). Draw calls 46–102, about 2,150 objects, about 45 MB static memory. These are **not** representative mid-range numbers; that benchmark is still open.
+- Not verified: Firefox and Safari, mobile and touch, gamepad, clean-machine install, a human playthrough timing the 5–10 minute target.

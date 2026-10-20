@@ -102,11 +102,11 @@ func _process(delta: float) -> void:
         var text: String = ""
         match status:
             &"ready":
-                text = "◆%d  READY" % card.cost
+                text = "Cost %d  READY" % card.cost
             &"cooldown":
-                text = "◆%d  %.1fs" % [card.cost, cards.cooldown_left(card)]
+                text = "Cost %d  %.1fs" % [card.cost, cards.cooldown_left(card)]
             &"energy":
-                text = "◆%d  NEED BLOOD" % card.cost
+                text = "Cost %d  NEED" % card.cost
         _flash_left[i] = maxf(0.0, _flash_left[i] - delta)
         var border: Color = card.ui_color if card else Color.DIM_GRAY
         if _flash_left[i] > 0.0:

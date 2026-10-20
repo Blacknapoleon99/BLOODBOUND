@@ -66,3 +66,13 @@ M5 real third-person arena: shared HP, energy and cards across the 2.5D↔3D tra
 
 ### Next action
 M6 vertical slice: main menu (Start / Settings / Quit), pause, a settings screen (reduced gore, camera shake, hitstop), a real level progression pass toward 5–10 minutes, a Windows export preset and build, and a first Web export smoke test served over local HTTP and checked with Playwright.
+
+## 2026-10-20 — M6 vertical slice (partially closed)
+
+- New: title screen (`scenes/main_menu.tscn`, now the main scene), `scripts/ui/` (main_menu, pause_menu, settings_panel, menu_style), settings persistence, `scripts/level/` (collapsing_slab, moving_platform), the Pursuit Approach and the Bishop PURSUIT phase, `export_presets.cfg`, `scripts/qa/export_probe.gd`, `tools/export_and_probe.ps1`, `docs/WEB_EXPORT.md` rewrite.
+- Builds: the Windows release, Windows QA and Web builds all pass the export probe (the Web build in Chromium through Playwright).
+- Open M6 items: timing the 5–10 minute flow with a human player, and a representative mid-range performance benchmark.
+- Evidence: `docs/TEST_RESULTS.md` (M6 run).
+
+### Next action
+User playtest pass (feel, difficulty, slice length). Then M7: asset pipeline. Blender MCP needs Blender open with its addon started; Tripo needs credits and explicit approval per batch.

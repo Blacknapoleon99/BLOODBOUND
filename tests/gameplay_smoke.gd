@@ -24,8 +24,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-    change_scene_to_file("res://scenes/main.tscn")
-    await _frames(10)
+    # Never touch the player's real settings file; start from defaults.
+    GameSettings.persistence_enabled = false
+    GameSettings.reset_defaults()
+    await _m6_menu_checks()
     _bind()
     await _seconds(1.0)
 
@@ -48,6 +50,7 @@ func _run() -> void:
     _check(_player.global_position.x < 18.3, "portcullis blocks the way while the soldier lives (x=%.2f)" % _player.global_position.x)
     _player.call("teleport_to", Vector3(-16.0, 2.0, 0.0))
     await _seconds(0.8)
+    await _m6_pause_checks()
 
     # --- Horizontal movement -------------------------------------------------
     var x0: float = _player.global_position.x
@@ -138,6 +141,12 @@ func _run() -> void:
     await _seconds(0.5)
     _check(bool(_main.get("enemy_alive")) and not bool(_main.get("game_won")), "R restarts with fresh state")
     _check(_player.global_position.distance_to(spawn) < 2.5, "restart places player at spawn")
+    _tap(KEY_ESCAPE)
+    await _frames(3)
+    var pause_menu: PauseMenu = _main.find_child("PauseMenu", true, false) as PauseMenu
+    pause_menu.menu_button.pressed.emit()
+    await _frames(10)
+    _check(current_scene.scene_file_path == "res://scenes/main_menu.tscn" and not paused, "pause → Main menu returns to the title screen, unpaused")
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -675,7 +684,7 @@ func _m4_card_checks(boss: HollowBishop) -> void:
 
     # Invalid plays spend nothing and apply nothing.
     _heal()
-    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(24.2), 1.0, 0.0))
     await _seconds(0.5)
     energy.set_amount(6.0)
     var spear_card: CardData = cards.deck.card_in_slot(spear_slot)
@@ -698,22 +707,22 @@ func _m4_card_checks(boss: HollowBishop) -> void:
     _check("COOLING" in ui._status_labels[shield_slot].text, "UI flashes COOLING on a refused replay")
     await _seconds(0.9)  # let the failure flash end
     _check(ui.slots[shield_slot].modulate.a < 0.9 and "s" in ui._status_labels[shield_slot].text, "UI shows the cooldown timer")
-    boss.debug_attack(&"slam", 24.2)
+    boss.debug_attack(&"slam", _bx(24.2))
     await _boss_idle(boss)
     _check(_player_hp() == 5 and not bool(_player.call("is_shielded")), "Grave Shield absorbs the slam and is consumed (hp=%d)" % _player_hp())
     _player.call("raise_shield", &"heavy", 3.0)
-    boss.debug_attack(&"lance", 24.2)
+    boss.debug_attack(&"lance", _bx(24.2))
     await _boss_idle(boss)
     _check(_player_hp() == 4, "the heavy-only ward does not stop a lance (projectile) (hp=%d)" % _player_hp())
 
     # Ritual Chains interrupts the telegraph: the player beneath takes nothing.
     _heal()
-    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(24.2), 1.0, 0.0))
     _player.set("facing_direction", 1.0)
     await _seconds(1.0)
     energy.set_amount(6.0)
     var boss_hp0: int = boss.health.current
-    boss.debug_attack(&"slam", 24.2)
+    boss.debug_attack(&"slam", _bx(24.2))
     await _seconds(0.8)
     _check(boss.can_be_interrupted(), "hovering slam is interruptible")
     _tap(CARD_KEYS[chains_slot])
@@ -733,10 +742,10 @@ func _m4_card_checks(boss: HollowBishop) -> void:
     _check(boss.health.current == boss_hp0 - 1 and energy.current == 4.0, "melee hit on the stigmata damages the Bishop and earns 1 blood (energy=%.1f)" % energy.current)
 
     # Blood Spear: range check, then a real projectile into the exposed stigmata.
-    _player.call("teleport_to", Vector3(44.0, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(44.0), 1.0, 0.0))
     await _seconds(0.2)
     _check(cards.play_slot(spear_slot) == &"out_of_range" and energy.current == 4.0, "Blood Spear beyond its 14 m range is refused, nothing spent")
-    _player.call("teleport_to", Vector3(33.0, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(33.0), 1.0, 0.0))
     await _seconds(0.2)
     var boss_hp1: int = boss.health.current
     _check(cards.play_slot(spear_slot) == &"ok" and energy.current == 2.0, "Blood Spear at an exposed stigmata in range is played, 2 blood spent")
@@ -770,7 +779,8 @@ func _m5_fracture_checks() -> void:
     await _frames(6)
     _check(fracture.is_transitioning() and bool(_player.get("game_frozen")), "E at the gate starts the fracture transition with input frozen")
     var max_alpha: float = 0.0
-    for i in 120:
+    var deadline: int = Time.get_ticks_msec() + 3000  # time-based: frame rate differs headless vs. visible
+    while Time.get_ticks_msec() < deadline:
         await process_frame
         max_alpha = maxf(max_alpha, fracture.fade.color.a)
         if fracture.state == RealityFracture.State.ACTIVE:
@@ -895,15 +905,121 @@ func _m5_fracture_checks() -> void:
     energy.regen_per_second = 0.25
 
 
+## Arena x in the original M3 layout → x in the current layout (the arena moved when the
+## Pursuit Approach was inserted; tests stay valid if it moves again).
+func _bx(x: float) -> float:
+    return x + ((_main.get("boss_arena") as BossArena).left_x() - 18.2)
+
+
+func _m6_menu_checks() -> void:
+    change_scene_to_file("res://scenes/main_menu.tscn")
+    await _frames(10)
+    var menu: Control = current_scene as Control
+    var start: Button = menu.get("start_button")
+    var settings_button: Button = menu.get("settings_button")
+    var quit: Button = menu.get("quit_button")
+    _check(start != null and start.has_focus() and settings_button != null and quit.visible, "title screen shows Start (focused) / Settings / Quit")
+    await _shot("00_title")
+    settings_button.pressed.emit()
+    await _frames(2)
+    var panel: SettingsPanel = menu.get("settings")
+    _check(panel.visible, "Settings opens from the title screen")
+    panel.save_path = "user://test_settings.cfg"
+    panel.gore_toggle.button_pressed = true
+    panel.shake_slider.value = 0.5
+    panel.hitstop_toggle.button_pressed = false
+    _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled, "settings controls change gore / shake / hit-stop immediately")
+    GameSettings.reset_defaults()
+    GameSettings.load_settings("user://test_settings.cfg")
+    _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled, "settings persist through save and reload")
+    DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_settings.cfg"))
+    GameSettings.reset_defaults()
+    _tap(KEY_ESCAPE)
+    await _frames(3)
+    _check(not panel.visible and (menu.get("_menu") as Control).visible, "Esc closes Settings back to the title menu")
+    start.grab_focus()
+    _tap(KEY_ENTER)
+    await _frames(12)
+    _check(current_scene.scene_file_path == "res://scenes/main.tscn", "Enter on Start loads the game")
+
+
+func _m6_pause_checks() -> void:
+    var pause_menu: PauseMenu = _main.find_child("PauseMenu", true, false) as PauseMenu
+    _tap(KEY_ESCAPE)
+    await _frames(3)
+    _check(paused and pause_menu.is_open() and pause_menu.resume_button.has_focus(), "Esc pauses the game and opens the pause menu")
+    var px: float = _player.global_position.x
+    _key(KEY_D, true)
+    await _frames(20)
+    _key(KEY_D, false)
+    _check(absf(_player.global_position.x - px) < 0.001, "nothing moves while paused")
+    pause_menu.settings_button.pressed.emit()
+    await _frames(2)
+    _check(pause_menu.settings.visible, "Settings opens from the pause menu")
+    _tap(KEY_ESCAPE)
+    await _frames(3)
+    _check(not pause_menu.settings.visible and pause_menu.is_open() and paused, "Esc in Settings returns to the pause menu")
+    await _shot("01_paused")
+    _tap(KEY_ESCAPE)
+    await _frames(3)
+    _check(not paused and not pause_menu.is_open(), "Esc again resumes")
+
+
+## Portcullis → Pursuit Approach → arena threshold. Returns when standing at the threshold.
+func _m6_approach_checks(boss: HollowBishop) -> bool:
+    var reached: bool = await _run_right_until(22.0, 5.0)
+    _check(reached, "open portcullis leads onto the Pursuit Approach (x=%.2f)" % _player.global_position.x)
+    _check(bool((_main.get("approach_checkpoint") as Checkpoint).is_active), "approach checkpoint activates")
+    _check(boss.phase_name() == "INTRO", "stepping onto the approach awakens the Bishop (phase=%s)" % boss.phase_name())
+    await _seconds(1.8)
+    var bar: ProgressBar = _main.get("boss_bar")
+    _check(boss.phase_name() == "PURSUIT" and not bar.get_parent().visible, "the Bishop stalks the approach (PURSUIT, no HP bar yet)")
+    var thrown: bool = await _wait_until(func() -> bool: return _first_lance() != null, 5.0)
+    var lance_dx: float = absf(_first_lance().global_position.x - _player.global_position.x) if thrown else 99.0
+    _check(thrown and lance_dx < 1.0, "during the pursuit it hurls a telegraphed lance at the player's lane (dx=%.2f)" % lance_dx)
+    await _shot("05_pursuit")
+    boss.set_ai_enabled(false)
+    await _boss_idle(boss)
+    _heal()
+
+    var slabs: Array[CollapsingSlab] = _main.get("collapsing_slabs")
+    reached = await _run_right_until(38.5, 5.0)
+    _check(reached, "player runs across the collapsing slabs (x=%.2f)" % _player.global_position.x)
+    await _seconds(0.5)
+    var collapsed: int = slabs.filter(func(slab: CollapsingSlab) -> bool: return slab.is_collapsed).size()
+    _check(collapsed > 0, "slabs crumble behind the player (%d collapsed)" % collapsed)
+    await _seconds(4.0)
+    _check(slabs.all(func(slab: CollapsingSlab) -> bool: return not slab.is_collapsed), "crumbled slabs return after a few seconds")
+    var cp: Vector3 = (_main.get("approach_checkpoint") as Checkpoint).respawn_position
+    _player.call("teleport_to", Vector3(28.45, 1.0, 0.0))
+    var dropped: bool = await _wait_until(func() -> bool: return _player.global_position.distance_to(cp) < 1.0, 4.0)
+    _check(dropped and slabs.all(func(slab: CollapsingSlab) -> bool: return not slab.is_collapsed), "standing still drops the player; respawn at the approach checkpoint restores the slabs")
+
+    var ferry: MovingPlatform = _main.get("ferry")
+    _player.call("teleport_to", Vector3(42.8, 1.0, 0.0))
+    await _seconds(0.4)
+    await _wait_until(func() -> bool: return ferry.progress() < 0.02, 9.0)
+    _key(KEY_D, true)
+    await _wait_until(func() -> bool: return _player.global_position.x >= 45.0, 1.5)
+    _key(KEY_D, false)
+    var carried: bool = await _wait_until(func() -> bool: return ferry.progress() > 0.98, 6.0)
+    await _seconds(0.2)
+    _check(carried and _player.is_on_floor() and _player.global_position.x > 50.5, "the bone ferry carries the player over the 10 m gap (x=%.2f)" % _player.global_position.x)
+    reached = await _run_right_until(55.5, 3.0)
+    _check(reached, "player steps off onto the arena threshold")
+    return reached
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
-    _check(boss.phase_name() == "DORMANT", "Bishop lies dormant before the arena")
+    _check(boss.phase_name() == "DORMANT", "Bishop lies dormant before the approach")
     _heal()
-    var reached: bool = await _run_right_until(21.5, 5.0)
-    _check(reached, "open portcullis leads into the Bishop's arena (x=%.2f)" % _player.global_position.x)
+    var reached: bool = await _m6_approach_checks(boss)
+    reached = await _run_right_until(_bx(21.5), 5.0)
+    _check(reached, "the approach leads into the Bishop's arena (x=%.2f)" % _player.global_position.x)
     _check(bool((_main.get("boss_checkpoint") as Checkpoint).is_active), "arena checkpoint activates")
-    _check(boss.phase_name() == "INTRO", "entering the arena awakens the Bishop (phase=%s)" % boss.phase_name())
+    _check(boss.fight_started and boss.phase_name() == "PROCESSION", "reaching the arena turns the pursuit into the fight (phase=%s)" % boss.phase_name())
     boss.set_ai_enabled(false)
     await _seconds(1.8)
     _check(boss.phase_name() == "PROCESSION", "Bishop rises into phase I (phase=%s)" % boss.phase_name())
@@ -915,10 +1031,10 @@ func _m3_boss_checks() -> void:
 
     # Hand Slam on a standing player: long telegraph, travels from depth, real damage.
     _heal()
-    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(24.2), 1.0, 0.0))
     await _seconds(0.5)
     var hp0: int = _player_hp()
-    boss.debug_attack(&"slam", 24.2)
+    boss.debug_attack(&"slam", _bx(24.2))
     var marker_lead: int = 0
     var min_hand_z: float = 0.0
     var impact_z: float = 99.0
@@ -935,15 +1051,15 @@ func _m3_boss_checks() -> void:
             if boss.hand.hitbox.is_active():
                 impact_z = boss.hand.global_position.z
     _check(marker_lead >= 80, "slam telegraph plate shows %d frames before impact (>= 80)" % marker_lead)
-    _check(absf(plate_x - 24.2) < 0.01, "telegraph plate marks the strike x (%.2f)" % plate_x)
+    _check(absf(plate_x - _bx(24.2)) < 0.01, "telegraph plate marks the strike x (%.2f)" % plate_x)
     _check(min_hand_z < -7.5 and absf(impact_z) < 0.05, "hand travels from depth (z=%.1f) to the play plane (z=%.2f)" % [min_hand_z, impact_z])
     _check(_player_hp() == hp0 - 2, "slam deals 2 damage to a player who stays (%d → %d)" % [hp0, _player_hp()])
 
     # Same slam, but the player steps out of the plate during the telegraph.
     _heal()
-    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(24.2), 1.0, 0.0))
     await _seconds(1.0)
-    boss.debug_attack(&"slam", 24.2)
+    boss.debug_attack(&"slam", _bx(24.2))
     await _seconds(0.5)
     await _hold(KEY_D, 0.7)
     await _boss_idle(boss)
@@ -951,10 +1067,10 @@ func _m3_boss_checks() -> void:
 
     # Weak point: only the exposed stigmata on the fallen hand takes damage.
     _heal()
-    _player.call("teleport_to", Vector3(28.0, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(28.0), 1.0, 0.0))
     await _seconds(0.5)
     var boss_hp: int = boss.health.current
-    boss.debug_attack(&"slam", 25.5)
+    boss.debug_attack(&"slam", _bx(25.5))
     _check(not boss.hand.weak_open, "stigmata is closed while the hand is raised")
     var opened: bool = await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
     _check(opened, "stigmata opens once the hand lies on the causeway")
@@ -977,13 +1093,13 @@ func _m3_boss_checks() -> void:
 
     # Bone Lance: thrown from depth along a telegraphed lane; hits only on the plane.
     _heal()
-    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
     await _seconds(0.5)
     hp0 = _player_hp()
-    boss.debug_attack(&"lance", 30.2)
+    boss.debug_attack(&"lance", _bx(30.2))
     await _wait_until(func() -> bool: return _first_lance() != null, 1.0)
     var lance: BoneLance = _first_lance()
-    _check(lance != null and lance.shaft_z() < -15.0 and lance.column.visible and absf(lance.global_position.x - 30.2) < 0.01,
+    _check(lance != null and lance.shaft_z() < -15.0 and lance.column.visible and absf(lance.global_position.x - _bx(30.2)) < 0.01,
         "lance starts deep behind the plane with a lane telegraph at x=30.2")
     var z_at_hit: float = 99.0
     for i in 180:
@@ -995,9 +1111,9 @@ func _m3_boss_checks() -> void:
     await _boss_idle(boss)
 
     _heal()
-    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
     await _seconds(1.0)
-    boss.debug_attack(&"lance", 30.2)
+    boss.debug_attack(&"lance", _bx(30.2))
     await _wait_until(func() -> bool: var l: BoneLance = _first_lance(); return l != null and l.shaft_z() > -5.0, 3.0)
     _key(KEY_SPACE, true)
     await _seconds(0.45)
@@ -1005,9 +1121,9 @@ func _m3_boss_checks() -> void:
     await _boss_idle(boss)
     _check(_player_hp() == 5, "jumping over the lance avoids it (hp=%d)" % _player_hp())
 
-    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
     await _seconds(0.6)
-    boss.debug_attack(&"lance", 30.2)
+    boss.debug_attack(&"lance", _bx(30.2))
     await _wait_until(func() -> bool: var l: BoneLance = _first_lance(); return l != null and l.shaft_z() > -3.0, 3.0)
     _tap(KEY_K)
     await _boss_idle(boss)
@@ -1015,7 +1131,7 @@ func _m3_boss_checks() -> void:
 
     # AI on its own: chooses both attack types in phase I.
     _heal()
-    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
     var seen: Dictionary = {}
     var record: Callable = func(attack: StringName) -> void: seen[attack] = true
     boss.attack_started.connect(record)
@@ -1035,24 +1151,24 @@ func _m3_boss_checks() -> void:
     await _frames(2)
     _check(boss.phase_name() == "COLLAPSE" and "II" in (_main.get("boss_label") as Label).text, "HP %d enters phase II, shown on the bar" % boss.health.current)
     _heal()
-    _player.call("teleport_to", Vector3(21.0, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(21.0), 1.0, 0.0))
     await _seconds(0.5)
-    boss.debug_attack(&"sunder", 28.2)
+    boss.debug_attack(&"sunder", _bx(28.2))
     await _wait_until(func() -> bool: return arena.segments[2].is_broken, 4.0)
     _check(arena.segments[2].is_broken and arena.rubble[2].visible, "Sunder breaks the struck segment and exposes a rubble ledge")
     _check(not arena.can_break(1) and not arena.can_break(3) and not arena.can_break(0), "neighbours of a gap and the entry segment cannot break")
     await _boss_idle(boss)
     await _shot("07_causeway_broken")
-    _player.call("teleport_to", Vector3(21.0, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(21.0), 1.0, 0.0))
     await _seconds(0.4)
-    reached = await _run_right_until(33.0, 5.0)
+    reached = await _run_right_until(_bx(33.0), 5.0)
     _check(reached and arena.segments[2].is_broken, "player jumps the broken segment (x=%.2f)" % _player.global_position.x)
-    _player.call("teleport_to", Vector3(28.2, 0.5, 0.0))
+    _player.call("teleport_to", Vector3(_bx(28.2), 0.5, 0.0))
     await _seconds(0.8)
     _check(_player.is_on_floor() and _player.global_position.y < 0.0, "rubble ledge catches a player who drops in (y=%.2f)" % _player.global_position.y)
-    reached = await _run_right_until(31.5, 3.0)
+    reached = await _run_right_until(_bx(31.5), 3.0)
     _check(reached, "player climbs out of the gap from the rubble (x=%.2f)" % _player.global_position.x)
-    _player.call("teleport_to", Vector3(26.9, -2.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(26.9), -2.0, 0.0))
     var cp: Vector3 = (_main.get("boss_checkpoint") as Checkpoint).respawn_position
     var reset: bool = await _wait_until(func() -> bool: return _player.global_position.distance_to(cp) < 1.0, 3.0)
     await _seconds(0.1)
@@ -1062,15 +1178,15 @@ func _m3_boss_checks() -> void:
     boss.health.apply_damage(boss.health.current - boss.covenant_at)  # debug: jump to the phase threshold
     _check(boss.phase_name() == "COVENANT", "HP %d enters phase III" % boss.health.current)
     _heal()
-    _player.call("teleport_to", Vector3(28.0, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(_bx(28.0), 1.0, 0.0))
     await _seconds(0.5)
-    boss.debug_attack(&"slam", 25.5)
+    boss.debug_attack(&"slam", _bx(25.5))
     await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
     await _wait_until(func() -> bool: return not boss.hand.weak_open, 6.0)
     _check(boss.weak_open_seconds > phase1_window + 1.0, "phase III weak window is longer (%.2f s vs %.2f s)" % [boss.weak_open_seconds, phase1_window])
     await _boss_idle(boss)
     _heal()
-    boss.debug_attack(&"slam", 25.5)
+    boss.debug_attack(&"slam", _bx(25.5))
     await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
     _player.set("facing_direction", -1.0)
     _tap(KEY_L)
@@ -1086,6 +1202,11 @@ func _shot(name: String) -> void:
     if DisplayServer.get_name() == "headless":
         return
     await _frames(2)
+    print("PERF %-22s fps=%3d  process_ms=%5.2f  physics_ms=%5.2f  draw_calls=%4d  objects=%5d  static_mem_mb=%.1f" % [name,
+        Performance.get_monitor(Performance.TIME_FPS), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+        Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+        Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.OBJECT_COUNT),
+        Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0])
     DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SHOT_DIR))
     var img: Image = root.get_viewport().get_texture().get_image()
     img.save_png(SHOT_DIR + name + ".png")

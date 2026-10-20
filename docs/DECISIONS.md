@@ -75,3 +75,20 @@ An attack pressed while another is still playing is kept for 0.15 s and fires on
 ## DEC-017 — 3D combat reuses 2.5D combat; two additions only
 
 The guardian is a stock Plagued Soldier with `plane_locked = false`. It is leashed by radius around its home instead of by an X range. Hitboxes, telegraph markers and knockback already worked on X/Z. The player gains a soft lock-on in 3D only: an attack with no movement input turns toward the nearest living enemy within 3.5 m. In 2.5D, facing remains fully manual.
+
+## DEC-018 — Pursuit Approach before the boss arena
+
+The vertical-slice spec calls for collapsing/moving sections and a pursuit sequence, so a 40 m approach was inserted between the portcullis and the arena:
+- three collapsing slabs over a pit;
+- a moving "bone ferry" across a 10 m gap;
+- the Bishop rising early into a PURSUIT phase, where it follows the player and throws single telegraphed lances every 3.2 s. In PURSUIT it cannot be damaged and shows no HP bar.
+
+Reaching the arena calls `begin_fight()`. The arena moved by +40 m; boss tests express positions through `_bx()`, relative to the arena's real left edge, so future layout moves don't break them.
+
+## DEC-019 — Export probe for packaged builds
+
+`--script` is editor-only, so packaged builds cannot run `tests/gameplay_smoke.gd`. `ExportProbe` is a dormant node that the title screen adds only when it sees `--export-probe` (desktop user argument) or `?export-probe` (web URL). It drives real input through the packaged build and exits 0 or 1. Normal players never trigger it.
+
+## DEC-020 — Settings persistence and test isolation
+
+`GameSettings` saves to `user://settings.cfg`. `persistence_enabled = false` makes the default path a no-op, so automated tests never read or overwrite a player's real settings; the round-trip test uses its own file. The pause menu pauses the whole tree; the menu itself and the settings panel run with `PROCESS_MODE_ALWAYS`.

@@ -2,8 +2,8 @@
 config_version=5
 
 [application]
-config/name="BLOODBOUND — The Hollow Covenant [Greybox Starter]"
-run/main_scene="res://scenes/main.tscn"
+config/name="BLOODBOUND — The Hollow Covenant"
+run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]
