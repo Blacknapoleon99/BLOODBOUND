@@ -30,3 +30,7 @@ assets/processed/**
 Thumbs.db
 .vscode/
 .idea/
+
+# MCP tool output
+.playwright-mcp/
+.mcp/

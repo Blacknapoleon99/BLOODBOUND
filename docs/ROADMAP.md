@@ -3,10 +3,10 @@
 This list reflects **planned** work. Mark `[x]` only after tests recorded in `docs/TEST_RESULTS.md`.
 
 ## M0 — Verify included greybox
-- [ ] Godot 4.7 editor opens this exact project without parse/import failures.
-- [ ] Game launches visibly and controls (A/D, Space, J, E, W/S in arena, R after victory) behave as described.
-- [ ] Gap death resets player to a safe location.
-- [ ] Agent documents platform, engine version, tests and observed results.
+- [x] Godot 4.7 editor opens this exact project without parse/import failures. *(2026-10-20, TEST_RESULTS M0)*
+- [x] Game launches visibly and controls (A/D, Space, J, E, W/S in arena, R after victory) behave as described. *(2026-10-20, TEST_RESULTS M0)*
+- [x] Gap death resets player to a safe location. *(2026-10-20, TEST_RESULTS M0)*
+- [x] Agent documents platform, engine version, tests and observed results. *(2026-10-20, TEST_RESULTS M0)*
 
 ## M1 — Platformer quality
 - [ ] Dedicated input map / rebinding-ready input abstraction.
