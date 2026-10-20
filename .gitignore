@@ -1,0 +1,32 @@
+# Godot generated files
+.godot/
+.import/
+.export/
+build/
+
+# Secrets and machine-local settings
+.env
+.env.*
+!.env.example
+CLAUDE.local.md
+.mcp.json
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+
+# Third-party downloads without verified redistribution permission
+assets/incoming/**
+!assets/incoming/.gitkeep
+!assets/incoming/README.md
+assets/processed/**
+!assets/processed/.gitkeep
+!assets/processed/README.md
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
