@@ -1,6 +1,6 @@
 extends Node3D
 ## Procedural greybox level: causeway → Plagued Soldier → portcullis → Hollow Bishop arena.
-## Also hosts the optional 3D practice arena (moved off the play plane to z = 60).
+## The optional Reality Fracture (free 3D arena) is entered at the amber gate; see RealityFracture.
 ## Goal: easily replaceable greybox; level rules (checkpoints, resets, victory) live here.
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/player.tscn")
@@ -8,7 +8,6 @@ const SOLDIER_SCENE: PackedScene = preload("res://scenes/enemies/plagued_soldier
 const SPAWN_POSITION: Vector3 = Vector3(-16.0, 2.0, 0.0)
 const ENEMY_POSITION: Vector3 = Vector3(5.0, 1.0, 0.0)
 const GATE_POSITION: Vector3 = Vector3(13.0, 1.0, 0.0)
-const ARENA_SPAWN: Vector3 = Vector3(34.0, 2.0, 60.0)
 const CHECKPOINT_POSITION: Vector3 = Vector3(-4.5, 1.2, 0.0)
 const PORTCULLIS_X: float = 18.6
 const BOSS_ARENA_START_X: float = 18.2
@@ -25,6 +24,7 @@ var boss_arena: BossArena
 var portcullis: StaticBody3D
 var boss_bar: ProgressBar
 var boss_label: Label
+var fracture: RealityFracture
 var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
 var enemy_alive: bool = true
@@ -52,6 +52,9 @@ func _ready() -> void:
     add_child(camera)
     camera.global_position = player.global_position + Vector3(0.0, 4.8, 22.0)
     camera.look_at(player.global_position + Vector3(0.0, 1.0, 0.0), Vector3.UP)
+    fracture.teleported.connect(func(_to_3d: bool) -> void: _snap_camera())
+    fracture.entered.connect(_on_fracture_entered)
+    fracture.exited.connect(_on_fracture_exited)
 
     var canvas: CanvasLayer = CanvasLayer.new()
     canvas.name = "MinimalHUD"
@@ -76,15 +79,8 @@ func _process(delta: float) -> void:
     if not is_instance_valid(player):
         return
     var in_arena: bool = bool(player.get("in_3d_mode"))
-    var offset: Vector3 = Vector3(0.0, 4.8, 22.0)
-    if in_arena:
-        offset = Vector3(0.0, 5.8, 11.5)
-    elif player.global_position.x > PORTCULLIS_X:
-        offset = Vector3(0.0, 6.5, 24.0)  # pull back so the Bishop fits in frame
-    var goal: Vector3 = player.global_position + offset
-    camera.global_position = camera.global_position.lerp(goal, minf(1.0, 4.0 * delta))
-    var look_height: float = 4.0 if (not in_arena and player.global_position.x > PORTCULLIS_X) else 1.2
-    camera.look_at(player.global_position + Vector3(0.0, look_height, 0.0), Vector3.UP)
+    camera.global_position = camera.global_position.lerp(_camera_goal(), minf(1.0, 4.0 * delta))
+    camera.look_at(_camera_look_target(), Vector3.UP)
     _apply_shake(delta)
 
     if player.global_position.y < -9.0:
@@ -102,13 +98,17 @@ func _process(delta: float) -> void:
         if _message_until <= 0.0:
             _message = ""
 
-    var state: String = "3D ARENA — WASD move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E return" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E amber gate"
+    var state: String = "REALITY FRACTURE — WASD move / SPACE jump / J light / L heavy / K dodge / 1-3 cards" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E amber gate"
     var player_health: Health = player.get("health")
     var hp: String = "HP " + "■".repeat(player_health.current) + "□".repeat(player_health.max_health - player_health.current)
     var objective: String = "SOLDIER: DEFEATED" if not enemy_alive else "SOLDIER: %d HP" % enemy.health.current
     if not enemy_alive:
         objective = "BISHOP: SLAIN" if boss.phase == HollowBishop.Phase.DEFEATED else "GATE: OPEN"
-    var arena_state: String = "ARENA: VISITED" if arena_visited else "ARENA: OPTIONAL"
+    var arena_state: String = "FRACTURE: OPTIONAL"
+    if fracture.state == RealityFracture.State.CLEARED:
+        arena_state = "FRACTURE: SEALED"
+    elif in_arena:
+        arena_state = "GUARDIAN: DEFEATED — ENTER THE PORTAL" if fracture.portal_open else "GUARDIAN: %d HP" % fracture.guardian.health.current
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
     hud.text = "BLOODBOUND — GREYBOX STARTER (not full game)\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
@@ -121,17 +121,20 @@ func _unhandled_input(event: InputEvent) -> void:
         return
     if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
         return
+    if fracture.is_transitioning():
+        return
     if bool(player.get("in_3d_mode")):
-        player.set("in_3d_mode", false)
-        player.call("teleport_to", Vector3(14.5, 2.0, 0.0))
-        _flash("Returned to 2.5D corridor.", 3.0)
+        if fracture.portal_open:
+            _flash("Step into the burning portal to return.", 2.0)
+        else:
+            _flash("The fracture holds you until its guardian falls.", 2.0)
     elif player.global_position.distance_to(GATE_POSITION) < 2.7:
-        player.set("in_3d_mode", true)
-        player.call("teleport_to", ARENA_SPAWN)
-        arena_visited = true
-        _flash("3D movement active. Press E to return.", 4.0)
+        if fracture.can_enter():
+            fracture.enter(player)
+        else:
+            _flash("The fracture has sealed. Nothing stirs beyond the gate.", 2.0)
     else:
-        _flash("Approach the amber pillar at x = 13 to enter the 3D arena.", 2.0)
+        _flash("Approach the amber pillar at x = 13 to enter the Reality Fracture.", 2.0)
 
 
 func _on_enemy_defeated() -> void:
@@ -141,10 +144,45 @@ func _on_enemy_defeated() -> void:
 
 
 func _on_player_died() -> void:
-    var target: Vector3 = ARENA_SPAWN if bool(player.get("in_3d_mode")) else respawn_point
-    player.call("revive_at", target)
+    if bool(player.get("in_3d_mode")):
+        # Revived where you stand (no stray death state), then the fracture expels you.
+        player.call("revive_at", player.global_position)
+        fracture.fail()
+        _flash("The fracture rejects you. Its guardian waits to be challenged again.", 3.5)
+        return
+    player.call("revive_at", respawn_point)
     _reset_hazards()
     _flash("You were slain — restored at the last checkpoint.", 3.5)
+
+
+func _on_fracture_entered() -> void:
+    arena_visited = true
+    _flash("REALITY FRACTURE — move freely on X/Z. Slay the guardian to open the way back.", 4.0)
+
+
+func _on_fracture_exited(cleared: bool) -> void:
+    if cleared:
+        _flash("The fracture seals behind you. Blood and vigour restored.", 3.5)
+
+
+func _camera_goal() -> Vector3:
+    var offset: Vector3 = Vector3(0.0, 4.8, 22.0)
+    if bool(player.get("in_3d_mode")):
+        offset = Vector3(0.0, 5.8, 11.5)
+    elif player.global_position.x > PORTCULLIS_X:
+        offset = Vector3(0.0, 6.5, 24.0)  # pull back so the Bishop fits in frame
+    return player.global_position + offset
+
+
+func _camera_look_target() -> Vector3:
+    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and player.global_position.x > PORTCULLIS_X
+    return player.global_position + Vector3(0.0, 4.0 if in_boss_arena else 1.2, 0.0)
+
+
+## Called while the fracture fade is fully black: jump the camera to its new framing.
+func _snap_camera() -> void:
+    camera.global_position = _camera_goal() + Vector3(0.0, 1.5, 3.0)  # slightly wide, then eases in
+    camera.look_at(_camera_look_target(), Vector3.UP)
 
 
 func _on_card_played(card: CardData, _slot: int) -> void:
@@ -228,7 +266,7 @@ func _apply_shake(delta: float) -> void:
 
 func _respawn() -> void:
     if bool(player.get("in_3d_mode")):
-        player.call("teleport_to", ARENA_SPAWN)
+        player.call("teleport_to", fracture.spawn_point)
         _flash("Fell from the arena — returned to its centre.", 3.5)
         return
     player.call("teleport_to", respawn_point)
@@ -319,10 +357,10 @@ func _build_greybox() -> void:
     boss.defeated.connect(_on_boss_defeated)
     boss.sunder_impact.connect(_on_sunder_impact)
 
-    # Separate 3D training platform, off the main play plane. Camera/motor are the same player nodes.
-    _make_solid("Free-movement arena", Vector3(35.0, -0.5, 60.0), Vector3(14.0, 1.0, 14.0), Color(0.20, 0.17, 0.25))
-    _make_solid("Arena obelisk", Vector3(38.0, 1.6, 57.0), Vector3(1.2, 3.2, 1.2), Color(0.35, 0.23, 0.39))
-    _make_solid("Arena obelisk B", Vector3(32.0, 1.6, 63.0), Vector3(1.2, 3.2, 1.2), Color(0.28, 0.25, 0.38))
+    # Reality Fracture: the optional free-movement chapel, off the main play plane.
+    fracture = RealityFracture.new()
+    fracture.name = "RealityFracture"
+    add_child(fracture)
 
 
 func _make_solid(label: String, center: Vector3, size: Vector3, color: Color) -> void:

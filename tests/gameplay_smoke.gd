@@ -121,48 +121,11 @@ func _run() -> void:
     await _m2_leash_check()
     await _m2_player_hits_enemy_checks()
 
-    # --- Walk to the amber gate and enter the 3D arena -----------------------
+    # --- M5 Reality Fracture: cross into 3D and back ---------------------------
     reached = await _run_right_until(12.6, 6.0)
     _check(reached, "walked to the amber gate (x=%.2f)" % _player.global_position.x)
     await _seconds(0.3)
-    _tap(KEY_E)
-    await _frames(3)
-    _check(bool(_player.get("in_3d_mode")), "E near the gate enters 3D mode")
-    _check(bool(_main.get("arena_visited")), "arena flagged as visited")
-    await _seconds(1.5)
-    _check(_player.is_on_floor(), "player stands on the arena floor")
-    var cam: Camera3D = _main.get("camera")
-    var arena_offset: Vector3 = cam.global_position - _player.global_position
-    _check(absf(arena_offset.z - 11.5) < 1.0 and absf(arena_offset.y - 5.8) < 1.0, "camera moves to closer arena framing (offset=%s)" % arena_offset)
-    await _shot("04_arena")
-
-    var z0: float = _player.global_position.z
-    await _hold(KEY_W, 0.5)
-    var z1: float = _player.global_position.z
-    _check(z1 < z0 - 1.5, "W moves into depth in arena (dz=%.2f)" % (z1 - z0))
-    await _hold(KEY_S, 0.8)
-    var z2: float = _player.global_position.z
-    _check(z2 > z1 + 2.0, "S moves toward camera in arena (dz=%.2f)" % (z2 - z1))
-    await _hold(KEY_D, 0.4)
-    _check(absf(_player.global_position.z) > 0.2, "depth position persists while strafing in arena")
-    await _seconds(0.5)
-    var z_before_dodge: float = _player.global_position.z
-    _key(KEY_W, true)
-    await physics_frame
-    _tap(KEY_K)
-    await _seconds(0.25)
-    _key(KEY_W, false)
-    _check(_player.global_position.z < z_before_dodge - 2.8, "dodge follows input direction in 3D (dz=%.2f)" % (_player.global_position.z - z_before_dodge))
-    await _seconds(0.5)
-
-    # --- Return to 2.5D ------------------------------------------------------
-    _tap(KEY_E)
-    await _frames(3)
-    _check(not bool(_player.get("in_3d_mode")), "E in arena returns to 2.5D mode")
-    _check(absf(_player.global_position.z) < 0.001, "return restores Z=0 plane lock")
-    await _seconds(1.5)
-    var side_offset: Vector3 = cam.global_position - _player.global_position
-    _check(absf(side_offset.z - 22.0) < 1.0, "camera returns to side-view framing (offset=%s)" % side_offset)
+    await _m5_fracture_checks()
 
     # --- M3 Hollow Bishop → victory / restart ----------------------------------
     await _m3_boss_checks()
@@ -784,6 +747,151 @@ func _m4_card_checks(boss: HollowBishop) -> void:
     await _boss_idle(boss)
     _check(not boss.can_be_interrupted(), "nothing is interruptible once the Bishop is idle")
     _check(_hand_ids() == hand_before, "played cards return to the same slots (%s)" % [_hand_ids()])
+    energy.regen_per_second = 0.25
+
+
+func _m5_fracture_checks() -> void:
+    var fracture: RealityFracture = _main.get("fracture")
+    var guardian: PlaguedSoldier = fracture.guardian
+    var energy: BloodEnergy = _energy()
+    var cards: CardSystem = _cards()
+    var cam: Camera3D = _main.get("camera")
+    guardian.set_ai_enabled(false)
+    energy.regen_per_second = 0.0
+    var entry_x: float = _player.global_position.x
+    var shield_slot: int = _slot_of(&"grave_shield")
+    var shield_card: CardData = cards.deck.card_in_slot(shield_slot)
+    energy.set_amount(4.0)
+    _check(cards.play_slot(shield_slot) == &"ok", "Grave Shield played before crossing (puts it on cooldown)")
+    var hp_before: int = _player_hp()
+
+    # Transition in: fade covers the teleport, input frozen, then free X/Z control.
+    _tap(KEY_E)
+    await _frames(6)
+    _check(fracture.is_transitioning() and bool(_player.get("game_frozen")), "E at the gate starts the fracture transition with input frozen")
+    var max_alpha: float = 0.0
+    for i in 120:
+        await process_frame
+        max_alpha = maxf(max_alpha, fracture.fade.color.a)
+        if fracture.state == RealityFracture.State.ACTIVE:
+            break
+    _check(max_alpha >= 0.99 and fracture.fade.color.a < 0.01, "screen fades fully to black over the teleport, then back (max alpha=%.2f)" % max_alpha)
+    _check(fracture.state == RealityFracture.State.ACTIVE and bool(_player.get("in_3d_mode")) and not bool(_player.get("game_frozen")), "transition completes into the fracture with control restored")
+    _check(_player_hp() == hp_before and is_equal_approx(energy.current, 2.0) and cards.cooldown_left(shield_card) > 4.5,
+        "HP, blood energy and card cooldowns carry into 3D (hp=%d, blood=%.1f, cd=%.1f)" % [_player_hp(), energy.current, cards.cooldown_left(shield_card)])
+    _check(bool(_main.get("arena_visited")), "fracture flagged as visited")
+    await _seconds(1.5)
+    _check(_player.is_on_floor(), "player stands on the chapel floor")
+    var arena_offset: Vector3 = cam.global_position - _player.global_position
+    _check(absf(arena_offset.z - 11.5) < 1.0 and absf(arena_offset.y - 5.8) < 1.0, "camera eases into the closer 3D framing (offset=%s)" % arena_offset)
+    await _shot("04_fracture")
+
+    # Free X/Z locomotion (same checks as the M0 arena).
+    var z0: float = _player.global_position.z
+    await _hold(KEY_W, 0.5)
+    var z1: float = _player.global_position.z
+    _check(z1 < z0 - 1.5, "W moves into depth in the fracture (dz=%.2f)" % (z1 - z0))
+    await _hold(KEY_S, 0.8)
+    var z2: float = _player.global_position.z
+    _check(z2 > z1 + 2.0, "S moves toward the camera (dz=%.2f)" % (z2 - z1))
+    await _hold(KEY_D, 0.4)
+    _check(absf(_player.global_position.z - fracture.center.z) > 0.2, "depth position persists while strafing")
+    await _seconds(0.5)
+    var z_before_dodge: float = _player.global_position.z
+    _key(KEY_W, true)
+    await physics_frame
+    _tap(KEY_K)
+    await _seconds(0.25)
+    _key(KEY_W, false)
+    _check(_player.global_position.z < z_before_dodge - 2.8, "dodge follows input direction in 3D (dz=%.2f)" % (_player.global_position.z - z_before_dodge))
+    await _seconds(0.5)
+    _tap(KEY_E)
+    await _seconds(0.8)
+    _check(bool(_player.get("in_3d_mode")) and not fracture.portal_open, "E cannot leave while the guardian lives; portal sealed")
+
+    # The guardian fights in depth: chases on X/Z, telegraphs, hits, knocks back along X/Z.
+    _heal()
+    _player.call("teleport_to", fracture.center + Vector3(-2.0, 1.0, 2.0))
+    guardian.revive_at_home()
+    await _seconds(0.4)
+    var home_z: float = guardian.global_position.z
+    var states_seen: Array[String] = []
+    var on_state: Callable = func(n: String) -> void: states_seen.append(n)
+    guardian.state_changed.connect(on_state)
+    guardian.set_ai_enabled(true)
+    var hp0: int = _player_hp()
+    var max_dz: float = 0.0
+    var hit_pos: Vector3 = Vector3.ZERO
+    for i in int(5.0 * PHYSICS_HZ):
+        await physics_frame
+        max_dz = maxf(max_dz, absf(guardian.global_position.z - home_z))
+        if _player_hp() < hp0:
+            hit_pos = _player.global_position
+            break
+    await _seconds(0.3)
+    var pushed: Vector3 = _player.global_position - hit_pos
+    guardian.set_ai_enabled(false)
+    guardian.state_changed.disconnect(on_state)
+    _check("CHASE" in states_seen and "ATTACK" in states_seen, "guardian aggroes and attacks in 3D (%s)" % [states_seen])
+    _check(max_dz > 0.8, "guardian chases across depth (max dz=%.2f)" % max_dz)
+    _check(_player_hp() == hp0 - 1, "guardian's slash damages the player (%d → %d)" % [hp0, _player_hp()])
+    _check(absf(pushed.z) > 0.2 and absf(pushed.x) > 0.2, "3D knockback pushes the player along X and Z (%s)" % pushed)
+    await _seconds(1.0)
+
+    # Dying inside expels the player to the entry spot, healed, and resets the guardian.
+    var player_health: Health = _player.get("health")
+    guardian.health.apply_damage(2)  # debug setup: wounded guardian, so the reset is observable
+    player_health.apply_damage(player_health.current - 1)  # debug setup: one hit from death
+    _player.call("teleport_to", guardian.global_position + Vector3(-1.3, 0.0, 0.0))
+    guardian.set_ai_enabled(true)
+    var expelled: bool = await _wait_until(func() -> bool: return fracture.state == RealityFracture.State.IDLE and not bool(_player.get("game_frozen")), 6.0)
+    _check(expelled and not bool(_player.get("in_3d_mode")), "dying in the fracture expels the player back to 2.5D")
+    _check(absf(_player.global_position.x - entry_x) < 0.3 and absf(_player.global_position.z) < 0.001, "expelled to the exact entry spot (x=%.2f vs %.2f, z=%.3f)" % [_player.global_position.x, entry_x, _player.global_position.z])
+    _check(player_health.current == player_health.max_health, "expelled player is healed")
+    _check(guardian.health.current == guardian.health.max_health and not fracture.portal_open and fracture.can_enter(), "guardian resets to full HP and the fracture can be retried")
+
+    # Re-enter, and win with soft lock-on.
+    _tap(KEY_E)
+    var back_in: bool = await _wait_until(func() -> bool: return fracture.state == RealityFracture.State.ACTIVE, 2.0)
+    _check(back_in, "the fracture can be re-entered after a failure")
+    guardian.set_ai_enabled(false)
+    _player.call("teleport_to", fracture.center + Vector3(0.0, 1.0, 0.0))
+    guardian.teleport_to(fracture.center + Vector3(0.3, 1.0, -1.2))
+    await _seconds(0.5)
+    _key(KEY_D, true)
+    await physics_frame
+    await physics_frame
+    _key(KEY_D, false)
+    await _seconds(0.3)
+    _tap(KEY_J)
+    await _seconds(0.5)
+    var facing: Vector3 = _player.call("get_facing_vector")
+    _check(guardian.health.current == 2 and facing.z < -0.5, "soft lock-on turns an undirected attack onto the guardian (hp=%d, facing=%s)" % [guardian.health.current, facing])
+    _tap(KEY_L)
+    await _seconds(1.0)
+    _check(guardian.is_dead() and fracture.portal_open, "heavy hit slays the guardian and the return portal opens")
+    await _shot("05_fracture_cleared")
+
+    # Walk into the portal: back to the entry spot, rewarded, fracture sealed.
+    player_health.apply_damage(2)
+    energy.set_amount(1.0)
+    _player.call("teleport_to", fracture.portal.global_position + Vector3(2.0, -0.4, -2.0))
+    await _seconds(0.4)
+    _key(KEY_A, true)
+    _key(KEY_S, true)
+    await _wait_until(func() -> bool: return fracture.is_transitioning(), 2.0)
+    _key(KEY_A, false)
+    _key(KEY_S, false)
+    var home: bool = await _wait_until(func() -> bool: return fracture.state == RealityFracture.State.CLEARED and not bool(_player.get("game_frozen")), 3.0)
+    _check(home and not bool(_player.get("in_3d_mode")), "walking into the open portal returns to 2.5D")
+    _check(absf(_player.global_position.x - entry_x) < 0.3 and absf(_player.global_position.z) < 0.001, "returned to the exact entry spot (x=%.2f)" % _player.global_position.x)
+    _check(player_health.current == player_health.max_health and is_equal_approx(energy.current, 4.0), "clearing the fracture heals fully and grants 3 blood (blood=%.1f)" % energy.current)
+    await _seconds(1.5)
+    var side_offset: Vector3 = cam.global_position - _player.global_position
+    _check(absf(side_offset.z - 22.0) < 1.0, "camera returns to side-view framing (offset=%s)" % side_offset)
+    _tap(KEY_E)
+    await _seconds(0.6)
+    _check(not bool(_player.get("in_3d_mode")) and not fracture.can_enter(), "a cleared fracture stays sealed")
     energy.regen_per_second = 0.25
 
 

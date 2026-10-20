@@ -10,6 +10,8 @@ extends CharacterBody3D
 ## Leash: the soldier never moves outside [patrol_min_x - leash_margin, patrol_max_x + leash_margin],
 ## so it cannot follow the player off a ledge. If it is ever knocked into a pit it returns home,
 ## because the level's exit depends on it being killable.
+## Unlocked (plane_locked = false, Reality Fracture arenas): it chases and strikes on X/Z and is
+## leashed to `leash_radius` around its home instead of the X range.
 
 signal defeated
 signal state_changed(state_name: String)
@@ -25,6 +27,8 @@ enum State { IDLE, PATROL, CHASE, ATTACK, HITSTUN, DEAD }
 @export var attack_range: float = 1.7
 @export var attack_cooldown: float = 0.5
 @export var leash_margin: float = 0.5
+## Free-movement leash (used when plane_locked is false); 0 disables it.
+@export var leash_radius: float = 0.0
 @export var kill_plane_y: float = -9.0
 @export var plane_locked: bool = true
 @export var gravity_force: float = 26.0
@@ -48,9 +52,11 @@ var _cooldown_left: float = 0.0
 var _body_material: StandardMaterial3D
 var _base_color: Color
 var _home: Vector3
+var _death_tween: Tween
 
 
 func _ready() -> void:
+    add_to_group(&"enemy")
     hurtbox.hit_received.connect(_on_hit_received)
     health.died.connect(_on_died)
     melee.phase_changed.connect(_on_attack_phase)
@@ -89,6 +95,30 @@ func set_ai_enabled(enabled: bool) -> void:
 func teleport_to(target: Vector3) -> void:
     global_position = target
     velocity = Vector3.ZERO
+
+
+func is_dead() -> bool:
+    return state == State.DEAD
+
+
+## Full reset used when an encounter is retried (e.g. the player fails a Reality Fracture).
+func revive_at_home() -> void:
+    if _death_tween and _death_tween.is_valid():
+        _death_tween.kill()
+    melee.cancel()
+    health.restore_full()
+    visual.position = Vector3.ZERO
+    visual.rotation = Vector3.ZERO
+    collision_layer = 1
+    collision_mask = 1
+    hurtbox.set_enabled(true)
+    contact_hitbox.activate()
+    telegraph_marker.visible = false
+    _stun_left = 0.0
+    _cooldown_left = 0.0
+    teleport_to(_home)
+    state = State.IDLE  # force a state_changed below even if it was already IDLE
+    _set_state(State.PATROL if ai_enabled else State.IDLE)
 
 
 func _physics_process(delta: float) -> void:
@@ -133,6 +163,16 @@ func _physics_process(delta: float) -> void:
 func _apply_leash() -> void:
     if state == State.HITSTUN or state == State.DEAD:
         return
+    if not plane_locked and leash_radius > 0.0:
+        var out: Vector3 = global_position - _home
+        out.y = 0.0
+        if out.length() >= leash_radius:
+            var dir: Vector3 = out.normalized()
+            var outward: float = velocity.x * dir.x + velocity.z * dir.z
+            if outward > 0.0:
+                velocity.x -= dir.x * outward
+                velocity.z -= dir.z * outward
+        return
     var x: float = global_position.x
     if (x <= patrol_min_x - leash_margin and velocity.x < 0.0) or (x >= patrol_max_x + leash_margin and velocity.x > 0.0):
         velocity.x = 0.0
@@ -163,6 +203,7 @@ func _patrol() -> void:
         _patrol_dir = -1.0
     facing = Vector3(_patrol_dir, 0.0, 0.0)
     velocity.x = _patrol_dir * patrol_speed
+    velocity.z = 0.0
 
 
 func _chase() -> void:
@@ -230,9 +271,9 @@ func _on_died() -> void:
     hurtbox.set_enabled(false)
     set_deferred(&"collision_layer", 0)
     set_deferred(&"collision_mask", 1)
-    var tween: Tween = create_tween()
-    tween.tween_property(visual, "rotation:z", -facing.x * PI * 0.5, 0.35)
-    tween.tween_property(visual, "position:y", -0.7, 0.8)
+    _death_tween = create_tween()
+    _death_tween.tween_property(visual, "rotation:x", PI * 0.5, 0.35)
+    _death_tween.tween_property(visual, "position:y", -0.7, 0.8)
     defeated.emit()
 
 

@@ -35,9 +35,9 @@ This list reflects **planned** work. Mark `[x]` only after tests recorded in `do
 - [x] Invalid activations cannot spend energy or apply effects. *(2026-10-20, TEST_RESULTS M4)*
 
 ## M5 — Real third-person arena
-- [ ] Smooth mode/camera transition with shared player state.
-- [ ] Free X/Z character locomotion, dodging, facing and depth-safe combat.
-- [ ] Enemy encounter with win/exit and return to correct 2.5D location.
+- [x] Smooth mode/camera transition with shared player state. *(2026-10-20, TEST_RESULTS M5)*
+- [x] Free X/Z character locomotion, dodging, facing and depth-safe combat. *(2026-10-20, TEST_RESULTS M5)*
+- [x] Enemy encounter with win/exit and return to correct 2.5D location. *(2026-10-20, TEST_RESULTS M5)*
 
 ## M6 — Vertical slice and shipping paths
 - [ ] Main menu, settings, pause, checkpoint, progression, 5–10 minute beginning-to-end flow.

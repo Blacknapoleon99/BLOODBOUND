@@ -57,3 +57,12 @@ M4 Bloodbound Cards: an AttackData-style `CardData` Resource; a blood-energy res
 
 ### Next action
 M5 real third-person arena: shared HP, energy and cards across the 2.5D↔3D transition; a smooth camera transition; free X/Z combat with an enemy (a Plagued Soldier with `plane_locked = false`); win, exit and return to the correct 2.5D spot.
+
+## 2026-10-20 — M5 Reality Fracture closed
+
+- New: `scripts/level/reality_fracture.gd` (chapel, guardian, portal, fade transitions, fail/clear rules).
+- Changed: `scripts/main.gd` (arena logic moved into the fracture, camera goal/snap helpers, fracture HUD), `scripts/enemies/plagued_soldier.gd` (`enemy` group, radius leash, `revive_at_home`, patrol z fix), `scripts/player.gd` (3D soft lock-on), `tests/gameplay_smoke.gd` (161 checks).
+- Evidence: `docs/TEST_RESULTS.md` (M5 run).
+
+### Next action
+M6 vertical slice: main menu (Start / Settings / Quit), pause, a settings screen (reduced gore, camera shake, hitstop), a real level progression pass toward 5–10 minutes, a Windows export preset and build, and a first Web export smoke test served over local HTTP and checked with Playwright.

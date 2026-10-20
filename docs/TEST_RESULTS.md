@@ -109,3 +109,19 @@
   - Blood Spear in range of the exposed stigmata: 2 blood spent, one projectile launched, and it deals 2 (8 → 6). The spent spear is removed.
 - Screenshot: `docs/screenshots/07_chained.png` (card hand, energy bar, chained hand with the stigmata exposed).
 - Limitations: test setups set blood energy directly with `BloodEnergy.set_amount`, but earning energy from melee hits is checked separately. Shield and Chains go through their key bindings; Spear is played through `CardSystem.play_slot`, which is the same call the key binding makes. Gamepad D-pad bindings are untested. Cards have no authored VFX yet, only the greybox spear and ward meshes.
+
+## M5 verification run (2026-10-20)
+
+- Godot `4.7.2.stable.official.ed1daf0bf`, Windows 11.
+- `tools/run_checks.ps1 -Godot godot_console` → exit 0. `tests/gameplay_smoke.gd` → **161/161** headless and 161/161 in a visible window (re-run after the veil was added). No script errors or warnings in the output.
+- Reality Fracture checks:
+  - Transition in: E at the gate starts the transition and freezes input. The fade reaches alpha 1.00 over the teleport and returns to 0. Control is restored in 3D.
+  - HP 4, blood 2.0 and the Grave Shield cooldown (5.3 s left) carry across unchanged. The camera eases to the 3D framing (offset y 5.81, z 11.50).
+  - Movement: W/S move in depth (−2.90 / +3.30 m), the depth position persists while strafing, and the 3D dodge follows input (−3.51 m in Z). E cannot leave while the guardian lives.
+  - Guardian AI on X/Z: PATROL → CHASE → ATTACK, chasing up to 2.96 m in depth. Its slash deals 1 damage, and knockback moves the player on both axes (Δx −0.96, Δz +0.72).
+  - Failure path: dying inside expels the player to the exact entry spot (x 13.21 → 13.21, z 0.000), healed. The guardian resets to full HP, the portal re-seals, and the fracture can be re-entered.
+  - Soft lock-on: with no input after facing +X, a light attack turns to face (0.21, 0, −0.98) and hits the guardian standing to the side. A heavy hit kills it and the portal opens.
+  - Exit: walking into the open portal returns the player to the exact entry spot, at full HP and +3 blood (1.0 → 4.0). The camera returns to side framing (z 22.0). The cleared fracture stays sealed.
+  - Z drift during 2.5D play stays 0 across all transitions.
+- Screenshots: `docs/screenshots/04_fracture.png` (chapel, shield ward, card cooldowns carried across), `05_fracture_cleared.png` (guardian down, portal lit).
+- Limitations: the death setup lowers player and guardian HP directly before the real killing blow, and combat test positions are set up by teleport. The camera has a fixed angle (no orbit or mouse look). Gamepad is untested. Nobody has hand-tested the camera for comfort.

@@ -62,3 +62,16 @@ An attack pressed while another is still playing is kept for 0.15 s and fires on
 ## DEC-015 — Seeded deck with stable slots
 
 `CardDeck` is a draw/hand/discard model with its own seeded RNG (Fisher–Yates). A played card's slot refills from the draw pile, and the discard pile reshuffles when the draw pile is empty. With the three-card starter deck, each card returns to its own slot, so hand positions stay stable. The seeded deal currently puts Grave Shield on 1, Ritual Chains on 2 and Blood Spear on 3. Larger decks work unchanged when deckbuilding arrives.
+
+## DEC-016 — Reality Fracture as a level node with a fade-covered mode swap
+
+`RealityFracture` owns the free-movement chapel, its guardian, the return portal and the transition. Entering and exiting run as a timed sequence: fade to black → teleport and flip `in_3d_mode` (camera snaps while the screen is black) → fade in, while the camera eases into its framing. Player input is frozen throughout, so nothing can act mid-teleport.
+- HP, blood energy, card hand and cooldowns carry across with no copying, because the same player node crosses over.
+- The return point is wherever the player pressed E, on Z=0.
+- Death inside expels the player there at full HP and resets the guardian, so the encounter can always be retried.
+- Clearing it heals the player, grants +3 blood and seals the fracture.
+- A dark veil behind the chapel hides the main level.
+
+## DEC-017 — 3D combat reuses 2.5D combat; two additions only
+
+The guardian is a stock Plagued Soldier with `plane_locked = false`. It is leashed by radius around its home instead of by an X range. Hitboxes, telegraph markers and knockback already worked on X/Z. The player gains a soft lock-on in 3D only: an attack with no movement input turns toward the nearest living enemy within 3.5 m. In 2.5D, facing remains fully manual.

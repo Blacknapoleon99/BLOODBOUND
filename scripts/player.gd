@@ -50,6 +50,8 @@ signal died
 @export var heavy_attack: AttackData
 @export var hurt_invulnerable_time: float = 0.8
 @export var attack_buffer_time: float = 0.15
+## 3D only: attacking with no movement input turns toward the nearest enemy within this range.
+@export var soft_lock_range: float = 3.5
 @export var health: Health
 @export var hurtbox: Hurtbox
 @export var melee: MeleeAttack
@@ -295,6 +297,30 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
     dodge_started.emit(_dodge_direction)
 
 
+## With no stick/keys held, aim the attack at the nearest living enemy in range (3D only).
+func _soft_lock_facing() -> void:
+    var input: Vector2 = Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+    if input.length() > 0.2:
+        return
+    var best: Node3D = null
+    var best_distance: float = soft_lock_range
+    for node: Node in get_tree().get_nodes_in_group(&"enemy"):
+        var enemy: Node3D = node as Node3D
+        if enemy == null or (enemy.has_method("is_dead") and enemy.call("is_dead")):
+            continue
+        var offset: Vector3 = enemy.global_position - global_position
+        offset.y = 0.0
+        if offset.length() < best_distance:
+            best = enemy
+            best_distance = offset.length()
+    if best:
+        var dir: Vector3 = best.global_position - global_position
+        dir.y = 0.0
+        _facing_3d = dir.normalized()
+        if absf(_facing_3d.x) > 0.01:
+            facing_direction = signf(_facing_3d.x)
+
+
 ## Drops dodge speed back to run speed so the burst does not turn into a long slide.
 func _end_dodge() -> void:
     var planar: Vector2 = Vector2(velocity.x, velocity.z).limit_length(move_speed)
@@ -309,6 +335,8 @@ func _try_attack(data: AttackData) -> void:
         _queued_attack = data
         _queued_left = attack_buffer_time
         return
+    if in_3d_mode:
+        _soft_lock_facing()
     if melee.start(data, get_facing_vector()):
         _buffer_left = 0.0
         attack_started.emit(data.id)
