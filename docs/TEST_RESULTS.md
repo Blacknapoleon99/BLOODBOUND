@@ -53,3 +53,23 @@
   - All M0 checks still pass. Max Z drift in 2.5D = 0.
 - Screenshot: `docs/screenshots/02_at_dummy.png` shows the active checkpoint banner and HUD.
 - Limitations: the gap falls are set up by teleporting above the gap. Gamepad bindings are registered but untested (no pad connected). Nobody has hand-tuned the feel yet.
+
+## M2 verification run (2026-10-20)
+
+- Godot `4.7.2.stable.official.ed1daf0bf`, Windows 11.
+- `tools/run_checks.ps1 -Godot godot_console` → exit 0. `tests/gameplay_smoke.gd` → **76/76** headless and 76/76 in a visible window. No script errors or warnings in the output.
+- Combat checks (frame = 1/60 s):
+  - Light attack phases match `player_light.tres` exactly: 6/6/14 frames. The hitbox is live only in ACTIVE (0 wrong frames). A whiff out of reach deals 0 damage.
+  - Heavy startup is 20 frames (matches data, over twice the light wind-up). Heavy deals 2 damage.
+  - Cancel rules: a dodge during STARTUP is ignored; a dodge during light RECOVERY cancels into the dodge.
+  - Soldier AI: patrols at boot → CHASE → ATTACK. The telegraph (glow plus red floor marker) starts 32 frames before the hit. The slash deals 1 damage, then the player gets hitstun, i-frames and ~1.4 m of knockback. A dodge timed into the next strike absorbs it (HP unchanged).
+  - Dying to the soldier revives the player at the checkpoint with full HP. Walking into the soldier deals contact damage (1, at most once per second).
+  - The soldier stops at its leash (8.54 vs 8.50) when chasing past its zone.
+  - Player hits: attacking while facing away misses; a light hit deals 1 damage plus HITSTUN plus knockback; heavy kills. The corpse loses collision and its hurtbox, and the level registers the defeat.
+  - Blood spray is red by default; with `GameSettings.reduced_gore` it's ash grey.
+- Bugs found and fixed during this run:
+  - Each attack phase ran one frame long because of float accumulation (`0.1 − 6/60 ≈ 1e-17`); fixed with an epsilon.
+  - The dodge kept 15 m/s after ending and slid ~2 m further (6 m total). It now ends at run speed (3.9 m total), and an M1 check guards it.
+  - The soldier could chase into a pit and softlock the exit. A leash plus return-home were added and tested.
+- Screenshots: `docs/screenshots/02_soldier_hit.png` (blood spray, HP pips), `03_soldier_dead.png`.
+- Limitations: test setups place combatants by teleport and toggle AI with `set_ai_enabled`, but every hit goes through the real hitbox → hurtbox → health path. The player-death setup lowers HP directly before the real killing blow. Hitstop, camera shake and blood readability are only checked by eye in screenshots. Gamepad is untested. Nobody has tuned it by hand yet.

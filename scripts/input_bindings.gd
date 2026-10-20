@@ -11,6 +11,7 @@ const KEYS: Dictionary = {
     &"move_back": [KEY_S, KEY_DOWN],
     &"jump": [KEY_SPACE],
     &"attack": [KEY_J],
+    &"heavy_attack": [KEY_L],
     &"dodge": [KEY_K, KEY_SHIFT],
     &"interact": [KEY_E],
     &"restart": [KEY_R],
@@ -19,6 +20,7 @@ const KEYS: Dictionary = {
 const PAD_BUTTONS: Dictionary = {
     &"jump": [JOY_BUTTON_A],
     &"attack": [JOY_BUTTON_X],
+    &"heavy_attack": [JOY_BUTTON_RIGHT_SHOULDER],
     &"dodge": [JOY_BUTTON_B],
     &"interact": [JOY_BUTTON_Y],
     &"restart": [JOY_BUTTON_START],

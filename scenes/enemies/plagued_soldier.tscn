@@ -1,0 +1,123 @@
+[gd_scene load_steps=22 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/plagued_soldier.gd" id="1_soldier"]
+[ext_resource type="Script" path="res://scripts/combat/health.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/combat/hurtbox.gd" id="3_hurtbox"]
+[ext_resource type="Script" path="res://scripts/combat/melee_attack.gd" id="4_melee"]
+[ext_resource type="Script" path="res://scripts/combat/hitbox.gd" id="5_hitbox"]
+[ext_resource type="Resource" path="res://resources/attacks/soldier_slash.tres" id="6_slash"]
+
+[sub_resource type="CapsuleShape3D" id="Shape_body"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="StandardMaterial3D" id="Mat_body"]
+albedo_color = Color(0.29, 0.34, 0.22, 1)
+roughness = 0.85
+
+[sub_resource type="CapsuleMesh" id="Mesh_body"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="StandardMaterial3D" id="Mat_head"]
+albedo_color = Color(0.62, 0.58, 0.48, 1)
+roughness = 0.9
+
+[sub_resource type="SphereMesh" id="Mesh_head"]
+radius = 0.24
+height = 0.48
+
+[sub_resource type="StandardMaterial3D" id="Mat_blade"]
+albedo_color = Color(0.45, 0.27, 0.16, 1)
+metallic = 0.6
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="Mesh_blade"]
+size = Vector3(0.08, 0.9, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="Mat_warning"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.95, 0.08, 0.05, 0.55)
+
+[sub_resource type="BoxMesh" id="Mesh_warning"]
+material = SubResource("Mat_warning")
+size = Vector3(1, 0.04, 1.4)
+
+[sub_resource type="CapsuleShape3D" id="Shape_hurt"]
+radius = 0.45
+height = 1.85
+
+[sub_resource type="CapsuleShape3D" id="Shape_contact"]
+radius = 0.5
+height = 1.6
+
+[sub_resource type="BoxShape3D" id="Shape_attack"]
+resource_local_to_scene = true
+size = Vector3(1, 1.5, 1.4)
+
+[node name="PlaguedSoldier" type="CharacterBody3D" node_paths=PackedStringArray("health", "hurtbox", "melee", "contact_hitbox", "visual", "telegraph_marker")]
+script = ExtResource("1_soldier")
+slash = ExtResource("6_slash")
+health = NodePath("Health")
+hurtbox = NodePath("Hurtbox")
+melee = NodePath("Melee")
+contact_hitbox = NodePath("ContactHitbox")
+visual = NodePath("Visual")
+telegraph_marker = NodePath("TelegraphMarker")
+
+[node name="BodyCollision" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_body")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Body" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 0.98, 0.17, 0, -0.17, 0.98, 0, 0, 0)
+material_override = SubResource("Mat_body")
+mesh = SubResource("Mesh_body")
+
+[node name="Head" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.82, -0.2)
+material_override = SubResource("Mat_head")
+mesh = SubResource("Mesh_head")
+
+[node name="Blade" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 0.87, -0.5, 0, 0.5, 0.87, 0, 0.25, -0.55)
+material_override = SubResource("Mat_blade")
+mesh = SubResource("Mesh_blade")
+
+[node name="TelegraphMarker" type="MeshInstance3D" parent="."]
+visible = false
+mesh = SubResource("Mesh_warning")
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 3
+
+[node name="Hurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health")]
+script = ExtResource("3_hurtbox")
+team = &"enemy"
+health = NodePath("../Health")
+
+[node name="Shape" type="CollisionShape3D" parent="Hurtbox"]
+shape = SubResource("Shape_hurt")
+
+[node name="ContactHitbox" type="Area3D" parent="."]
+script = ExtResource("5_hitbox")
+team = &"enemy"
+rehit_interval = 1.0
+start_active = true
+
+[node name="Shape" type="CollisionShape3D" parent="ContactHitbox"]
+shape = SubResource("Shape_contact")
+
+[node name="Melee" type="Node" parent="." node_paths=PackedStringArray("hitbox")]
+script = ExtResource("4_melee")
+hitbox = NodePath("../AttackHitbox")
+
+[node name="AttackHitbox" type="Area3D" parent="."]
+script = ExtResource("5_hitbox")
+team = &"enemy"
+
+[node name="Shape" type="CollisionShape3D" parent="AttackHitbox"]
+shape = SubResource("Shape_attack")

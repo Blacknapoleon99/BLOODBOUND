@@ -16,9 +16,9 @@ This list reflects **planned** work. Mark `[x]` only after tests recorded in `do
 - [x] One coherent traversal route, no softlocks. *(2026-10-20, TEST_RESULTS M1)*
 
 ## M2 — Combat
-- [ ] Modular hitbox/hurtbox/health/damage interface and state-driven attacks.
-- [ ] One real mobile enemy AI with readable telegraph, contact damage, damage reaction, defeat.
-- [ ] Blood, hit effects and optional reduced-gore switch.
+- [x] Modular hitbox/hurtbox/health/damage interface and state-driven attacks. *(2026-10-20, TEST_RESULTS M2)*
+- [x] One real mobile enemy AI with readable telegraph, contact damage, damage reaction, defeat. *(2026-10-20, TEST_RESULTS M2)*
+- [x] Blood, hit effects and optional reduced-gore switch. *(2026-10-20, TEST_RESULTS M2)*
 
 ## M3 — Hollow Bishop boss
 - [ ] Giant true 3D background presence.

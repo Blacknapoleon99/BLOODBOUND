@@ -29,3 +29,13 @@ M1 platformer quality: input map actions, coyote time, jump buffer, variable jum
 
 ### Next action
 M2 combat: hitbox/hurtbox/health components, a state-driven player attack with startup/active/recovery windows, and one patrolling enemy (plagued soldier) with telegraph → attack → recover → death. The enemy replaces the dummy, and the smoke test grows to match.
+
+## 2026-10-20 — M2 combat closed
+
+- New: `scripts/combat/` (Health, Hurtbox, Hitbox, DamageInfo, AttackData, MeleeAttack, HitFeedback), `scripts/game_settings.gd`, `resources/attacks/*.tres`, `scenes/enemies/plagued_soldier.tscn` + `scripts/enemies/plagued_soldier.gd`.
+- Changed: `scenes/player.tscn` (combat nodes), `scripts/player.gd` (light J / heavy L, hit reactions, death, dodge exit-speed fix), `scripts/main.gd` (soldier replaces the dummy, death → checkpoint revive, HP HUD, camera shake, solid arena obelisks), `scripts/input_bindings.gd` (heavy_attack), `tests/gameplay_smoke.gd` (76 checks).
+- Jev identified as TypeSafe AI's decision model, which is not an asset tool (DEC-008).
+- Evidence: `docs/TEST_RESULTS.md` (M2 run).
+
+### Next action
+M3 Hollow Bishop: a giant background boss with a phase state machine and deterministic debug triggers. It needs two depth attacks that travel into the Z=0 plane with telegraphed threat volumes, one causeway-breaking attack with a recoverable route, a weak-point window, and a boss HP bar. Asset generation stays blocked (Tripo has 0 credits), so it uses greybox geometry.

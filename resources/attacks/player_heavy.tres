@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AttackData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/attack_data.gd" id="1_attack"]
+
+[resource]
+script = ExtResource("1_attack")
+id = &"player_heavy"
+startup = 0.32
+active = 0.12
+recovery = 0.4
+damage = 2
+category = &"heavy"
+knockback = 7.0
+knockback_up = 3.0
+hitstun = 0.5
+reach_offset = 1.1
+reach = 1.6
+width = 1.2
+height = 1.6
+move_multiplier = 0.0
+lunge_speed = 3.0
+dodge_cancel_recovery = false

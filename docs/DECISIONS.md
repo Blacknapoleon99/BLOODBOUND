@@ -31,3 +31,11 @@ The starter's second gap was 0.5 m, narrower than the 0.7 m player capsule, so i
 ## DEC-008 — Jev identified; not part of the asset pipeline (supersedes DEC-004)
 
 The user identified "Jev AI" as TypeSafe AI's Jev (https://typesafe.ai/blog/introducing-system-one-models-and-jev). It is an early-access "System One" model that returns typed decisions with calibrated probabilities (classify, route, score, extract). It does not generate images, animation, 3D or audio. Access is API-only (docs.typesafe.ai, console.typesafe.ai), waitlisted, and billed per input token. The asset pipeline stays Tripo3D + Blender. Jev is not integrated. Any later experiment (for example enemy or boss decision-making) needs explicit user approval, because it costs money and sends data to a third party.
+
+## DEC-009 — One MeleeAttack phase machine for every attacker
+
+The player and the enemies share `MeleeAttack` (STARTUP → ACTIVE → RECOVERY) driven by `AttackData` resources. An enemy's telegraph *is* its STARTUP phase, so the visual warning and the real hit window cannot drift apart. Hitboxes compute knockback per target, pointing away from the attacker. Hurtboxes ask their owner's `is_invulnerable()`, so dodge i-frames and post-hit i-frames need no special cases. Hit feedback (spray, hitstop, shake) runs from `Hurtbox` through `HitFeedback`, which is presentation-only and respects `GameSettings`.
+
+## DEC-010 — Enemies are leashed to their zone
+
+Soldiers never move beyond `patrol_min/max_x ± leash_margin` and return home if knocked into a pit. The level exit depends on killing the soldier, so an enemy lost in a gap would softlock the run.

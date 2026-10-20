@@ -3,15 +3,16 @@ extends Node3D
 ## Goal: easily replaceable greybox; supports side-view and one 3D practice area.
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/player.tscn")
+const SOLDIER_SCENE: PackedScene = preload("res://scenes/enemies/plagued_soldier.tscn")
 const SPAWN_POSITION: Vector3 = Vector3(-16.0, 2.0, 0.0)
-const ENEMY_POSITION: Vector3 = Vector3(5.0, 0.95, 0.0)
+const ENEMY_POSITION: Vector3 = Vector3(5.0, 1.0, 0.0)
 const GATE_POSITION: Vector3 = Vector3(13.0, 1.0, 0.0)
 const ARENA_SPAWN: Vector3 = Vector3(34.0, 2.0, 0.0)
 const CHECKPOINT_POSITION: Vector3 = Vector3(-4.5, 1.2, 0.0)
 
 var player: CharacterBody3D
 var camera: Camera3D
-var dummy: Node3D
+var enemy: PlaguedSoldier
 var checkpoint: Checkpoint
 var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
@@ -20,16 +21,18 @@ var arena_visited: bool = false
 var game_won: bool = false
 var _message: String = ""
 var _message_until: float = 0.0
+var _trauma: float = 0.0
 
 
 func _ready() -> void:
     InputBindings.ensure_defaults()
+    add_to_group(&"camera_shaker")
     _build_greybox()
     player = PLAYER_SCENE.instantiate() as CharacterBody3D
     player.add_to_group(&"player")
     add_child(player)
     player.global_position = SPAWN_POSITION
-    player.connect("attack_requested", Callable(self, "_on_player_attack"))
+    player.connect("died", _on_player_died)
 
     camera = Camera3D.new()
     camera.name = "SideViewOrArenaCamera"
@@ -51,7 +54,7 @@ func _ready() -> void:
     hud.add_theme_constant_override("shadow_offset_x", 2)
     hud.add_theme_constant_override("shadow_offset_y", 2)
     canvas.add_child(hud)
-    _flash("Greybox foundation: defeat the crimson dummy, explore the 3D gate, reach EXIT.", 7.0)
+    _flash("Greybox foundation: defeat the plagued soldier, explore the 3D gate, reach EXIT.", 7.0)
 
 
 func _process(delta: float) -> void:
@@ -62,6 +65,7 @@ func _process(delta: float) -> void:
     var goal: Vector3 = player.global_position + offset
     camera.global_position = camera.global_position.lerp(goal, minf(1.0, 4.0 * delta))
     camera.look_at(player.global_position + Vector3(0.0, 1.2, 0.0), Vector3.UP)
+    _apply_shake(delta)
 
     if player.global_position.y < -9.0:
         _respawn()
@@ -72,18 +76,20 @@ func _process(delta: float) -> void:
             player.set("game_frozen", true)
             _flash("VICTORY — prototype traversal complete. Press R to restart.", 999999.0)
         else:
-            _flash("Defeat the crimson dummy (press J near it while facing it).", 2.0)
+            _flash("The plagued soldier still stands. Defeat it first.", 2.0)
 
     if _message_until > 0.0:
         _message_until -= delta
         if _message_until <= 0.0:
             _message = ""
 
-    var state: String = "3D ARENA — WASD move / SPACE jump / K dodge / E return" if in_arena else "2.5D — A/D move / SPACE jump / K dodge / J attack / E near amber gate"
-    var objective: String = "ENEMY: DEFEATED" if not enemy_alive else "ENEMY: ACTIVE"
+    var state: String = "3D ARENA — WASD move / SPACE jump / J light / L heavy / K dodge / E return" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / E near amber gate"
+    var player_health: Health = player.get("health")
+    var hp: String = "HP " + "■".repeat(player_health.current) + "□".repeat(player_health.max_health - player_health.current)
+    var objective: String = "SOLDIER: DEFEATED" if not enemy_alive else "SOLDIER: %d HP" % enemy.health.current
     var arena_state: String = "ARENA: VISITED" if arena_visited else "ARENA: OPTIONAL"
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
-    hud.text = "BLOODBOUND — GREYBOX STARTER (not full game)\n" + state + "\n" + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
+    hud.text = "BLOODBOUND — GREYBOX STARTER (not full game)\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -107,19 +113,27 @@ func _unhandled_input(event: InputEvent) -> void:
         _flash("Approach the amber pillar at x = 13 to enter the 3D arena.", 2.0)
 
 
-func _on_player_attack(origin: Vector3, facing_direction: float) -> void:
-    if bool(player.get("in_3d_mode")):
-        _flash("3D combat is planned, not implemented in this bootstrap.", 2.0)
-        return
-    if not enemy_alive:
-        return
-    var distance_x: float = ENEMY_POSITION.x - origin.x
-    if absf(distance_x) < 2.0 and absf(ENEMY_POSITION.y - origin.y) < 1.7 and (distance_x * facing_direction) > 0.0:
-        enemy_alive = false
-        dummy.visible = false
-        _flash("Dummy defeated! Head right to the pale EXIT marker.", 4.0)
-    else:
-        _flash("Miss! Face the red dummy and attack from nearby.", 1.0)
+func _on_enemy_defeated() -> void:
+    enemy_alive = false
+    _flash("The plagued soldier falls. Head right to the pale EXIT marker.", 4.0)
+
+
+func _on_player_died() -> void:
+    var target: Vector3 = ARENA_SPAWN if bool(player.get("in_3d_mode")) else respawn_point
+    player.call("revive_at", target)
+    _flash("You were slain — restored at the last checkpoint.", 3.5)
+
+
+## Called through the "camera_shaker" group by HitFeedback.
+func add_trauma(amount: float) -> void:
+    _trauma = minf(1.0, _trauma + amount)
+
+
+func _apply_shake(delta: float) -> void:
+    _trauma = maxf(0.0, _trauma - 2.2 * delta)
+    var power: float = _trauma * _trauma * 0.35 * GameSettings.camera_shake
+    camera.h_offset = randf_range(-1.0, 1.0) * power
+    camera.v_offset = randf_range(-1.0, 1.0) * power
 
 
 func _respawn() -> void:
@@ -178,19 +192,18 @@ func _build_greybox() -> void:
     checkpoint.activated.connect(_on_checkpoint_activated)
     add_child(checkpoint)
 
-    dummy = Node3D.new()
-    dummy.name = "OneHitCrimsonPracticeDummy"
-    dummy.position = ENEMY_POSITION
-    add_child(dummy)
-    _make_visual("Practice dummy mesh", Vector3.ZERO, Vector3(0.75, 1.9, 0.7), Color(0.76, 0.12, 0.22), dummy)
+    enemy = SOLDIER_SCENE.instantiate() as PlaguedSoldier
+    enemy.position = ENEMY_POSITION
+    enemy.defeated.connect(_on_enemy_defeated)
+    add_child(enemy)
 
     _make_visual("Arena entry — amber", Vector3(13.0, 2.0, -0.5), Vector3(0.45, 4.0, 0.55), Color(0.95, 0.54, 0.12))
     _make_visual("Exit marker", Vector3(17.8, 2.0, -0.7), Vector3(0.6, 4.0, 0.6), Color(0.72, 0.88, 0.96))
 
     # Separate 3D training platform. Camera/motor are the same player nodes.
     _make_solid("Free-movement arena", Vector3(35.0, -0.5, 0.0), Vector3(14.0, 1.0, 14.0), Color(0.20, 0.17, 0.25))
-    _make_visual("Arena obelisk", Vector3(38.0, 1.6, -3.0), Vector3(1.2, 3.2, 1.2), Color(0.35, 0.23, 0.39))
-    _make_visual("Arena obelisk B", Vector3(32.0, 1.6, 3.0), Vector3(1.2, 3.2, 1.2), Color(0.28, 0.25, 0.38))
+    _make_solid("Arena obelisk", Vector3(38.0, 1.6, -3.0), Vector3(1.2, 3.2, 1.2), Color(0.35, 0.23, 0.39))
+    _make_solid("Arena obelisk B", Vector3(32.0, 1.6, 3.0), Vector3(1.2, 3.2, 1.2), Color(0.28, 0.25, 0.38))
 
 
 func _make_solid(label: String, center: Vector3, size: Vector3, color: Color) -> void:

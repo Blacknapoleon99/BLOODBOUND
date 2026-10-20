@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AttackData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/attack_data.gd" id="1_attack"]
+
+[resource]
+script = ExtResource("1_attack")
+id = &"soldier_slash"
+startup = 0.55
+active = 0.12
+recovery = 0.6
+damage = 1
+category = &"melee"
+knockback = 6.0
+knockback_up = 3.0
+hitstun = 0.35
+reach_offset = 1.0
+reach = 1.4
+width = 1.0
+height = 1.5
+move_multiplier = 0.0
+lunge_speed = 2.0
+dodge_cancel_recovery = false
