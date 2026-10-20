@@ -7,8 +7,12 @@ extends Node3D
 ##   DORMANT → INTRO (rises, `intro_time`) → PURSUIT (stalks the approach, single Bone Lances every
 ##   `pursuit_interval` s, cannot be damaged, no HP bar) → begin_fight() →
 ##   PROCESSION (HP > collapse_at): Hand Slam / Bone Lances
-##   → COLLAPSE (HP <= collapse_at): adds Sunder, a slam that breaks the causeway segment it hits
-##   → COVENANT (HP <= covenant_at): faster cadence, longer weak-point windows → DEFEATED (HP 0).
+##   → COLLAPSE (HP <= collapse_at): + Sunder (breaks the causeway), Censer Sweep, Grasping Dead
+##   → COVENANT (HP <= covenant_at): + Requiem Beam; faster, longer weak-point windows
+##   → UNMAKING (HP <= unmaking_at): desperation — relentless, but the stigmata stays open longest
+##   → DEFEATED (HP 0).
+## Entering a new fight phase triggers a ROAR (`roar_time` s): the current attack is dropped, the
+## Bishop shudders and starts nothing, and the level shows the phase title.
 ##
 ## Attacks (all telegraphed on the Z=0 plane before anything can hurt):
 ##   Hand Slam: the hand hovers at depth over a fixed x with a red floor plate (`slam_telegraph` s),
@@ -16,6 +20,9 @@ extends Node3D
 ##     its stigmata exposed (`weak_window` s) — the only time the Bishop can be damaged.
 ##   Sunder: Hand Slam with a longer telegraph that also asks the arena to break that segment.
 ##   Bone Lances: up to three lances thrown from depth at fixed x lanes, each with a red column.
+##   Censer Sweep (CenserSweep): knee-high censer sweeps the causeway — jump it.
+##   Requiem Beam (RequiemBeam): heart beam sweeps the causeway too fast to outrun — dodge through.
+##   Grasping Dead: raises up to `max_minions` Husks (weak Plagued Soldiers) onto the causeway.
 ##
 ## Ritual Chains (card): while a Slam/Sunder is still aiming or hovering (before the descent),
 ##   `interrupt_with_chains()` cancels it — the hand is dragged down to its marked spot with no
@@ -31,19 +38,26 @@ signal sunder_impact(x: float)
 signal chained
 signal defeated
 
-enum Phase { DORMANT, INTRO, PURSUIT, PROCESSION, COLLAPSE, COVENANT, DEFEATED }
+enum Phase { DORMANT, INTRO, PURSUIT, PROCESSION, COLLAPSE, COVENANT, UNMAKING, DEFEATED }
+
+const SOLDIER_SCENE: PackedScene = preload("res://scenes/enemies/plagued_soldier.tscn")
+const ACTOR_ATTACKS: Array[StringName] = [&"censer", &"beam"]
+const ALL_ATTACKS: Array[StringName] = [&"slam", &"sunder", &"lance", &"lance_volley", &"censer", &"beam", &"summon"]
 
 const PHASE_TITLES: Dictionary = {
     Phase.PROCESSION: "I · THE PROCESSION",
     Phase.COLLAPSE: "II · THE COLLAPSE",
     Phase.COVENANT: "III · THE COVENANT",
+    Phase.UNMAKING: "IV · THE UNMAKING",
 }
 
-## Tuned for the 3-hit combo (2026-10-20): optimal held-combo spam deals ~9 per weak-point
-## window, so 60 HP is at least six windows; a typical player (travel time, spears) needs ~8-10.
-@export var max_health: int = 60
-@export var collapse_at: int = 40
-@export var covenant_at: int = 18
+## Optimal held-combo spam deals ~9 per weak-point window, so 90 HP is at least ten windows of
+## pure melee across four phases; spears, Epitaph and Husk blood shorten it for good play.
+@export var max_health: int = 90
+@export var collapse_at: int = 65
+@export var covenant_at: int = 35
+@export var unmaking_at: int = 12
+@export var max_minions: int = 2
 @export var depth: float = -22.0
 @export var min_x: float = 22.0
 @export var max_x: float = 42.0
@@ -58,6 +72,9 @@ const PHASE_TITLES: Dictionary = {
 @export var impact_time: float = 0.12
 @export var weak_window: float = 2.5
 @export var covenant_weak_window: float = 4.0
+@export var unmaking_weak_window: float = 5.0
+@export var roar_time: float = 1.8
+@export var summon_time: float = 1.2
 @export var retract_time: float = 0.6
 @export var lance_speed: float = 16.0
 @export var lance_spacing: float = 0.5
@@ -85,6 +102,11 @@ var _heart_material: StandardMaterial3D
 var _rest_y: float = 0.0
 var _chain_from: Vector3
 var _chain_window: float = 3.0
+var _actor: Node3D
+var _roar_left: float = 0.0
+var _heart: MeshInstance3D
+var _summon_spots: Array[float] = []
+var _summon_markers: Array[MeshInstance3D] = []
 
 
 func _ready() -> void:
@@ -117,7 +139,19 @@ func phase_title() -> String:
 
 
 func is_active() -> bool:
-    return phase in [Phase.PROCESSION, Phase.COLLAPSE, Phase.COVENANT]
+    return phase in [Phase.PROCESSION, Phase.COLLAPSE, Phase.COVENANT, Phase.UNMAKING]
+
+
+func is_roaring() -> bool:
+    return _roar_left > 0.0
+
+
+func minions() -> Array[Node]:
+    return get_tree().get_nodes_in_group(&"bishop_minion").filter(func(m: Node) -> bool: return not m.is_queued_for_deletion() and not bool(m.call("is_dead")))
+
+
+func attack_actor() -> Node3D:
+    return _actor if is_instance_valid(_actor) else null
 
 
 func is_attacking() -> bool:
@@ -149,8 +183,9 @@ func set_ai_enabled(enabled: bool) -> void:
     ai_enabled = enabled
 
 
-## Starts `attack` (&"slam", &"sunder", &"lance", &"lance_volley") aimed at `x` right away.
+## Starts any attack in ALL_ATTACKS aimed at `x` right away (ends a roar early).
 func debug_attack(attack: StringName, x: float) -> bool:
+    _roar_left = 0.0
     return _start_attack(attack, x)
 
 
@@ -161,6 +196,8 @@ func silence(seconds: float) -> void:
     if not (is_active() or phase == Phase.PURSUIT):
         return
     var cancellable: bool = can_be_interrupted() or ((_attack == &"lance" or _attack == &"lance_volley") and _lance_index < _lance_plan.size())
+    cancellable = cancellable or (_attack in ACTOR_ATTACKS and attack_actor() != null and bool(_actor.call("is_telegraphing")))
+    cancellable = cancellable or (_attack == &"summon" and _t < summon_time)
     if cancellable:
         _cancel_attack()
     _cooldown = maxf(_cooldown, seconds)
@@ -188,7 +225,13 @@ func interrupt_with_chains(window: float) -> bool:
 ## Called by the level when the player respawns: drop the current attack and give breathing room.
 func on_player_respawn() -> void:
     _cancel_attack()
+    clear_minions()
     _cooldown = 2.0
+
+
+func clear_minions() -> void:
+    for minion: Node in get_tree().get_nodes_in_group(&"bishop_minion"):
+        minion.queue_free()
 
 
 # --- Loop ---------------------------------------------------------------------
@@ -209,6 +252,16 @@ func _physics_process(delta: float) -> void:
             _update_arm()
             return
 
+    if _roar_left > 0.0:
+        _roar_left -= delta
+        # Shudder in place; nothing new starts until the roar ends.
+        position.x += randf_range(-0.08, 0.08)
+        hand.global_position = hand.global_position.move_toward(_hand_rest(), 10.0 * delta)
+        get_tree().call_group(&"camera_shaker", &"add_trauma", 0.6 * delta)
+        _update_arm()
+        _pulse_heart()
+        return
+
     var player: Node3D = _engaged_player()
     if player != null and not is_attacking():
         position.x = move_toward(position.x, clampf(player.global_position.x, min_x, max_x), 2.5 * delta)
@@ -218,6 +271,10 @@ func _physics_process(delta: float) -> void:
             _tick_slam(delta)
         elif _attack == &"chained":
             _tick_chained(delta)
+        elif _attack in ACTOR_ATTACKS:
+            _tick_actor(delta)
+        elif _attack == &"summon":
+            _tick_summon(delta)
         else:
             _tick_lances(delta)
     else:
@@ -248,11 +305,16 @@ func _next_pattern_attack() -> StringName:
     var pattern: Array = [&"slam", &"lance_volley"]
     match phase:
         Phase.COLLAPSE:
-            pattern = [&"sunder", &"lance_volley", &"slam"]
+            pattern = [&"summon", &"sunder", &"censer", &"lance_volley", &"slam"]
         Phase.COVENANT:
-            pattern = [&"slam", &"lance_volley", &"sunder"]
+            pattern = [&"summon", &"beam", &"slam", &"censer", &"lance_volley", &"sunder"]
+        Phase.UNMAKING:
+            pattern = [&"beam", &"slam", &"censer", &"lance_volley", &"slam"]
     var attack: StringName = pattern[_pattern_index % pattern.size()]
     _pattern_index += 1
+    if attack == &"summon" and minions().size() >= max_minions:
+        attack = pattern[_pattern_index % pattern.size()]
+        _pattern_index += 1
     return attack
 
 
@@ -262,7 +324,9 @@ func _start_attack(attack: StringName, x: float) -> bool:
     var pursuit_lance: bool = phase == Phase.PURSUIT and attack == &"lance"
     if not is_active() and not pursuit_lance:
         return false
-    if attack not in [&"slam", &"sunder", &"lance", &"lance_volley"]:
+    if attack not in ALL_ATTACKS:
+        return false
+    if attack == &"summon" and minions().size() >= max_minions:
         return false
     _attack = attack
     _t = 0.0
@@ -273,13 +337,46 @@ func _start_attack(attack: StringName, x: float) -> bool:
     elif attack == &"lance_volley":
         _lance_plan = [x, x - 3.5, x + 3.5]
     _lance_index = 0
+    if attack in ACTOR_ATTACKS:
+        # Sweep from the far end toward (and past) the player.
+        var left: float = min_x - 3.5
+        var right: float = max_x + 3.5
+        var start_x: float = right if x - left < right - x else left
+        var end_x: float = left if start_x == right else right
+        _actor = CenserSweep.create(self, start_x, end_x) if attack == &"censer" else RequiemBeam.create(_heart, start_x, end_x)
+        add_child(_actor)
+    elif attack == &"summon":
+        _summon_spots = []
+        for offset: float in [-4.0, 4.0]:
+            _summon_spots.append(clampf(x + offset, min_x - 3.0, max_x + 3.0))
+        for spot: float in _summon_spots:
+            var marker: MeshInstance3D = MeshInstance3D.new()
+            var mesh: CylinderMesh = CylinderMesh.new()
+            mesh.top_radius = 0.8
+            mesh.bottom_radius = 0.8
+            mesh.height = 0.04
+            marker.mesh = mesh
+            marker.material_override = BishopHand._warning_material()
+            marker.top_level = true
+            add_child(marker)
+            marker.global_position = Vector3(spot, 0.03, 0.0)
+            _summon_markers.append(marker)
     attack_started.emit(attack)
     return true
 
 
 func _finish_attack() -> void:
     _attack = &""
-    _cooldown = 1.0 if phase == Phase.COVENANT else (1.5 if phase == Phase.COLLAPSE else 1.8)
+    _actor = null
+    match phase:
+        Phase.UNMAKING:
+            _cooldown = 0.7
+        Phase.COVENANT:
+            _cooldown = 1.0
+        Phase.COLLAPSE:
+            _cooldown = 1.5
+        _:
+            _cooldown = 1.8
     if phase == Phase.PURSUIT:
         _cooldown = pursuit_interval - 1.9  # a lance attack itself lasts ~1.9 s
 
@@ -292,6 +389,10 @@ func _cancel_attack() -> void:
         weak_point_changed.emit(false)
     for lance: Node in get_tree().get_nodes_in_group(&"boss_lance"):
         lance.queue_free()
+    if attack_actor() != null:
+        _actor.call("cancel")
+    _actor = null
+    _clear_summon_markers()
     _attack = &""
 
 
@@ -299,7 +400,11 @@ func _cancel_attack() -> void:
 
 func _slam_timeline() -> PackedFloat32Array:
     var telegraph: float = sunder_telegraph if _attack == &"sunder" else slam_telegraph
-    var weak: float = covenant_weak_window if phase == Phase.COVENANT else weak_window
+    var weak: float = weak_window
+    if phase == Phase.COVENANT:
+        weak = covenant_weak_window
+    elif phase == Phase.UNMAKING:
+        weak = unmaking_weak_window
     var t0: float = aim_time
     var t1: float = t0 + telegraph
     var t2: float = t1 + descent_time
@@ -373,6 +478,59 @@ func _tick_chained(delta: float) -> void:
         _finish_attack()
 
 
+# --- Censer / Beam actors and Grasping Dead -------------------------------------
+
+func _tick_actor(delta: float) -> void:
+    _t += delta
+    # The arm hangs back while the actor (censer, beam) does the work.
+    hand.global_position = hand.global_position.move_toward(_hand_rest(), 10.0 * delta)
+    if attack_actor() == null or bool(_actor.get("done")):
+        _finish_attack()
+
+
+func _tick_summon(delta: float) -> void:
+    _t += delta
+    _heart_material.emission = Color(0.6, 1.0, 0.7) * (1.0 + sin(_t * 20.0))
+    if _t >= summon_time and not _summon_spots.is_empty():
+        for spot: float in _summon_spots:
+            if minions().size() < max_minions:
+                _spawn_husk(spot)
+        _summon_spots.clear()
+        _clear_summon_markers()
+    if _t >= summon_time + 0.3:
+        _finish_attack()
+
+
+## A Husk: a weak, pale Plagued Soldier clawing up from the causeway (2 HP, no poise, slower).
+func _spawn_husk(x: float) -> void:
+    var husk: PlaguedSoldier = SOLDIER_SCENE.instantiate() as PlaguedSoldier
+    husk.name = "Husk"
+    husk.add_to_group(&"bishop_minion")
+    husk.plane_locked = true
+    # Husks roam the whole arena (a tight leash made them hover out of reach instead of fighting).
+    husk.patrol_min_x = min_x - 3.0
+    husk.patrol_max_x = max_x + 3.0
+    husk.aggro_range = 9.0
+    husk.chase_speed = 2.6
+    husk.attack_cooldown = 1.2
+    husk.poise_max = 1
+    (husk.get_node("Health") as Health).max_health = 2
+    get_parent().add_child(husk)
+    husk.global_position = Vector3(x, 1.0, 0.0)
+    husk.set("_home", husk.position)
+    var visual: Node3D = husk.get("visual")
+    visual.scale = Vector3(0.85, 0.85, 0.85)
+    husk.set("_base_color", Color(0.55, 0.52, 0.45))
+    husk.defeated.connect(func() -> void: husk.get_tree().create_timer(1.5).timeout.connect(husk.queue_free))
+
+
+func _clear_summon_markers() -> void:
+    for marker: MeshInstance3D in _summon_markers:
+        if is_instance_valid(marker):
+            marker.queue_free()
+    _summon_markers.clear()
+
+
 # --- Bone Lances ---------------------------------------------------------------
 
 func _tick_lances(delta: float) -> void:
@@ -395,6 +553,8 @@ func _tick_lances(delta: float) -> void:
 func _phase_for_health() -> Phase:
     if health.current <= 0:
         return Phase.DEFEATED
+    if health.current <= unmaking_at:
+        return Phase.UNMAKING
     if health.current <= covenant_at:
         return Phase.COVENANT
     if health.current <= collapse_at:
@@ -408,9 +568,13 @@ func _on_health_changed(_current: int, _maximum: int) -> void:
     var next: Phase = _phase_for_health()
     if next == Phase.DEFEATED:
         _cancel_attack()
+        clear_minions()
+        _roar_left = 0.0
         _set_phase(Phase.DEFEATED)
         defeated.emit()
     elif next != phase:
+        _cancel_attack()
+        _roar_left = roar_time
         _set_phase(next)
 
 
@@ -461,6 +625,7 @@ func _build_body() -> void:
     _heart_material.emission_enabled = true
     _heart_material.emission = Color(0.6, 0.03, 0.06)
     var heart: MeshInstance3D = MeshInstance3D.new()
+    _heart = heart
     heart.name = "Heart"
     var heart_mesh: SphereMesh = SphereMesh.new()
     heart_mesh.radius = 0.9

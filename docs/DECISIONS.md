@@ -132,3 +132,16 @@ Playtester wants a roguelike side-scroller: choose cards before the run from a r
 - **Blood Altars** (x 16.8 and 40.7) and a cleared Reality Fracture open `CardOfferOverlay`: pause, pick 1 of 3 or take nothing. The card is added at a random point in the draw pile. The hand stays 3 slots and rotates through the growing deck.
 - **New cards:** Hemorrhage Pact (HP for blood; answers blood starvation), Epitaph (delayed spike, 4 damage, breaks poise), Ashen Choir (summoned shard phantom), Bell of Silence (cancels wind-ups, blocks new attacks for 4 s; the Bishop is always in reach), Transfusion (heal). New refusal reasons: `too_weak` and `full_health`.
 - Player-facing reference: `docs/CARDS.md`.
+
+## DEC-025 — A bigger Hollow Bishop: four phases, roars, three new attacks (2026-10-21)
+
+Playtester: give the Bishop more HP, more mechanics, abilities and phases.
+- **HP 90.** Phases by HP: I Procession (>65), II Collapse (≤65), III Covenant (≤35), IV **Unmaking** (≤12), with weak windows of 2.5 / 2.5 / 4 / 5 s.
+- **Roar:** entering a new fight phase drops the current attack. The Bishop then shudders for 1.8 s and starts nothing, and the level shows a banner ("THE HOLLOW BISHOP — II · THE COLLAPSE"). `debug_attack` ends a roar (tests).
+- **New attacks**, each with a distinct answer and all telegraphed on the play plane:
+  - **Censer Sweep** (`CenserSweep`, II+): a red band along the causeway while the censer swings in from depth to knee height, then it sweeps at 16 m/s. Jump it (it reaches ~1.35 m) or dodge through it. 1 damage, category `sweep`.
+  - **Requiem Beam** (`RequiemBeam`, III+): a heart charge with a causeway line and a start pillar, then a sweep at 18 m/s, too fast to outrun. Dodge through it, toward the beam. 2 damage, category `beam`.
+  - **Grasping Dead** (II+): red marks show where 2 Husks will rise (2 HP, poise 1, roaming the arena). At most 2 at a time. They're cleared on player respawn and on the Bishop's defeat.
+- **Patterns:** II summon/sunder/censer/volley/slam; III summon/beam/slam/censer/volley/sunder; IV beam/slam/censer/volley/slam with a 0.7 s cooldown.
+- Silence (Bell of Silence) also cancels a censer or beam still telegraphing, and a summon still rising.
+- Fix found by test: Husks were first leashed ±3 m around their spawn, so they hovered out of reach. They now roam the whole arena.

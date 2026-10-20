@@ -1463,6 +1463,92 @@ func _m7_altar_and_new_card_checks() -> void:
     energy.regen_per_second = 0.25
 
 
+## Step 3: the bigger Bishop's new attacks (debug-triggered so each answer can be checked).
+func _m8_new_attack_checks(boss: HollowBishop) -> void:
+    var energy: BloodEnergy = _energy()
+    # Censer Sweep: knee-high, so standing gets hit and a well-timed jump clears it.
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
+    await _seconds(0.6)
+    var hp0: int = _player_hp()
+    _check(boss.debug_attack(&"censer", _bx(30.2)), "Censer Sweep starts")
+    var censer: CenserSweep = boss.attack_actor() as CenserSweep
+    _check(censer != null and censer.is_telegraphing(), "the censer telegraphs (red band along the causeway) before sweeping")
+    await _seconds(0.9)
+    await _shot("11_censer")
+    await _boss_idle(boss)
+    _check(_player_hp() == hp0 - 1, "standing in the censer's path costs 1 HP (%d → %d)" % [hp0, _player_hp()])
+    await _seconds(1.0)
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
+    await _seconds(0.6)
+    boss.debug_attack(&"censer", _bx(30.2))
+    censer = boss.attack_actor() as CenserSweep
+    await _wait_until(func() -> bool: return censer == null or not is_instance_valid(censer) or (not censer.is_telegraphing() and absf(censer.censer_position().x - _player.global_position.x) < 5.0), 4.0)
+    _key(KEY_SPACE, true)
+    await _seconds(0.5)
+    _key(KEY_SPACE, false)
+    await _boss_idle(boss)
+    _check(_player_hp() == 5, "jumping over the censer avoids it (hp=%d)" % _player_hp())
+
+    # Requiem Beam: too fast to outrun; standing costs 2, dodging through costs nothing.
+    await _seconds(0.8)
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
+    await _seconds(0.4)
+    hp0 = _player_hp()
+    _check(boss.debug_attack(&"beam", _bx(30.2)), "Requiem Beam starts")
+    await _seconds(1.5)
+    await _shot("12_requiem_beam")
+    await _boss_idle(boss)
+    _check(_player_hp() == hp0 - 2, "standing in the beam's sweep costs 2 HP (%d → %d)" % [hp0, _player_hp()])
+    await _seconds(1.0)
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
+    await _seconds(0.6)
+    boss.debug_attack(&"beam", _bx(30.2))
+    var beam: RequiemBeam = boss.attack_actor() as RequiemBeam
+    _player.set("facing_direction", signf(beam.from_x - _player.global_position.x))  # dodge *through* it, toward the beam
+    await _wait_until(func() -> bool: return beam == null or not is_instance_valid(beam) or (not beam.is_telegraphing() and absf(beam.beam_x() - _player.global_position.x) < 2.2), 4.0)
+    _tap(KEY_K)
+    await _boss_idle(boss)
+    _check(_player_hp() == 5, "dodging through the beam avoids it (hp=%d)" % _player_hp())
+
+    # Bell of Silence (or any silence) cancels a censer still in its telegraph.
+    await _seconds(0.8)
+    boss.debug_attack(&"censer", _bx(30.2))
+    await _seconds(0.3)
+    boss.silence(4.0)
+    await _frames(3)
+    _check(not boss.is_attacking() and root.get_tree().get_nodes_in_group(&"boss_censer").filter(func(n: Node) -> bool: return not n.is_queued_for_deletion()).is_empty(), "silence cancels a censer still winding up")
+
+    # Grasping Dead: two Husks rise; never more than two; they die to the combo and give blood.
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
+    await _seconds(0.4)
+    _check(boss.debug_attack(&"summon", _bx(30.2)), "Grasping Dead starts (red marks where they will rise)")
+    await _boss_idle(boss)
+    var husks: Array[Node] = boss.minions()
+    var on_plane: bool = husks.all(func(h: Node) -> bool: return absf((h as Node3D).global_position.z) < 0.01 and (h as Node3D).global_position.y > 0.0)
+    _check(husks.size() == 2 and on_plane, "two Husks rise onto the causeway (%d)" % husks.size())
+    await _shot("13_husks")
+    _check(not boss.debug_attack(&"summon", _bx(30.2)), "no more than two Husks at a time")
+    energy.regen_per_second = 0.0
+    energy.set_amount(0.0)
+    GameSettings.auto_attack = true
+    for i in int(10.0 * PHYSICS_HZ):
+        await physics_frame
+        if _player_hp() < 3:
+            _heal()
+        if boss.minions().is_empty():
+            break
+    GameSettings.auto_attack = false
+    _check(boss.minions().is_empty() and energy.current >= 1.0, "the Husks fall to the combo and feed blood (%.1f blood)" % energy.current)
+    energy.regen_per_second = 0.25
+    boss.clear_minions()
+    await _seconds(1.6)
+    _heal()
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
@@ -1596,6 +1682,8 @@ func _m3_boss_checks() -> void:
     boss.attack_started.disconnect(record)
     _check(seen.has(&"slam") and seen.has(&"lance_volley"), "Bishop AI alternates Hand Slam and Bone Lances (%s)" % [seen.keys()])
     await _boss_idle(boss)
+    await _m8_new_attack_checks(boss)
+    await _boss_idle(boss)
     await _seconds(1.0)
 
     # --- M4 Bloodbound Cards in the real boss fight -------------------------------
@@ -1605,6 +1693,10 @@ func _m3_boss_checks() -> void:
     boss.health.apply_damage(boss.health.current - boss.collapse_at)  # debug: jump to the phase threshold
     await _frames(2)
     _check(boss.phase_name() == "COLLAPSE" and "II" in (_main.get("boss_label") as Label).text, "HP %d enters phase II, shown on the bar" % boss.health.current)
+    var banner: Label = _main.get("phase_banner")
+    _check(boss.is_roaring() and banner.visible and "II" in banner.text, "entering phase II makes the Bishop roar and shows the phase banner (%s)" % banner.text.replace("\n", " / "))
+    await _seconds(boss.roar_time + 0.2)
+    _check(not boss.is_roaring(), "the roar ends after %.1f s" % boss.roar_time)
     _heal()
     _player.call("teleport_to", Vector3(_bx(21.0), 1.0, 0.0))
     await _seconds(0.5)
@@ -1640,6 +1732,43 @@ func _m3_boss_checks() -> void:
     await _wait_until(func() -> bool: return not boss.hand.weak_open, 6.0)
     _check(boss.weak_open_seconds > phase1_window + 1.0, "phase III weak window is longer (%.2f s vs %.2f s)" % [boss.weak_open_seconds, phase1_window])
     await _boss_idle(boss)
+
+    # Phase III AI: raises the dead and fires the Requiem Beam.
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(30.2), 1.0, 0.0))
+    var seen3: Dictionary = {}
+    var record3: Callable = func(attack: StringName) -> void: seen3[attack] = true
+    boss.attack_started.connect(record3)
+    boss.set_ai_enabled(true)
+    for i in int(12.0 * PHYSICS_HZ):
+        await physics_frame
+        if _player_hp() < 3:
+            _heal()
+        if seen3.has(&"beam") and seen3.has(&"summon"):
+            break
+    boss.set_ai_enabled(false)
+    boss.attack_started.disconnect(record3)
+    _check(seen3.has(&"summon") and seen3.has(&"beam"), "phase III AI raises the dead and fires the Requiem Beam (%s)" % [seen3.keys()])
+    await _boss_idle(boss)
+    boss.clear_minions()
+    await _seconds(0.3)
+
+    # Phase IV: the Unmaking — longest weak-point window.
+    var cov_window: float = boss.weak_open_seconds
+    boss.health.apply_damage(boss.health.current - boss.unmaking_at)  # debug: jump to the phase threshold
+    await _frames(2)
+    _check(boss.phase_name() == "UNMAKING" and boss.is_roaring() and "IV" in (_main.get("phase_banner") as Label).text, "HP %d enters phase IV, the Unmaking (roar + banner)" % boss.health.current)
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(28.0), 1.0, 0.0))
+    await _seconds(0.5)
+    boss.debug_attack(&"slam", _bx(25.5))
+    await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
+    await _wait_until(func() -> bool: return not boss.hand.weak_open, 7.0)
+    _check(boss.weak_open_seconds > cov_window + 0.5, "phase IV weak window is the longest (%.2f s vs %.2f s)" % [boss.weak_open_seconds, cov_window])
+    await _boss_idle(boss)
+    boss.debug_attack(&"summon", _bx(30.0))
+    await _wait_until(func() -> bool: return boss.minions().size() >= 1, 3.0)
+    await _boss_idle(boss)
     _heal()
     boss.health.apply_damage(boss.health.current - 3)  # debug: skip to the last 3 HP (tuning is checked separately)
     boss.debug_attack(&"slam", _bx(25.5))
@@ -1650,6 +1779,8 @@ func _m3_boss_checks() -> void:
     _tap(KEY_J)
     await _seconds(0.5)
     _check(boss.health.current == 0 and boss.phase_name() == "DEFEATED", "final stigmata hits defeat the Bishop (hp=%d, phase=%s)" % [boss.health.current, boss.phase_name()])
+    await _frames(3)
+    _check(root.get_tree().get_nodes_in_group(&"bishop_minion").filter(func(m: Node) -> bool: return not m.is_queued_for_deletion()).is_empty(), "the Bishop's Husks crumble when it falls")
     await _seconds(1.0)
     _check(not boss.is_attacking() and _first_lance() == null, "defeated Bishop stops attacking")
 

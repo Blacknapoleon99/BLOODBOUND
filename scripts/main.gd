@@ -46,6 +46,8 @@ var _message: String = ""
 var _message_until: float = 0.0
 var _trauma: float = 0.0
 var hurt_vignette: ColorRect
+var phase_banner: Label
+var _banner_left: float = 0.0
 
 
 func _ready() -> void:
@@ -99,6 +101,14 @@ func _ready() -> void:
     canvas.add_child(hurt_vignette)
     canvas.move_child(hurt_vignette, 0)
     player.connect("hurt", func(_info: DamageInfo) -> void: hurt_vignette.color.a = 0.55)
+    phase_banner = MenuStyle.label("", 46, Color(0.95, 0.85, 0.8))
+    phase_banner.name = "PhaseBanner"
+    phase_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+    phase_banner.offset_top = 150.0
+    phase_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+    phase_banner.visible = false
+    canvas.add_child(phase_banner)
+    boss.phase_changed.connect(_on_boss_phase_changed)
     var card_ui: CardHandUI = CardHandUI.create(card_system)
     canvas.add_child(card_ui)
     var targeting: CardTargeting = CardTargeting.create(card_system, card_ui, camera, boss)
@@ -121,6 +131,10 @@ func _process(delta: float) -> void:
     camera.look_at(_camera_look_target(), Vector3.UP)
     _apply_shake(delta)
     hurt_vignette.color.a = move_toward(hurt_vignette.color.a, 0.0, 1.4 * delta)
+    if _banner_left > 0.0:
+        _banner_left -= delta
+        phase_banner.modulate.a = clampf(_banner_left / 0.6, 0.0, 1.0)
+        phase_banner.visible = _banner_left > 0.0
 
     if player.global_position.y < -9.0:
         _respawn()
@@ -297,6 +311,18 @@ func _on_card_failed(card: CardData, _slot: int, reason: StringName) -> void:
 
 func _on_card_played(card: CardData, _slot: int) -> void:
     _flash(card.display_name.to_upper() + "!", 1.5)
+
+
+## A big title whenever the Bishop enters a new fight phase (it roars meanwhile).
+func _on_boss_phase_changed(_phase_name: String) -> void:
+    var title: String = boss.phase_title()
+    if title == "" or boss.phase == HollowBishop.Phase.PROCESSION:
+        return
+    phase_banner.text = "THE HOLLOW BISHOP
+" + title
+    phase_banner.visible = true
+    phase_banner.modulate.a = 1.0
+    _banner_left = 2.4
 
 
 func _on_boss_defeated() -> void:

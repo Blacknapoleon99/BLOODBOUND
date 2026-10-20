@@ -215,3 +215,16 @@
 - Export probe updated for the draft flow (Start → draft → 3 picks → level): 11/11 in the editor and in the QA build. Release `build/windows-run1/Bloodbound.exe` probe exit 0 on 3 of 3 runs.
   - The first probe of this build crashed (0xC0000005) because the old probe called into a level that wasn't loaded yet (Start now opens the draft); fixed in the probe.
 - Screenshots: `docs/screenshots/09_draft.png`, `09_altar_offer.png` (captured with `tests/shot_draft.gd`).
+
+## Step 3 — bigger Bishop (2026-10-21)
+
+- `tests/gameplay_smoke.gd` → **260/260** headless and **260/260** visible.
+- New checks:
+  - **Censer:** it telegraphs first. Standing costs 1 HP; jumping as it closes (≤5 m) avoids it.
+  - **Requiem Beam:** standing costs 2 HP; dodging toward the beam avoids it.
+  - Silence cancels a censer still in its telegraph.
+  - **Grasping Dead:** 2 Husks on the plane, never more than 2. They die to the combo and feed blood.
+  - Phase II brings the roar plus the banner ("THE HOLLOW BISHOP / II · THE COLLAPSE"), and the roar ends after 1.8 s.
+  - Phase III AI uses summon and beam. Phase IV (HP 12) brings the roar, the banner and a 5.0 s window (vs 4.0 s in III).
+  - The Husks crumble when the Bishop falls.
+- Screenshots: `docs/screenshots/11_censer.png`, `12_requiem_beam.png`, `13_husks.png`.
