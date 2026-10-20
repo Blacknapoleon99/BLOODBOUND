@@ -39,3 +39,15 @@ The player and the enemies share `MeleeAttack` (STARTUP → ACTIVE → RECOVERY)
 ## DEC-010 — Enemies are leashed to their zone
 
 Soldiers never move beyond `patrol_min/max_x ± leash_margin` and return home if knocked into a pit. The level exit depends on killing the soldier, so an enemy lost in a gap would softlock the run.
+
+## DEC-011 — The Bishop is damaged only through what it pushes into the play plane
+
+The boss stands at z = −22 and is never directly reachable. Every threat it makes (the slam hand, the lances) is telegraphed on the Z=0 plane first and is only dangerous on that plane. The Hand Slam leaves the hand lying on the causeway with an exposed stigmata hurtbox: this is the weak-point window, and later cards (M4 Blood Spear) can target the same hurtbox. Phases follow HP thresholds only (12 → ≤8 → ≤3), so debug HP changes drive the same transitions as real hits.
+
+## DEC-012 — Causeway destruction is state toggling, with rules that guarantee a route
+
+`BreakableSegment` disables collision and drops the visual; there are no physics debris. `BossArena` never breaks the entry or end segment, never breaks next to an existing gap (so every gap is 4 m, under the ~5.6 m running jump), and caps breaks at two. Each gap has a rubble ledge 1 m down as a fallback. Segments reknit after 14 s and on any death or fall.
+
+## DEC-013 — Attack input buffer
+
+An attack pressed while another is still playing is kept for 0.15 s and fires on the first free frame (latest press wins). Without it, hitstop stretches attacks by a few frames and quick follow-ups were silently dropped (found by the M3 boss test).

@@ -39,6 +39,14 @@ func _run() -> void:
     _enemy.set_ai_enabled(false)
     _enemy.teleport_to(Vector3(9.0, 1.0, 0.0))
 
+    # The portcullis to the Bishop's arena stays shut while the soldier lives.
+    _player.call("teleport_to", Vector3(16.0, 1.0, 0.0))
+    await _seconds(0.3)
+    await _hold(KEY_D, 1.0)
+    _check(_player.global_position.x < 18.3, "portcullis blocks the way while the soldier lives (x=%.2f)" % _player.global_position.x)
+    _player.call("teleport_to", Vector3(-16.0, 2.0, 0.0))
+    await _seconds(0.8)
+
     # --- Horizontal movement -------------------------------------------------
     var x0: float = _player.global_position.x
     await _hold(KEY_D, 0.5)
@@ -154,12 +162,11 @@ func _run() -> void:
     var side_offset: Vector3 = cam.global_position - _player.global_position
     _check(absf(side_offset.z - 22.0) < 1.0, "camera returns to side-view framing (offset=%s)" % side_offset)
 
-    # --- Exit / victory / restart -------------------------------------------
-    reached = await _run_right_until(17.3, 4.0)
-    await _frames(3)
-    _check(bool(_main.get("game_won")), "reaching EXIT after defeating the dummy wins")
+    # --- M3 Hollow Bishop → victory / restart ----------------------------------
+    await _m3_boss_checks()
+    _check(bool(_main.get("game_won")), "defeating the Bishop wins the run")
     _check(bool(_player.get("game_frozen")), "player is frozen on victory")
-    await _shot("05_victory")
+    await _shot("08_victory")
     _tap(KEY_R)
     await _frames(10)
     _bind()
@@ -383,6 +390,27 @@ func _m2_attack_phase_checks() -> void:
     await physics_frame
     _check(bool(_player.call("is_dodging")) and not melee.is_busy(), "dodge cancels light attack RECOVERY")
     await _seconds(0.8)
+    # Attack buffer: a press during the last frames of an attack fires when it ends.
+    var started: Array[StringName] = []
+    var on_start: Callable = func(id: StringName) -> void: started.append(id)
+    _player.connect("attack_started", on_start)
+    _tap(KEY_J)
+    await _wait_until(func() -> bool: return melee.phase == MeleeAttack.Phase.RECOVERY, 1.0)
+    await _seconds(0.12)
+    _tap(KEY_L)
+    await _seconds(0.9)
+    _check(started == [&"player_light", &"player_heavy"], "attack pressed during recovery is buffered and fires (%s)" % [started])
+    await _wait_until(func() -> bool: return not melee.is_busy(), 2.0)
+    await _seconds(0.2)
+    started.clear()
+    _tap(KEY_J)
+    await physics_frame
+    await physics_frame
+    _tap(KEY_L)
+    await _seconds(1.2)
+    _player.disconnect("attack_started", on_start)
+    _check(started == [&"player_light"], "a press far outside the buffer window is dropped (%s)" % [started])
+    await _seconds(0.8)
     _check(_player_hp() == hp_start, "no unintended damage during attack/dodge tests (hp=%d)" % _player_hp())
 
 
@@ -572,7 +600,7 @@ func _run_right_until(target_x: float, timeout: float) -> bool:
         if x >= target_x:
             ok = true
             break
-        var near_gap: bool = (x > -7.9 and x < -7.4) or (x > -3.5 and x < -3.1)
+        var near_gap: bool = not _floor_ahead(0.8)
         if jump_frames_left > 0:
             jump_frames_left -= 1
             if jump_frames_left == 0:
@@ -583,6 +611,212 @@ func _run_right_until(target_x: float, timeout: float) -> bool:
     _key(KEY_D, false)
     _key(KEY_SPACE, false)
     return ok
+
+
+## True if there is walkable ground within 1.2 m below a point `dist` ahead of the player.
+## (Short on purpose: a rubble ledge 1 m down does not count, so the run jumps the full gap.)
+func _floor_ahead(dist: float) -> bool:
+    var from: Vector3 = _player.global_position + Vector3(dist, 0.0, 0.0)
+    var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, from + Vector3(0.0, -1.2, 0.0))
+    query.exclude = [_player.get_rid()]
+    return not _player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+
+func _heal() -> void:
+    (_player.get("health") as Health).restore_full()
+
+
+func _boss_idle(boss: HollowBishop) -> void:
+    await _wait_until(func() -> bool: return not boss.is_attacking(), 8.0)
+
+
+func _first_lance() -> BoneLance:
+    var lances: Array[Node] = root.get_tree().get_nodes_in_group(&"boss_lance")
+    return lances[0] as BoneLance if not lances.is_empty() else null
+
+
+func _m3_boss_checks() -> void:
+    var boss: HollowBishop = _main.get("boss")
+    var arena: BossArena = _main.get("boss_arena")
+    _check(boss.phase_name() == "DORMANT", "Bishop lies dormant before the arena")
+    _heal()
+    var reached: bool = await _run_right_until(21.5, 5.0)
+    _check(reached, "open portcullis leads into the Bishop's arena (x=%.2f)" % _player.global_position.x)
+    _check(bool((_main.get("boss_checkpoint") as Checkpoint).is_active), "arena checkpoint activates")
+    _check(boss.phase_name() == "INTRO", "entering the arena awakens the Bishop (phase=%s)" % boss.phase_name())
+    boss.set_ai_enabled(false)
+    await _seconds(1.8)
+    _check(boss.phase_name() == "PROCESSION", "Bishop rises into phase I (phase=%s)" % boss.phase_name())
+    var bar: ProgressBar = _main.get("boss_bar")
+    _check(bar.get_parent().visible and bar.value == 12 and bar.max_value == 12, "boss HP bar shows 12/12")
+    await _boss_idle(boss)
+    _check(boss.global_position.z < -20.0 and boss.global_position.y > -1.0, "Bishop stands far behind the play plane (z=%.1f)" % boss.global_position.z)
+    await _shot("05_bishop_awake")
+
+    # Hand Slam on a standing player: long telegraph, travels from depth, real damage.
+    _heal()
+    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    await _seconds(0.5)
+    var hp0: int = _player_hp()
+    boss.debug_attack(&"slam", 24.2)
+    var marker_lead: int = 0
+    var min_hand_z: float = 0.0
+    var impact_z: float = 99.0
+    var plate_x: float = 0.0
+    for i in 400:
+        await physics_frame
+        if not boss.is_attacking():
+            break
+        min_hand_z = minf(min_hand_z, boss.hand.global_position.z)
+        if impact_z == 99.0:
+            if boss.hand.marker.visible:
+                marker_lead += 1
+                plate_x = boss.hand.marker.global_position.x
+            if boss.hand.hitbox.is_active():
+                impact_z = boss.hand.global_position.z
+    _check(marker_lead >= 80, "slam telegraph plate shows %d frames before impact (>= 80)" % marker_lead)
+    _check(absf(plate_x - 24.2) < 0.01, "telegraph plate marks the strike x (%.2f)" % plate_x)
+    _check(min_hand_z < -7.5 and absf(impact_z) < 0.05, "hand travels from depth (z=%.1f) to the play plane (z=%.2f)" % [min_hand_z, impact_z])
+    _check(_player_hp() == hp0 - 2, "slam deals 2 damage to a player who stays (%d → %d)" % [hp0, _player_hp()])
+
+    # Same slam, but the player steps out of the plate during the telegraph.
+    _heal()
+    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    await _seconds(1.0)
+    boss.debug_attack(&"slam", 24.2)
+    await _seconds(0.5)
+    await _hold(KEY_D, 0.7)
+    await _boss_idle(boss)
+    _check(_player_hp() == 5, "stepping off the telegraphed plate avoids the slam (hp=%d)" % _player_hp())
+
+    # Weak point: only the exposed stigmata on the fallen hand takes damage.
+    _heal()
+    _player.call("teleport_to", Vector3(28.0, 1.0, 0.0))
+    await _seconds(0.5)
+    var boss_hp: int = boss.health.current
+    boss.debug_attack(&"slam", 25.5)
+    _check(not boss.hand.weak_open, "stigmata is closed while the hand is raised")
+    var opened: bool = await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
+    _check(opened, "stigmata opens once the hand lies on the causeway")
+    await _shot("06_weak_point")
+    _player.set("facing_direction", -1.0)
+    _tap(KEY_J)
+    await _seconds(0.45)
+    _check(boss.health.current == boss_hp - 1, "light hit on the stigmata damages the Bishop (%d → %d)" % [boss_hp, boss.health.current])
+    _tap(KEY_L)
+    await _seconds(0.9)
+    _check(boss.health.current == boss_hp - 3, "heavy hit deals 2 more (hp=%d)" % boss.health.current)
+    await _wait_until(func() -> bool: return not boss.hand.weak_open, 4.0)
+    var phase1_window: float = boss.weak_open_seconds
+    _check(absf(phase1_window - boss.weak_window) < 0.05, "phase I weak window lasts %.2f s" % phase1_window)
+    _player.set("facing_direction", -1.0)
+    _tap(KEY_J)
+    await _seconds(0.4)
+    _check(boss.health.current == boss_hp - 3, "closed stigmata ignores hits (hp=%d)" % boss.health.current)
+    await _boss_idle(boss)
+
+    # Bone Lance: thrown from depth along a telegraphed lane; hits only on the plane.
+    _heal()
+    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    await _seconds(0.5)
+    hp0 = _player_hp()
+    boss.debug_attack(&"lance", 30.2)
+    await _wait_until(func() -> bool: return _first_lance() != null, 1.0)
+    var lance: BoneLance = _first_lance()
+    _check(lance != null and lance.shaft_z() < -15.0 and lance.column.visible and absf(lance.global_position.x - 30.2) < 0.01,
+        "lance starts deep behind the plane with a lane telegraph at x=30.2")
+    var z_at_hit: float = 99.0
+    for i in 180:
+        await physics_frame
+        if _player_hp() < hp0:
+            z_at_hit = lance.shaft_z() if is_instance_valid(lance) else 99.0
+            break
+    _check(_player_hp() == hp0 - 1 and absf(z_at_hit) < 2.0, "lance hits a player standing in its lane on the plane (hp %d → %d, z=%.2f)" % [hp0, _player_hp(), z_at_hit])
+    await _boss_idle(boss)
+
+    _heal()
+    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    await _seconds(1.0)
+    boss.debug_attack(&"lance", 30.2)
+    await _wait_until(func() -> bool: var l: BoneLance = _first_lance(); return l != null and l.shaft_z() > -5.0, 3.0)
+    _key(KEY_SPACE, true)
+    await _seconds(0.45)
+    _key(KEY_SPACE, false)
+    await _boss_idle(boss)
+    _check(_player_hp() == 5, "jumping over the lance avoids it (hp=%d)" % _player_hp())
+
+    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    await _seconds(0.6)
+    boss.debug_attack(&"lance", 30.2)
+    await _wait_until(func() -> bool: var l: BoneLance = _first_lance(); return l != null and l.shaft_z() > -3.0, 3.0)
+    _tap(KEY_K)
+    await _boss_idle(boss)
+    _check(_player_hp() == 5, "dodging out of the lane avoids the lance (hp=%d)" % _player_hp())
+
+    # AI on its own: chooses both attack types in phase I.
+    _heal()
+    _player.call("teleport_to", Vector3(30.2, 1.0, 0.0))
+    var seen: Dictionary = {}
+    var record: Callable = func(attack: StringName) -> void: seen[attack] = true
+    boss.attack_started.connect(record)
+    boss.set_ai_enabled(true)
+    await _seconds(10.0)
+    boss.set_ai_enabled(false)
+    boss.attack_started.disconnect(record)
+    _check(seen.has(&"slam") and seen.has(&"lance_volley"), "Bishop AI alternates Hand Slam and Bone Lances (%s)" % [seen.keys()])
+    await _boss_idle(boss)
+    await _seconds(1.0)
+
+    # Phase II: Sunder breaks the causeway; the route stays recoverable.
+    boss.health.apply_damage(boss.health.current - boss.collapse_at)  # debug: jump to the phase threshold
+    await _frames(2)
+    _check(boss.phase_name() == "COLLAPSE" and "II" in (_main.get("boss_label") as Label).text, "HP %d enters phase II, shown on the bar" % boss.health.current)
+    _heal()
+    _player.call("teleport_to", Vector3(21.0, 1.0, 0.0))
+    await _seconds(0.5)
+    boss.debug_attack(&"sunder", 28.2)
+    await _wait_until(func() -> bool: return arena.segments[2].is_broken, 4.0)
+    _check(arena.segments[2].is_broken and arena.rubble[2].visible, "Sunder breaks the struck segment and exposes a rubble ledge")
+    _check(not arena.can_break(1) and not arena.can_break(3) and not arena.can_break(0), "neighbours of a gap and the entry segment cannot break")
+    await _boss_idle(boss)
+    await _shot("07_causeway_broken")
+    _player.call("teleport_to", Vector3(21.0, 1.0, 0.0))
+    await _seconds(0.4)
+    reached = await _run_right_until(33.0, 5.0)
+    _check(reached and arena.segments[2].is_broken, "player jumps the broken segment (x=%.2f)" % _player.global_position.x)
+    _player.call("teleport_to", Vector3(28.2, 0.5, 0.0))
+    await _seconds(0.8)
+    _check(_player.is_on_floor() and _player.global_position.y < 0.0, "rubble ledge catches a player who drops in (y=%.2f)" % _player.global_position.y)
+    reached = await _run_right_until(31.5, 3.0)
+    _check(reached, "player climbs out of the gap from the rubble (x=%.2f)" % _player.global_position.x)
+    _player.call("teleport_to", Vector3(26.9, -2.0, 0.0))
+    var cp: Vector3 = (_main.get("boss_checkpoint") as Checkpoint).respawn_position
+    var reset: bool = await _wait_until(func() -> bool: return _player.global_position.distance_to(cp) < 1.0, 3.0)
+    await _seconds(0.1)
+    _check(reset and not arena.segments[2].is_broken, "falling respawns at the arena checkpoint and reknits the causeway")
+
+    # Phase III: longer weak window; finish the Bishop through the stigmata.
+    boss.health.apply_damage(boss.health.current - boss.covenant_at)  # debug: jump to the phase threshold
+    _check(boss.phase_name() == "COVENANT", "HP %d enters phase III" % boss.health.current)
+    _heal()
+    _player.call("teleport_to", Vector3(28.0, 1.0, 0.0))
+    await _seconds(0.5)
+    boss.debug_attack(&"slam", 25.5)
+    await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
+    await _wait_until(func() -> bool: return not boss.hand.weak_open, 6.0)
+    _check(boss.weak_open_seconds > phase1_window + 1.0, "phase III weak window is longer (%.2f s vs %.2f s)" % [boss.weak_open_seconds, phase1_window])
+    await _boss_idle(boss)
+    _heal()
+    boss.debug_attack(&"slam", 25.5)
+    await _wait_until(func() -> bool: return boss.hand.weak_open, 3.0)
+    _player.set("facing_direction", -1.0)
+    _tap(KEY_L)
+    await _seconds(0.9)
+    _tap(KEY_J)
+    await _seconds(0.5)
+    _check(boss.health.current == 0 and boss.phase_name() == "DEFEATED", "final stigmata hits defeat the Bishop (hp=%d, phase=%s)" % [boss.health.current, boss.phase_name()])
+    await _seconds(1.0)
+    _check(not boss.is_attacking() and _first_lance() == null, "defeated Bishop stops attacking")
 
 
 func _shot(name: String) -> void:

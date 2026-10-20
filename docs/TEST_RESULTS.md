@@ -73,3 +73,19 @@
   - The soldier could chase into a pit and softlock the exit. A leash plus return-home were added and tested.
 - Screenshots: `docs/screenshots/02_soldier_hit.png` (blood spray, HP pips), `03_soldier_dead.png`.
 - Limitations: test setups place combatants by teleport and toggle AI with `set_ai_enabled`, but every hit goes through the real hitbox → hurtbox → health path. The player-death setup lowers HP directly before the real killing blow. Hitstop, camera shake and blood readability are only checked by eye in screenshots. Gamepad is untested. Nobody has tuned it by hand yet.
+
+## M3 verification run (2026-10-20)
+
+- Godot `4.7.2.stable.official.ed1daf0bf`, Windows 11.
+- `tools/run_checks.ps1 -Godot godot_console` → exit 0. `tests/gameplay_smoke.gd` → **113/113** headless and 113/113 in a visible window. No script errors or warnings in the output.
+- Boss checks:
+  - Level flow: the portcullis blocks the player while the soldier lives and opens on its death. Entering the arena activates the arena checkpoint and awakens the Bishop (DORMANT → INTRO → PROCESSION after 1.8 s). The HP bar shows 12/12 and the phase title.
+  - Hand Slam: the telegraph plate shows 92 frames before impact, at the exact strike x. The hand travels from z = −18.5 to z = 0.00. A player who stays takes 2 damage; one who steps off the plate during the telegraph takes 0.
+  - Weak point: the stigmata is closed while the hand is raised and opens when it lands. A light hit takes the Bishop 12 → 11; a buffered heavy takes 11 → 9. The window lasts 2.50 s in phase I and 4.00 s in phase III. Once it closes, hits are ignored.
+  - Bone Lance: it starts at z < −15 with a red lane column at the target x. It hits a player standing in the lane at z = −0.73 (1 damage). Jumping over it takes 0 damage, and so does dodging out of the lane.
+  - AI: with AI on, the Bishop alternates Hand Slam and Bone Lance volley within 10 s.
+  - Phase II at HP 8; the bar title updates. Sunder breaks the struck segment and enables its rubble ledge. Neighbours of a gap and the entry segment refuse to break. The player can jump the 4 m gap. The rubble catches a player who drops in (y = −0.15), and the player can climb back out. A fall respawns at the arena checkpoint and reknits the causeway.
+  - Phase III at HP 3. Light + heavy stigmata hits defeat the Bishop: it stops attacking, the run is won, and R restarts.
+- Bug found and fixed: attack presses during hitstop-stretched recovery were dropped. A 0.15 s attack buffer was added, tested in both directions (inside the window it fires; outside it's dropped).
+- Screenshots: `docs/screenshots/05_bishop_awake.png`, `06_weak_point.png` (hand on the causeway, stigmata lit), `07_causeway_broken.png` (gap plus rubble, phase II bar), `08_victory.png`.
+- Limitations: phase II and III are reached by applying boss HP damage directly (a debug path). Each threshold transition still runs the real logic. Attacks are triggered through `debug_attack` except in the 10 s AI check. Nobody has played the fight by hand yet, so its difficulty and pacing are unjudged. All boss and arena visuals are greybox primitives.

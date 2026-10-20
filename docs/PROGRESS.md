@@ -39,3 +39,12 @@ M2 combat: hitbox/hurtbox/health components, a state-driven player attack with s
 
 ### Next action
 M3 Hollow Bishop: a giant background boss with a phase state machine and deterministic debug triggers. It needs two depth attacks that travel into the Z=0 plane with telegraphed threat volumes, one causeway-breaking attack with a recoverable route, a weak-point window, and a boss HP bar. Asset generation stays blocked (Tripo has 0 credits), so it uses greybox geometry.
+
+## 2026-10-20 — M3 Hollow Bishop closed
+
+- New: `scripts/boss/` (HollowBishop, BishopHand, BoneLance), `scripts/level/` (BreakableSegment, BossArena).
+- Changed: `scripts/main.gd` (portcullis, boss arena and checkpoint, boss HP bar, victory on boss defeat, hazard reset on death or fall, 3D practice arena moved to z = 60, boss camera framing), `scripts/player.gd` (attack input buffer), `tests/gameplay_smoke.gd` (113 checks; traversal now jumps by ray probe).
+- Evidence: `docs/TEST_RESULTS.md` (M3 run).
+
+### Next action
+M4 Bloodbound Cards: an AttackData-style `CardData` Resource; a blood-energy resource; hand UI; and Blood Spear (projectile that damages the exposed stigmata), Grave Shield (blocks the `heavy` category, e.g. the slam) and Ritual Chains (interrupts the Bishop's telegraph). Invalid or unaffordable plays must spend nothing.

@@ -10,6 +10,8 @@ extends CharacterBody3D
 ## - Dodge: `dodge_duration` burst along facing/input; invulnerable for `dodge_invulnerable_time`
 ##   from the start of the dodge; usable again after `dodge_cooldown`; one dodge per airtime.
 ## - Attacks (see AttackData): no jumping, turning or new attacks until the attack ends.
+##   An attack pressed while busy is buffered for `attack_buffer_time` and starts on the
+##   first free frame (only the latest press is kept).
 ##   Only RECOVERY may be cancelled into a dodge, and only if the attack allows it.
 ## - Getting hit: cancels any attack, applies knockback, `hurt_stun` without control,
 ##   then `hurt_invulnerable_time` of invulnerability (from the moment of the hit).
@@ -46,6 +48,7 @@ signal died
 @export var light_attack: AttackData
 @export var heavy_attack: AttackData
 @export var hurt_invulnerable_time: float = 0.8
+@export var attack_buffer_time: float = 0.15
 @export var health: Health
 @export var hurtbox: Hurtbox
 @export var melee: MeleeAttack
@@ -65,6 +68,8 @@ var _dodge_cooldown_left: float = 0.0
 var _air_dodge_used: bool = false
 var _dodge_direction: Vector3 = Vector3.RIGHT
 var _stun_left: float = 0.0
+var _queued_attack: AttackData
+var _queued_left: float = 0.0
 
 
 func _ready() -> void:
@@ -99,6 +104,7 @@ func teleport_to(target: Vector3) -> void:
     _dodge_left = 0.0
     _invulnerable_left = 0.0
     _stun_left = 0.0
+    _queued_attack = null
     melee.cancel()
 
 
@@ -134,6 +140,11 @@ func _physics_process(delta: float) -> void:
         _buffer_left = jump_buffer_time
     if controllable and Input.is_action_just_pressed(&"dodge"):
         _try_start_dodge(input_x, input_z, on_floor)
+    if _queued_attack != null and not melee.is_busy():
+        var queued: AttackData = _queued_attack
+        _queued_attack = null
+        if _queued_left > 0.0:
+            _try_attack(queued)
 
     if is_dodging():
         velocity.x = _dodge_direction.x * dodge_speed
@@ -169,6 +180,7 @@ func _tick_timers(delta: float) -> void:
     _invulnerable_left = maxf(0.0, _invulnerable_left - delta)
     _dodge_cooldown_left = maxf(0.0, _dodge_cooldown_left - delta)
     _stun_left = maxf(0.0, _stun_left - delta)
+    _queued_left = maxf(0.0, _queued_left - delta)
 
 
 func _update_facing(input_x: float, input_z: float) -> void:
@@ -264,12 +276,17 @@ func _end_dodge() -> void:
 func _try_attack(data: AttackData) -> void:
     if data == null or is_dodging() or is_stunned() or health.is_dead():
         return
+    if melee.is_busy():
+        _queued_attack = data
+        _queued_left = attack_buffer_time
+        return
     if melee.start(data, get_facing_vector()):
         _buffer_left = 0.0
         attack_started.emit(data.id)
 
 
 func _on_hit_received(info: DamageInfo) -> void:
+    _queued_attack = null
     melee.cancel()
     _dodge_left = 0.0
     _jump_rising = false

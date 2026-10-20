@@ -21,10 +21,10 @@ This list reflects **planned** work. Mark `[x]` only after tests recorded in `do
 - [x] Blood, hit effects and optional reduced-gore switch. *(2026-10-20, TEST_RESULTS M2)*
 
 ## M3 — Hollow Bishop boss
-- [ ] Giant true 3D background presence.
-- [ ] At least two distinct, readable, damaging attacks traveling into the player plane.
-- [ ] One attack temporarily or permanently modifies traversable geometry with recoverable path.
-- [ ] Boss phases, vulnerability window, HUD, defeat and restart.
+- [x] Giant true 3D background presence. *(2026-10-20, TEST_RESULTS M3)*
+- [x] At least two distinct, readable, damaging attacks traveling into the player plane. *(2026-10-20, TEST_RESULTS M3)*
+- [x] One attack temporarily or permanently modifies traversable geometry with recoverable path. *(2026-10-20, TEST_RESULTS M3)*
+- [x] Boss phases, vulnerability window, HUD, defeat and restart. *(2026-10-20, TEST_RESULTS M3)*
 
 ## M4 — Cards
 - [ ] Cards defined via Godot Resource data.
