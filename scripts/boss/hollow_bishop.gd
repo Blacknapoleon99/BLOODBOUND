@@ -15,6 +15,10 @@ extends Node3D
 ##   Sunder: Hand Slam with a longer telegraph that also asks the arena to break that segment.
 ##   Bone Lances: up to three lances thrown from depth at fixed x lanes, each with a red column.
 ##
+## Ritual Chains (card): while a Slam/Sunder is still aiming or hovering (before the descent),
+##   `interrupt_with_chains()` cancels it — the hand is dragged down to its marked spot with no
+##   hitbox (and no causeway break) and the stigmata is exposed for the card's duration.
+##
 ## Debug/test hooks: `ai_enabled` (stop choosing attacks), `debug_attack(name, x)` (run one
 ## attack now), `awaken()`. Hit/phase logic is identical whether an attack came from AI or debug.
 
@@ -22,6 +26,7 @@ signal phase_changed(phase_name: String)
 signal attack_started(attack: StringName)
 signal weak_point_changed(open: bool)
 signal sunder_impact(x: float)
+signal chained
 signal defeated
 
 enum Phase { DORMANT, INTRO, PROCESSION, COLLAPSE, COVENANT, DEFEATED }
@@ -52,6 +57,7 @@ const PHASE_TITLES: Dictionary = {
 @export var retract_time: float = 0.6
 @export var lance_speed: float = 16.0
 @export var lance_spacing: float = 0.5
+@export var chain_pull_time: float = 0.3
 
 var phase: Phase = Phase.DORMANT
 var health: Health
@@ -70,9 +76,12 @@ var _intro_t: float = 0.0
 var _arm: MeshInstance3D
 var _heart_material: StandardMaterial3D
 var _rest_y: float = 0.0
+var _chain_from: Vector3
+var _chain_window: float = 3.0
 
 
 func _ready() -> void:
+    add_to_group(&"interruptible")
     health = Health.new()
     health.name = "Health"
     health.max_health = max_health
@@ -125,6 +134,25 @@ func debug_attack(attack: StringName, x: float) -> bool:
     return _start_attack(attack, x)
 
 
+## True while a Slam/Sunder has not started its descent (the telegraph window).
+func can_be_interrupted() -> bool:
+    if not is_active() or not (_attack == &"slam" or _attack == &"sunder"):
+        return false
+    return _t < _slam_timeline()[1]
+
+
+func interrupt_with_chains(window: float) -> bool:
+    if not can_be_interrupted():
+        return false
+    _chain_from = hand.global_position
+    _chain_window = window
+    _attack = &"chained"
+    _t = 0.0
+    hand.show_telegraph(_target_x, false)
+    chained.emit()
+    return true
+
+
 ## Called by the level when the player respawns: drop the current attack and give breathing room.
 func on_player_respawn() -> void:
     _cancel_attack()
@@ -155,6 +183,8 @@ func _physics_process(delta: float) -> void:
     if is_attacking():
         if _attack == &"slam" or _attack == &"sunder":
             _tick_slam(delta)
+        elif _attack == &"chained":
+            _tick_chained(delta)
         else:
             _tick_lances(delta)
     else:
@@ -272,6 +302,31 @@ func _tick_slam(delta: float) -> void:
             hand.set_weak(false)
             weak_point_changed.emit(false)
         hand.global_position = impact.lerp(rest, (_t - tl[4]) / (tl[5] - tl[4]))
+    else:
+        _finish_attack()
+
+
+## Chained: pulled to the marked spot with no hitbox, stigmata exposed, then released.
+func _tick_chained(delta: float) -> void:
+    _t += delta
+    var impact: Vector3 = Vector3(_target_x, 0.55, 0.0)
+    var t_open: float = chain_pull_time
+    var t_close: float = t_open + _chain_window
+    var t_end: float = t_close + retract_time
+    if _t < t_open:
+        hand.global_position = _chain_from.lerp(impact, _t / t_open)
+    elif _t < t_close:
+        hand.global_position = impact
+        if not hand.weak_open:
+            weak_open_seconds = 0.0
+            hand.set_weak(true)
+            weak_point_changed.emit(true)
+        weak_open_seconds += delta
+    elif _t < t_end:
+        if hand.weak_open:
+            hand.set_weak(false)
+            weak_point_changed.emit(false)
+        hand.global_position = impact.lerp(_hand_rest(), (_t - t_close) / retract_time)
     else:
         _finish_attack()
 

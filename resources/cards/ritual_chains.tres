@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"ritual_chains"
+display_name = "Ritual Chains"
+description = "Bind a winding-up strike. The chained limb crashes down harmlessly, exposed."
+cost = 3
+cooldown = 8.0
+targeting = 2
+effect = &"ritual_chains"
+tags = PackedStringArray("control")
+duration = 3.0
+ui_color = Color(0.55, 0.42, 0.15, 1)
+vfx_id = &"ritual_chains"

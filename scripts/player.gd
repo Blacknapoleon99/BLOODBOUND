@@ -21,6 +21,7 @@ signal landed
 signal dodge_started(direction: Vector3)
 signal attack_started(attack_id: StringName)
 signal hurt(info: DamageInfo)
+signal blocked(info: DamageInfo)
 signal died
 
 @export_group("Run")
@@ -70,12 +71,17 @@ var _dodge_direction: Vector3 = Vector3.RIGHT
 var _stun_left: float = 0.0
 var _queued_attack: AttackData
 var _queued_left: float = 0.0
+var _shield_category: StringName = &""
+var _shield_left: float = 0.0
+var _shield_visual: MeshInstance3D
 
 
 func _ready() -> void:
     InputBindings.ensure_defaults()
     hurtbox.hit_received.connect(_on_hit_received)
+    hurtbox.hit_blocked.connect(func(info: DamageInfo) -> void: blocked.emit(info))
     health.died.connect(_on_died)
+    _build_shield_visual()
 
 
 func is_invulnerable() -> bool:
@@ -88,6 +94,26 @@ func is_dodging() -> bool:
 
 func is_stunned() -> bool:
     return _stun_left > 0.0
+
+
+func is_shielded() -> bool:
+    return _shield_left > 0.0
+
+
+## Grave Shield: absorb the next hit of `category` within `duration` seconds.
+func raise_shield(category: StringName, duration: float) -> void:
+    _shield_category = category
+    _shield_left = duration
+    _shield_visual.visible = true
+
+
+## Hurtbox hook. Consumes the shield when it blocks.
+func try_block(info: DamageInfo) -> bool:
+    if _shield_left <= 0.0 or info.category != _shield_category:
+        return false
+    _shield_left = 0.0
+    _shield_visual.visible = false
+    return true
 
 
 func get_facing_vector() -> Vector3:
@@ -181,6 +207,9 @@ func _tick_timers(delta: float) -> void:
     _dodge_cooldown_left = maxf(0.0, _dodge_cooldown_left - delta)
     _stun_left = maxf(0.0, _stun_left - delta)
     _queued_left = maxf(0.0, _queued_left - delta)
+    if _shield_left > 0.0:
+        _shield_left = maxf(0.0, _shield_left - delta)
+        _shield_visual.visible = _shield_left > 0.0
 
 
 func _update_facing(input_x: float, input_z: float) -> void:
@@ -296,6 +325,22 @@ func _on_hit_received(info: DamageInfo) -> void:
     _stun_left = info.hitstun
     _invulnerable_left = hurt_invulnerable_time
     hurt.emit(info)
+
+
+func _build_shield_visual() -> void:
+    _shield_visual = MeshInstance3D.new()
+    _shield_visual.name = "GraveShieldWard"
+    var sphere: SphereMesh = SphereMesh.new()
+    sphere.radius = 1.1
+    sphere.height = 2.2
+    _shield_visual.mesh = sphere
+    var material: StandardMaterial3D = StandardMaterial3D.new()
+    material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    material.albedo_color = Color(0.55, 0.65, 0.8, 0.28)
+    _shield_visual.material_override = material
+    _shield_visual.visible = false
+    add_child(_shield_visual)
 
 
 func _on_died() -> void:

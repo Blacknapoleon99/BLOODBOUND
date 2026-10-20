@@ -51,3 +51,14 @@ The boss stands at z = −22 and is never directly reachable. Every threat it ma
 ## DEC-013 — Attack input buffer
 
 An attack pressed while another is still playing is kept for 0.15 s and fires on the first free frame (latest press wins). Without it, hitstop stretches attacks by a few frames and quick follow-ups were silently dropped (found by the M3 boss test).
+
+## DEC-014 — Cards validate before they touch anything
+
+`CardSystem.play_slot` checks, in order: card present → player can act → cooldown → target legality (weak point exposed and in range / boss action interruptible) → energy. Energy is spent, the cooldown starts, the card is discarded and the effect applies only after every check passes. Failures return a reason (`empty`, `blocked`, `cooldown`, `no_target`, `out_of_range`, `energy`) that the UI flashes on the slot. Effects reuse the combat contracts:
+- Blood Spear is a real moving `Hitbox`, so a weak point that closes mid-flight rejects it.
+- Grave Shield uses a `try_block` hook on `Hurtbox` that filters by damage category (`heavy`).
+- Ritual Chains calls the Bishop's `interrupt_with_chains`, which is only legal before the slam's descent.
+
+## DEC-015 — Seeded deck with stable slots
+
+`CardDeck` is a draw/hand/discard model with its own seeded RNG (Fisher–Yates). A played card's slot refills from the draw pile, and the discard pile reshuffles when the draw pile is empty. With the three-card starter deck, each card returns to its own slot, so hand positions stay stable. The seeded deal currently puts Grave Shield on 1, Ritual Chains on 2 and Blood Spear on 3. Larger decks work unchanged when deckbuilding arrives.

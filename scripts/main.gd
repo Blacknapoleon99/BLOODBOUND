@@ -66,6 +66,9 @@ func _ready() -> void:
     hud.add_theme_constant_override("shadow_offset_y", 2)
     canvas.add_child(hud)
     _build_boss_bar(canvas)
+    var card_system: CardSystem = player.get_node("Cards") as CardSystem
+    canvas.add_child(CardHandUI.create(card_system))
+    card_system.card_played.connect(_on_card_played)
     _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
 
 
@@ -99,7 +102,7 @@ func _process(delta: float) -> void:
         if _message_until <= 0.0:
             _message = ""
 
-    var state: String = "3D ARENA — WASD move / SPACE jump / J light / L heavy / K dodge / E return" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / E near amber gate"
+    var state: String = "3D ARENA — WASD move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E return" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / 1-3 cards / E amber gate"
     var player_health: Health = player.get("health")
     var hp: String = "HP " + "■".repeat(player_health.current) + "□".repeat(player_health.max_health - player_health.current)
     var objective: String = "SOLDIER: DEFEATED" if not enemy_alive else "SOLDIER: %d HP" % enemy.health.current
@@ -144,6 +147,10 @@ func _on_player_died() -> void:
     _flash("You were slain — restored at the last checkpoint.", 3.5)
 
 
+func _on_card_played(card: CardData, _slot: int) -> void:
+    _flash(card.display_name.to_upper() + "!", 1.5)
+
+
 func _on_boss_defeated() -> void:
     game_won = true
     player.set("game_frozen", true)
@@ -174,8 +181,8 @@ func _build_boss_bar(canvas: CanvasLayer) -> void:
     box.anchor_right = 0.5
     box.anchor_top = 1.0
     box.anchor_bottom = 1.0
-    box.offset_left = -300.0
-    box.offset_right = 300.0
+    box.offset_left = -240.0
+    box.offset_right = 240.0
     box.offset_top = -86.0
     box.offset_bottom = -24.0
     box.visible = false
@@ -186,7 +193,7 @@ func _build_boss_bar(canvas: CanvasLayer) -> void:
     boss_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.8))
     box.add_child(boss_label)
     boss_bar = ProgressBar.new()
-    boss_bar.custom_minimum_size = Vector2(600, 18)
+    boss_bar.custom_minimum_size = Vector2(480, 18)
     boss_bar.show_percentage = false
     var fill: StyleBoxFlat = StyleBoxFlat.new()
     fill.bg_color = Color(0.62, 0.05, 0.08)

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"blood_spear"
+display_name = "Blood Spear"
+description = "Hurl a spear of your own blood at an exposed weak point."
+cost = 2
+cooldown = 1.5
+targeting = 1
+effect = &"blood_spear"
+tags = PackedStringArray("attack", "projectile")
+damage = 2
+card_range = 14.0
+ui_color = Color(0.7, 0.06, 0.1, 1)
+vfx_id = &"blood_spear"

@@ -9,6 +9,7 @@ extends SceneTree
 
 const PHYSICS_HZ: float = 60.0
 const SHOT_DIR: String = "res://docs/screenshots/"
+const CARD_KEYS: Array[Key] = [KEY_1, KEY_2, KEY_3]
 
 var _failures: int = 0
 var _checks: int = 0
@@ -31,6 +32,7 @@ func _run() -> void:
     _check(_player.is_on_floor(), "player lands on the starting causeway")
     _check(absf(_player.global_position.z) < 0.001, "player starts on Z=0 plane")
     await _shot("01_boot")
+    _m4_data_and_deck_checks()
 
     # The soldier patrols on its own from boot; park it for deterministic movement tests.
     var ex0: float = _enemy.global_position.x
@@ -635,6 +637,156 @@ func _first_lance() -> BoneLance:
     return lances[0] as BoneLance if not lances.is_empty() else null
 
 
+func _cards() -> CardSystem:
+    return _player.get_node("Cards") as CardSystem
+
+
+func _energy() -> BloodEnergy:
+    return _player.get_node("BloodEnergy") as BloodEnergy
+
+
+func _slot_of(id: StringName) -> int:
+    var hand: Array[CardData] = _cards().deck.hand
+    for i in hand.size():
+        if hand[i] != null and hand[i].id == id:
+            return i
+    return -1
+
+
+func _hand_ids() -> Array[StringName]:
+    var ids: Array[StringName] = []
+    for card: CardData in _cards().deck.hand:
+        ids.append(card.id if card else &"")
+    return ids
+
+
+func _m4_data_and_deck_checks() -> void:
+    var spear: CardData = load("res://resources/cards/blood_spear.tres")
+    var shield: CardData = load("res://resources/cards/grave_shield.tres")
+    var chains: CardData = load("res://resources/cards/ritual_chains.tres")
+    _check([spear.cost, shield.cost, chains.cost] == [2, 2, 3], "card costs come from CardData resources (2/2/3)")
+    _check(spear.targeting == CardData.Targeting.BOSS_WEAK_POINT and shield.targeting == CardData.Targeting.SELF and chains.targeting == CardData.Targeting.BOSS_TELEGRAPH,
+        "card targeting rules come from data")
+    var ids: Array[String] = []
+    for id: StringName in _hand_ids():
+        ids.append(String(id))
+    ids.sort()  # StringName sorts by pointer; compare as Strings
+    _check(ids == ["blood_spear", "grave_shield", "ritual_chains"], "starting hand holds the three starter cards (%s)" % [ids])
+
+    var pool: Array[CardData] = []
+    for i in 10:
+        var card: CardData = CardData.new()
+        card.id = StringName("test_%d" % i)
+        pool.append(card)
+    var sequences: Array = []
+    for seed_value: int in [42, 42, 7]:
+        var deck: CardDeck = CardDeck.new()
+        deck.setup(pool, seed_value, 3)
+        var order: Array[StringName] = []
+        for card: CardData in deck.hand:
+            order.append(card.id)
+        for i in 12:
+            deck.play_slot(i % 3)
+            order.append(deck.hand[i % 3].id)  # the card drawn into the freed slot
+        sequences.append(order)
+        if seed_value == 7:
+            _check(deck.total_cards() == 10, "draw/discard/reshuffle conserves all 10 cards")
+    _check(sequences[0] == sequences[1], "same seed deals the identical sequence")
+    _check(sequences[0] != sequences[2], "a different seed deals a different sequence")
+    var first_ten: Dictionary = {}
+    for i in 10:
+        first_ten[sequences[0][i]] = true
+    _check(first_ten.size() == 10, "every card is dealt once before any repeats")
+
+
+func _m4_card_checks(boss: HollowBishop) -> void:
+    var cards: CardSystem = _cards()
+    var energy: BloodEnergy = _energy()
+    var ui: CardHandUI = _main.find_child("CardHand", true, false) as CardHandUI
+    energy.regen_per_second = 0.0  # exact energy accounting for these checks
+    var spear_slot: int = _slot_of(&"blood_spear")
+    var shield_slot: int = _slot_of(&"grave_shield")
+    var chains_slot: int = _slot_of(&"ritual_chains")
+    var hand_before: Array[StringName] = _hand_ids()
+    _check(ui != null and ui.slots.size() == 3, "card hand UI shows three slots")
+
+    # Invalid plays spend nothing and apply nothing.
+    _heal()
+    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    await _seconds(0.5)
+    energy.set_amount(6.0)
+    var spear_card: CardData = cards.deck.card_in_slot(spear_slot)
+    _check(cards.play_slot(spear_slot) == &"no_target" and energy.current == 6.0 and cards.cooldown_left(spear_card) == 0.0
+        and root.get_tree().get_nodes_in_group(&"blood_spear").is_empty(), "Blood Spear with no exposed weak point is refused, nothing spent")
+    _check(cards.play_slot(chains_slot) == &"no_target" and energy.current == 6.0, "Ritual Chains with nothing to interrupt is refused, nothing spent")
+    energy.set_amount(1.0)
+    _check(cards.play_slot(shield_slot) == &"energy" and energy.current == 1.0 and not bool(_player.call("is_shielded")),
+        "unaffordable Grave Shield is refused, no shield, nothing spent")
+    await _frames(2)
+    _check(ui.slots[shield_slot].modulate.a < 0.9 and "NEED BLOOD" in ui._status_labels[shield_slot].text, "UI dims the unaffordable card and flashes NEED BLOOD")
+
+    # Grave Shield through the real key binding; absorbs one heavy slam.
+    energy.set_amount(6.0)
+    _tap(CARD_KEYS[shield_slot])
+    await _frames(3)
+    _check(bool(_player.call("is_shielded")) and energy.current == 4.0, "key %d plays Grave Shield: shield up, 2 blood spent" % (shield_slot + 1))
+    _check(cards.play_slot(shield_slot) == &"cooldown" and energy.current == 4.0, "replaying during cooldown is refused, nothing spent")
+    await _frames(2)
+    _check("COOLING" in ui._status_labels[shield_slot].text, "UI flashes COOLING on a refused replay")
+    await _seconds(0.9)  # let the failure flash end
+    _check(ui.slots[shield_slot].modulate.a < 0.9 and "s" in ui._status_labels[shield_slot].text, "UI shows the cooldown timer")
+    boss.debug_attack(&"slam", 24.2)
+    await _boss_idle(boss)
+    _check(_player_hp() == 5 and not bool(_player.call("is_shielded")), "Grave Shield absorbs the slam and is consumed (hp=%d)" % _player_hp())
+    _player.call("raise_shield", &"heavy", 3.0)
+    boss.debug_attack(&"lance", 24.2)
+    await _boss_idle(boss)
+    _check(_player_hp() == 4, "the heavy-only ward does not stop a lance (projectile) (hp=%d)" % _player_hp())
+
+    # Ritual Chains interrupts the telegraph: the player beneath takes nothing.
+    _heal()
+    _player.call("teleport_to", Vector3(24.2, 1.0, 0.0))
+    _player.set("facing_direction", 1.0)
+    await _seconds(1.0)
+    energy.set_amount(6.0)
+    var boss_hp0: int = boss.health.current
+    boss.debug_attack(&"slam", 24.2)
+    await _seconds(0.8)
+    _check(boss.can_be_interrupted(), "hovering slam is interruptible")
+    _tap(CARD_KEYS[chains_slot])
+    await _frames(3)
+    _check(boss.current_attack() == &"chained" and energy.current == 3.0, "key %d plays Ritual Chains: slam bound, 3 blood spent" % (chains_slot + 1))
+    var slam_live: bool = false
+    for i in 60:
+        await physics_frame
+        slam_live = slam_live or boss.hand.hitbox.is_active()
+        if boss.hand.weak_open:
+            break
+    _check(not slam_live and _player_hp() == 5, "chained hand never becomes a hitbox; player beneath unhurt")
+    _check(boss.hand.weak_open, "chains drag the hand down with the stigmata exposed")
+    await _shot("07_chained")
+    _tap(KEY_J)
+    await _seconds(0.5)
+    _check(boss.health.current == boss_hp0 - 1 and energy.current == 4.0, "melee hit on the stigmata damages the Bishop and earns 1 blood (energy=%.1f)" % energy.current)
+
+    # Blood Spear: range check, then a real projectile into the exposed stigmata.
+    _player.call("teleport_to", Vector3(44.0, 1.0, 0.0))
+    await _seconds(0.2)
+    _check(cards.play_slot(spear_slot) == &"out_of_range" and energy.current == 4.0, "Blood Spear beyond its 14 m range is refused, nothing spent")
+    _player.call("teleport_to", Vector3(33.0, 1.0, 0.0))
+    await _seconds(0.2)
+    var boss_hp1: int = boss.health.current
+    _check(cards.play_slot(spear_slot) == &"ok" and energy.current == 2.0, "Blood Spear at an exposed stigmata in range is played, 2 blood spent")
+    _check(root.get_tree().get_nodes_in_group(&"blood_spear").size() == 1, "Blood Spear launches a projectile")
+    await _seconds(0.6)
+    _check(boss.health.current == boss_hp1 - 2, "the spear flies to the stigmata and deals 2 (%d → %d)" % [boss_hp1, boss.health.current])
+    _check(root.get_tree().get_nodes_in_group(&"blood_spear").is_empty(), "spent spear is cleaned up")
+    await _boss_idle(boss)
+    _check(not boss.can_be_interrupted(), "nothing is interruptible once the Bishop is idle")
+    _check(_hand_ids() == hand_before, "played cards return to the same slots (%s)" % [_hand_ids()])
+    energy.regen_per_second = 0.25
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
@@ -766,6 +918,9 @@ func _m3_boss_checks() -> void:
     _check(seen.has(&"slam") and seen.has(&"lance_volley"), "Bishop AI alternates Hand Slam and Bone Lances (%s)" % [seen.keys()])
     await _boss_idle(boss)
     await _seconds(1.0)
+
+    # --- M4 Bloodbound Cards in the real boss fight -------------------------------
+    await _m4_card_checks(boss)
 
     # Phase II: Sunder breaks the causeway; the route stays recoverable.
     boss.health.apply_damage(boss.health.current - boss.collapse_at)  # debug: jump to the phase threshold

@@ -27,12 +27,12 @@ This list reflects **planned** work. Mark `[x]` only after tests recorded in `do
 - [x] Boss phases, vulnerability window, HUD, defeat and restart. *(2026-10-20, TEST_RESULTS M3)*
 
 ## M4 — Cards
-- [ ] Cards defined via Godot Resource data.
-- [ ] Blood energy cost, recharge, target legality, cooldown, hand UI.
-- [ ] Blood Spear actually damages exposed boss target.
-- [ ] Grave Shield blocks an attack category.
-- [ ] Ritual Chains interrupts an interruptible boss animation.
-- [ ] Invalid activations cannot spend energy or apply effects.
+- [x] Cards defined via Godot Resource data. *(2026-10-20, TEST_RESULTS M4)*
+- [x] Blood energy cost, recharge, target legality, cooldown, hand UI. *(2026-10-20, TEST_RESULTS M4)*
+- [x] Blood Spear actually damages exposed boss target. *(2026-10-20, TEST_RESULTS M4)*
+- [x] Grave Shield blocks an attack category. *(2026-10-20, TEST_RESULTS M4)*
+- [x] Ritual Chains interrupts an interruptible boss animation. *(2026-10-20, TEST_RESULTS M4)*
+- [x] Invalid activations cannot spend energy or apply effects. *(2026-10-20, TEST_RESULTS M4)*
 
 ## M5 — Real third-person arena
 - [ ] Smooth mode/camera transition with shared player state.

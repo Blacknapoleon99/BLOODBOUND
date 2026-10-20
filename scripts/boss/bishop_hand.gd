@@ -54,6 +54,7 @@ static func create(boss_health: Health) -> BishopHand:
     hand.weak_point.name = "StigmataWeakPoint"
     hand.weak_point.team = &"enemy"
     hand.weak_point.health = boss_health
+    hand.weak_point.add_to_group(&"weak_point")
     hand.weak_point.add_child(_box_shape(Vector3(2.6, 1.6, 2.8), Vector3(0.0, 0.5, 0.4)))
     hand.add_child(hand.weak_point)
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/combat/health.gd" id="2_health"]
@@ -7,6 +7,8 @@
 [ext_resource type="Script" path="res://scripts/combat/hitbox.gd" id="5_hitbox"]
 [ext_resource type="Resource" path="res://resources/attacks/player_light.tres" id="6_light"]
 [ext_resource type="Resource" path="res://resources/attacks/player_heavy.tres" id="7_heavy"]
+[ext_resource type="Script" path="res://scripts/cards/blood_energy.gd" id="8_energy"]
+[ext_resource type="Script" path="res://scripts/cards/card_system.gd" id="9_cards"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.35
@@ -61,3 +63,11 @@ team = &"player"
 
 [node name="Shape" type="CollisionShape3D" parent="AttackHitbox"]
 shape = SubResource("BoxShape3D_hit")
+
+[node name="BloodEnergy" type="Node" parent="."]
+script = ExtResource("8_energy")
+
+[node name="Cards" type="Node" parent="." node_paths=PackedStringArray("energy", "player")]
+script = ExtResource("9_cards")
+energy = NodePath("../BloodEnergy")
+player = NodePath("..")

@@ -89,3 +89,23 @@
 - Bug found and fixed: attack presses during hitstop-stretched recovery were dropped. A 0.15 s attack buffer was added, tested in both directions (inside the window it fires; outside it's dropped).
 - Screenshots: `docs/screenshots/05_bishop_awake.png`, `06_weak_point.png` (hand on the causeway, stigmata lit), `07_causeway_broken.png` (gap plus rubble, phase II bar), `08_victory.png`.
 - Limitations: phase II and III are reached by applying boss HP damage directly (a debug path). Each threshold transition still runs the real logic. Attacks are triggered through `debug_attack` except in the 10 s AI check. Nobody has played the fight by hand yet, so its difficulty and pacing are unjudged. All boss and arena visuals are greybox primitives.
+
+## M4 verification run (2026-10-20)
+
+- Godot `4.7.2.stable.official.ed1daf0bf`, Windows 11.
+- `tools/run_checks.ps1 -Godot godot_console` → exit 0. `tests/gameplay_smoke.gd` → **143/143** headless and 143/143 in a visible window. No script errors or warnings in the output.
+- Card checks (passive regen is disabled during them so energy can be compared exactly):
+  - Data: costs 2/2/3 and targeting rules load from `resources/cards/*.tres`. The starting hand holds the three starter cards.
+  - Deck: the same seed deals an identical sequence and a different seed a different one. Every card in a 10-card deck is dealt once before any repeats. Draw/discard/reshuffle conserves all 10 cards. Played starter cards return to the same slots.
+  - Invalid plays spend nothing and apply nothing:
+    - Spear with no exposed weak point → `no_target` (no projectile, no cooldown).
+    - Chains with nothing to interrupt → `no_target`.
+    - Shield with 1 blood → `energy` (no shield).
+    - Shield replayed during cooldown → `cooldown`.
+    - Spear from 19 m → `out_of_range`.
+    - The UI dims unaffordable or cooling cards, flashes NEED BLOOD and COOLING, and shows the cooldown timer.
+  - Grave Shield (played with its real key): the ward rises and 2 blood is spent. It absorbs a 2-damage slam (HP stays 5) and is used up. A heavy-only ward does not stop a lance (projectile category; HP 5 → 4).
+  - Ritual Chains (real key) during the slam's hover: the attack becomes `chained` and 3 blood is spent. The hand never becomes a hitbox, and a player standing under the plate takes 0 damage. The stigmata opens; a light hit damages the Bishop and earns +1 blood.
+  - Blood Spear in range of the exposed stigmata: 2 blood spent, one projectile launched, and it deals 2 (8 → 6). The spent spear is removed.
+- Screenshot: `docs/screenshots/07_chained.png` (card hand, energy bar, chained hand with the stigmata exposed).
+- Limitations: test setups set blood energy directly with `BloodEnergy.set_amount`, but earning energy from melee hits is checked separately. Shield and Chains go through their key bindings; Spear is played through `CardSystem.play_slot`, which is the same call the key binding makes. Gamepad D-pad bindings are untested. Cards have no authored VFX yet, only the greybox spear and ward meshes.

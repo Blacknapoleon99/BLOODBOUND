@@ -48,3 +48,12 @@ M3 Hollow Bishop: a giant background boss with a phase state machine and determi
 
 ### Next action
 M4 Bloodbound Cards: an AttackData-style `CardData` Resource; a blood-energy resource; hand UI; and Blood Spear (projectile that damages the exposed stigmata), Grave Shield (blocks the `heavy` category, e.g. the slam) and Ritual Chains (interrupts the Bishop's telegraph). Invalid or unaffordable plays must spend nothing.
+
+## 2026-10-20 — M4 Bloodbound Cards closed
+
+- New: `scripts/cards/` (CardData, CardDeck, BloodEnergy, CardSystem, BloodSpearProjectile), `resources/cards/*.tres`, `scripts/ui/card_hand_ui.gd`.
+- Changed: `scripts/combat/hurtbox.gd` (`try_block` hook, `hit_blocked`), `scripts/player.gd` (Grave Shield ward), `scripts/boss/` (weak-point group, `can_be_interrupted`/`interrupt_with_chains`, chained state), `scenes/player.tscn` (BloodEnergy + Cards nodes), `scripts/input_bindings.gd` (cards on 1/2/3 and the D-pad), `scripts/main.gd` (hand UI, narrower boss bar), `tests/gameplay_smoke.gd` (143 checks).
+- Evidence: `docs/TEST_RESULTS.md` (M4 run).
+
+### Next action
+M5 real third-person arena: shared HP, energy and cards across the 2.5D↔3D transition; a smooth camera transition; free X/Z combat with an enemy (a Plagued Soldier with `plane_locked = false`); win, exit and return to the correct 2.5D spot.
