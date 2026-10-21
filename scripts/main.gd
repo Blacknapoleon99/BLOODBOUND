@@ -40,6 +40,7 @@ var _pending_altar: BloodAltar
 var _fall_screamed: bool = false
 var _callout_cooldown: float = 0.0
 var loot_chest: LootChest
+var _pending_chest: LootChest
 var _loot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var ambushes: Array[Ambush] = []
@@ -223,6 +224,7 @@ func _unhandled_input(event: InputEvent) -> void:
         get_tree().change_scene_to_file("res://scenes/armory.tscn")  # spoils + gear, then a new draft
         return
     if event.is_action_pressed(&"interact") and game_won and loot_chest != null and loot_chest.player_in_reach(player):
+        _pending_chest = loot_chest
         _open_loot()
         return
     if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
@@ -232,6 +234,11 @@ func _unhandled_input(event: InputEvent) -> void:
     if _active_ambush() != null:
         _flash("The bone walls hold until every foe is slain.", 2.0)
         return
+    for node: Node in get_tree().get_nodes_in_group(&"loot_chest"):
+        var chest: LootChest = node as LootChest
+        if chest != loot_chest and chest.player_in_reach(player):
+            _open_chest(chest)
+            return
     for altar: BloodAltar in altars:
         if altar.player_in_reach(player):
             _pending_altar = altar
@@ -337,6 +344,33 @@ func _fracture_offer() -> Array:
     return choices
 
 
+## Elite and secret reliquaries (the Bishop's uses _open_loot).
+func _open_chest(chest: LootChest) -> void:
+    _pending_chest = chest
+    _pending_altar = null
+    match chest.kind:
+        &"shards":
+            add_shards(chest.shards, chest.global_position)
+            chest.consume()
+            _pending_chest = null
+            Audio.sfx(&"loot_drop", 0.0)
+            _flash("A hidden cache: %d Bone Shards." % chest.shards, 3.0)
+        &"relics":
+            var relics: Array = _relic_offer(3)
+            if relics.is_empty():
+                chest.consume()
+                add_shards(30, chest.global_position)
+                _flash("The reliquary is empty of relics. 30 Bone Shards instead.", 3.0)
+                return
+            Audio.sfx(&"altar", 0.0)
+            offer_overlay.open("THE GRAVEWARDEN'S RELIQUARY: claim one relic", relics)
+        &"card":
+            Audio.sfx(&"altar", 0.0)
+            offer_overlay.open("A HIDDEN SHRINE: take a card", _card_offer(3))
+        _:
+            _open_loot()
+
+
 ## The Bishop's reliquary: pick 1 of 3 unowned items; it goes straight into the stash.
 func _open_loot() -> void:
     _loot_rng.randomize()
@@ -355,7 +389,8 @@ func _on_offer_resolved(choice: Resource) -> void:
         Profile.add_item(item.id)
         Profile.pending_spoils = maxi(0, Profile.pending_spoils - 1)  # this was the victory's spoil
         Profile.save()
-        loot_chest.consume()
+        (_pending_chest if _pending_chest != null else loot_chest).consume()
+        _pending_chest = null
         Audio.sfx(&"equip", 0.0)
         _flash("%s claimed! Equip it in the Armory (R). %s" % [item.display_name, item.stat_line()], 999999.0)
         return
@@ -365,6 +400,10 @@ func _on_offer_resolved(choice: Resource) -> void:
     if _pending_altar:
         _pending_altar.consume()
         _pending_altar = null
+    if _pending_chest != null:
+        if choice != null:
+            _pending_chest.consume()
+        _pending_chest = null
     if choice == null:
         _flash("You leave the offering untouched.", 2.0)
         return
@@ -687,6 +726,13 @@ func _build_boss_bar(canvas: CanvasLayer) -> void:
 
 func _update_boss_bar() -> void:
     var box: Control = boss_bar.get_parent() as Control
+    var elite: Gravewarden = get_tree().get_first_node_in_group(&"elite") as Gravewarden
+    if elite != null and not elite.is_dead() and absf(elite.global_position.x - player.global_position.x) < 24.0:
+        box.visible = true
+        boss_bar.max_value = elite.health.max_health
+        boss_bar.value = elite.health.current
+        boss_label.text = "THE GRAVEWARDEN" + (" — ENRAGED" if elite.enraged else "")
+        return
     box.visible = boss.is_active() or (boss.phase == HollowBishop.Phase.INTRO and boss.fight_started)
     boss_bar.max_value = boss.health.max_health
     boss_bar.value = boss.health.current

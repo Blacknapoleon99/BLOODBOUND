@@ -18,7 +18,8 @@ var _strike_material: StandardMaterial3D
 var _style: StringName = &"spike"
 
 
-## `style`: &"spike" (rises from the ground), &"bone" (falls from above), &"burst" (flat blast).
+## `style`: &"spike" (rises from the ground), &"bone" (falls from above), &"burst" (flat blast),
+## &"wave" (a LOW spike whose hitbox is only `height` tall, so it can be jumped).
 static func create(at: Vector3, radius: float, height: float, wait: float, damage: int, id: StringName, style: StringName = &"spike") -> StrikeZone:
     var zone: StrikeZone = StrikeZone.new()
     zone.name = "StrikeZone"
@@ -39,7 +40,7 @@ static func create(at: Vector3, radius: float, height: float, wait: float, damag
     zone.add_child(zone._ring)
     zone._strike = MeshInstance3D.new()
     var column: CylinderMesh = CylinderMesh.new()
-    column.top_radius = radius * (0.25 if style == &"spike" else 0.6)
+    column.top_radius = radius * (0.25 if style == &"spike" or style == &"wave" else 0.6)
     column.bottom_radius = radius * (0.9 if style != &"burst" else 1.0)
     column.height = height if style != &"burst" else 0.5
     zone._strike.mesh = column
@@ -61,7 +62,7 @@ static func create(at: Vector3, radius: float, height: float, wait: float, damag
     var shape: CollisionShape3D = CollisionShape3D.new()
     var cylinder: CylinderShape3D = CylinderShape3D.new()
     cylinder.radius = radius
-    cylinder.height = maxf(height, 1.6)
+    cylinder.height = height if style == &"wave" else maxf(height, 1.6)
     shape.shape = cylinder
     shape.position.y = cylinder.height * 0.5
     zone.hitbox.add_child(shape)

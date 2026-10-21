@@ -1,13 +1,16 @@
 class_name LootChest
 extends Node3D
-## The Bishop's reliquary: rises glowing from the causeway when the boss falls. E in reach
-## opens an item offer (pick 1 of 3 unowned items); the pick goes straight into the stash.
+## A reliquary: rises glowing from the floor. E in reach opens its offer, by `kind`:
+## &"items" (the Bishop: 1 of 3 unowned items into the stash), &"relics" (elite: 1 of 3 relics),
+## &"card" (secret: 1 of 3 cards), &"shards" (secret: `shards` Bone Shards at once).
 
 signal opened
 
 const REACH: float = 2.2
 
 var used: bool = false
+var kind: StringName = &"items"
+var shards: int = 0
 var _lid: MeshInstance3D
 var _glow: StandardMaterial3D
 var _light: OmniLight3D

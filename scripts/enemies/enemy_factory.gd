@@ -61,13 +61,22 @@ static func spawn(type: StringName, parent: Node, x: float, lo: float, hi: float
             e = archer(parent, x, lo, hi)
         &"hound":
             e = hound(parent, x, lo, hi)
-        &"knight", &"wraith", &"crawler":
-            var code: CodeEnemy = (ShieldedKnight.new() if type == &"knight" else FlyingWraith.new() if type == &"wraith" else BoneCrawler.new()) as CodeEnemy
+        &"knight", &"wraith", &"crawler", &"gravewarden":
+            var code: CodeEnemy
+            match type:
+                &"knight":
+                    code = ShieldedKnight.new()
+                &"wraith":
+                    code = FlyingWraith.new()
+                &"gravewarden":
+                    code = Gravewarden.new()
+                _:
+                    code = BoneCrawler.new()
             code.name = String(type).capitalize()
             code.min_x = lo
             code.max_x = hi
             parent.add_child(code)
-            code.global_position = Vector3(x, y + (2.2 if type == &"wraith" else 0.0), 0.0)
+            code.global_position = Vector3(x, y + (2.2 if type == &"wraith" else 0.5 if type == &"gravewarden" else 0.0), 0.0)
             code.defeated.connect(func() -> void: code.get_tree().create_timer(1.5).timeout.connect(code.queue_free))
             return code
         _:

@@ -182,6 +182,7 @@ func _run() -> void:
     await _m15_new_card_checks()
     await _m16_map_checks()
     await _m17_new_enemy_checks()
+    await _m18_gravewarden_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2414,6 +2415,96 @@ func _m17_new_enemy_checks() -> void:
     Ambush.enabled = false
     _heal()
     await _seconds(1.5)
+
+
+## The Gravewarden elite: charge (and the wall daze), quake waves, summons, enrage, shards,
+## and its hall: sealed fight -> HP bar -> relic reliquary.
+func _m18_gravewarden_checks() -> void:
+    _enemy.set_ai_enabled(false)
+    var warden: Gravewarden = EnemyFactory.spawn(&"gravewarden", _main, -10.0, -18.5, -7.5) as Gravewarden
+    warden.set_ai_enabled(false)
+    _player.call("teleport_to", Vector3(-14.0, 1.0, 0.0))
+    _heal()
+    await _seconds(0.6)
+    warden.facing = -1.0
+    var hp0: int = _player_hp()
+    warden.start_move(&"charge")
+    await _frames(5)
+    _check(warden.state == &"charge_windup" and (warden.get("_lane") as MeshInstance3D).visible, "Crypt Charge paints a red lane first")
+    var charged: bool = await _wait_until(func() -> bool: return warden.state == &"charging", 1.5)
+    var dazed: bool = await _wait_until(func() -> bool: return warden.state == &"stagger", 2.0)
+    _check(charged and _player_hp() < hp0, "the charge runs you down (hp %d -> %d)" % [hp0, _player_hp()])
+    _check(dazed and warden.global_position.x < -16.5, "it slams into the hall's end and is dazed")
+    await _seconds(1.8)
+
+    _heal()
+    _player.call("teleport_to", Vector3(warden.global_position.x + 3.0, 1.0, 0.0))
+    await _seconds(0.5)
+    var zones0: int = root.get_tree().get_nodes_in_group(&"strike_zone").size()
+    hp0 = _player_hp()
+    warden.start_move(&"quake")
+    await _seconds(1.3)
+    var zones: int = root.get_tree().get_nodes_in_group(&"strike_zone").size()
+    _check(zones - zones0 >= 6, "Grave Quake sends spike waves along the floor (%d)" % (zones - zones0))
+    await _seconds(0.8)
+    _check(_player_hp() < hp0, "standing in the waves hurts (hp %d -> %d)" % [hp0, _player_hp()])
+    await _seconds(1.0)
+    warden.start_move(&"summon")
+    await _seconds(1.0)
+    var minions: Array[Node] = root.get_tree().get_nodes_in_group(&"warden_minion")
+    _check(minions.size() == 2, "Raise Guard calls two Bone Crawlers (%d)" % minions.size())
+    for m: Node in minions:
+        (m.get("health") as Health).apply_damage(9)
+    await _seconds(1.0)
+    _heal()
+
+    warden.health.apply_damage(warden.health.current - warden.health.max_health / 2)
+    warden.hurtbox.hit_received.emit(DamageInfo.new())
+    _check(warden.enraged, "at half health it enrages")
+    warden.start_move(&"charge")
+    _check(int(warden.get("_charges_left")) == 1, "enraged, its charge comes twice")
+    var shards0: int = RunState.shards
+    warden.health.apply_damage(warden.health.current)
+    await _frames(3)
+    _check(RunState.shards == shards0 + 40, "the Gravewarden drops 40 Bone Shards")
+    await _seconds(1.6)
+
+    # Its hall: walls seal, the HP bar names it, the reliquary offers relics.
+    var hall: LevelSection = (load("res://scripts/level/sections/gravewarden_hall.gd") as Script).new() as LevelSection
+    _main.add_child(hall)
+    hall.build(300.0)
+    Ambush.enabled = true
+    _player.call("teleport_to", Vector3(302.0, 1.0, 0.0))
+    await _seconds(0.4)
+    _key(KEY_D, true)
+    await _seconds(1.3)
+    _key(KEY_D, false)
+    var sealed: bool = await _wait_until(func() -> bool: return (hall.get("hall") as Ambush).is_active(), 1.0)
+    await _frames(3)
+    var elite: Gravewarden = hall.call("warden")
+    _check(sealed and elite != null, "crossing into the hall seals it and wakes the Gravewarden")
+    await _frames(2)
+    var bar_box: Control = (_main.get("boss_bar") as ProgressBar).get_parent()
+    _check(bar_box.visible and (_main.get("boss_label") as Label).text.begins_with("THE GRAVEWARDEN"), "its HP bar shows its name")
+    elite.health.apply_damage(elite.health.current)
+    await _seconds(0.5)
+    var chest: LootChest = hall.get("reliquary")
+    _check(chest != null and chest.kind == &"relics", "when it falls a relic reliquary rises")
+    Ambush.enabled = false
+    _player.call("teleport_to", chest.global_position + Vector3(-1.0, 1.0, 0.0))
+    await _seconds(0.4)
+    var relics0: int = RunState.relics.size()
+    _tap(KEY_E)
+    await _frames(4)
+    var overlay: CardOfferOverlay = _main.get("offer_overlay")
+    _check(overlay.is_open() and overlay.offer_view.offers.all(func(c: Resource) -> bool: return c is RelicData), "E opens it: pick a relic")
+    _tap(KEY_1)
+    await _frames(4)
+    _check(RunState.relics.size() == relics0 + 1 and chest.used, "the relic is yours and the reliquary is spent")
+    RunState.relics.clear()
+    hall.queue_free()
+    _heal()
+    await _seconds(0.3)
 
 
 func _m3_boss_checks() -> void:
