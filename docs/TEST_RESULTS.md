@@ -408,3 +408,19 @@
   - The Wraith in a screenshot (it only appears in certain rooms).
   - Hit-flash and enrage tints on model enemies (the code tints the hidden greybox material).
   - The Web export.
+
+## Rigged and animated characters (2026-10-22)
+
+- **New models:**
+  - Player knight: T-pose regeneration, 11 clips.
+  - Archer, Shield Knight, Gravewarden: 5–7 clips each.
+  - Hound: walk.
+  - Bishop body: now rigged, 7 clips.
+  - Soldier: re-exported with 5 clips.
+- **Animation:** `ArtAnimator` drives them from gameplay signals and velocity (see `docs/ASSET_LIST.md`). Scene lighting gets a shadowless fill light and a filmic tonemap when art is on.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446**. The log has the same three engine warnings as before ("resources still in use", `p_elem->_root`) and no art-script errors.
+- `godot_console --audio-driver Dummy --path . -s res://tests/shot_art_anim.gd` (run silently at the user's request) → strips `18_anim_soldier.png` (chase and swing) and `18_anim_bishop.png` (pose changes while attacking).
+- **Not verified:**
+  - A hands-on playtest for feel and timing of clips against hit windows.
+  - The Archer, Shield Knight, Hound and Gravewarden in screenshots (they only appear in certain rooms or ambushes).
+  - The Web export.

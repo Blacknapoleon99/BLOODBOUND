@@ -81,14 +81,23 @@
       "id": "boss_bishop_body",
       "file": "assets/models/boss/bishop_body.glb",
       "ref": "assets/concepts/refs/bishop_body.png",
-      "cost": "30 credits",
+      "cost": "30 + 20 rig",
       "tris": 29451,
       "textures": "2k PBR (jpg)",
-      "fit": "boss-local metres: hem y -12, mitre tip 18.5, faces +Z",
+      "fit": "1 m GLB, ArtSwap scales to 30.5 m with hem at y -12",
       "replaces": "hollow_bishop.gd _build_body boxes (Robe, Rib*, Spine, Shoulders, Mitre, LeftArm, Skull, Eye); Heart and SlamArm kept",
       "provider": "Tripo Studio web (H3.1 HD Model, multiview from ChatGPT turnaround in assets/concepts/refs/), cleaned in Blender 5.2.2",
       "license": "Tripo paid plan output (user's Max plan, private); reference images ChatGPT (user's account)",
-      "approval": "user approved 2026-10-21 ('continue use the 1100')"
+      "approval": "user approved 2026-10-21 ('continue use the 1100')",
+      "animations": [
+        "idle",
+        "walk",
+        "chop",
+        "slash",
+        "cast_a_spell",
+        "angry_01",
+        "defeat"
+      ]
     },
     {
       "id": "boss_bishop_hand",
@@ -111,7 +120,11 @@
       "tris": 14878,
       "textures": "1k PBR",
       "animations": [
-        "idle"
+        "idle",
+        "walk",
+        "slash",
+        "hit_to_body_01",
+        "defeat"
       ],
       "fit": "1 m tall feet at origin facing +Z; ArtSwap scales to 1.8 m, yaw 180",
       "replaces": "plagued_soldier Visual Body/Head (Blade kept); Husk inherits",
@@ -131,6 +144,106 @@
       "provider": "Tripo Studio web (H3.1 HD Model, multiview from ChatGPT turnaround in assets/concepts/refs/), cleaned in Blender 5.2.2",
       "license": "Tripo paid plan output (user's Max plan, private); reference images ChatGPT (user's account)",
       "approval": "user approved 2026-10-21 ('continue use the 1100')"
+    },
+    {
+      "id": "player_cursed_knight",
+      "file": "assets/models/player/cursed_knight.glb",
+      "ref": "assets/concepts/refs/knight_tpose.png",
+      "cost": "30 (A-pose, rig failed+refunded) + 30 (T-pose) + 20 rig",
+      "tris": 28357,
+      "textures": "2k",
+      "animations": [
+        "idle",
+        "run",
+        "walk",
+        "jump",
+        "fall",
+        "slash",
+        "chop",
+        "dive",
+        "hit_to_body_01",
+        "defeat",
+        "cast_a_spell"
+      ],
+      "provider": "Tripo Studio web: H3.1 HD multiview from ChatGPT refs, Tripo auto-rig (Mixamo skeleton) + free preset animations; cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21/22 ('continue use the 1100', 'make them animated')"
+    },
+    {
+      "id": "enemy_bone_archer",
+      "file": "assets/models/enemies/bone_archer.glb",
+      "ref": "assets/concepts/refs/archer.png",
+      "cost": "30 + 20 rig",
+      "tris": 14492,
+      "textures": "1k",
+      "animations": [
+        "idle",
+        "walk",
+        "shoot",
+        "hit_to_body_01",
+        "defeat"
+      ],
+      "provider": "Tripo Studio web: H3.1 HD multiview from ChatGPT refs, Tripo auto-rig (Mixamo skeleton) + free preset animations; cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21/22 ('continue use the 1100', 'make them animated')"
+    },
+    {
+      "id": "enemy_shielded_knight",
+      "file": "assets/models/enemies/shielded_knight.glb",
+      "ref": "assets/concepts/refs/shield_knight.png",
+      "cost": "30 + 20 rig",
+      "tris": 14350,
+      "textures": "1k",
+      "animations": [
+        "idle",
+        "walk",
+        "slash",
+        "hit_to_body_01",
+        "defeat"
+      ],
+      "provider": "Tripo Studio web: H3.1 HD multiview from ChatGPT refs, Tripo auto-rig (Mixamo skeleton) + free preset animations; cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21/22 ('continue use the 1100', 'make them animated')"
+    },
+    {
+      "id": "enemy_crypt_hound",
+      "file": "assets/models/enemies/crypt_hound.glb",
+      "ref": "assets/concepts/refs/hound.png",
+      "cost": "30 + 20 rig (quadruped) + 20 text-to-motion (lunge; did not attach to the rig)",
+      "tris": 14751,
+      "textures": "1k",
+      "animations": [
+        "walk"
+      ],
+      "provider": "Tripo Studio web: H3.1 HD multiview from ChatGPT refs, Tripo auto-rig (Mixamo skeleton) + free preset animations; cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21/22 ('continue use the 1100', 'make them animated')"
+    },
+    {
+      "id": "enemy_gravewarden",
+      "file": "assets/models/enemies/gravewarden.glb",
+      "ref": "assets/concepts/refs/gravewarden.png",
+      "cost": "30 + 20 rig (+1 failed rig, refunded)",
+      "tris": 17446,
+      "textures": "1k",
+      "animations": [
+        "idle",
+        "walk",
+        "run",
+        "chop",
+        "hit_to_body_01",
+        "defeat",
+        "angry_01"
+      ],
+      "provider": "Tripo Studio web: H3.1 HD multiview from ChatGPT refs, Tripo auto-rig (Mixamo skeleton) + free preset animations; cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21/22 ('continue use the 1100', 'make them animated')"
     }
-  ]
+  ],
+  "tripo_studio_credits": {
+    "start": 2435,
+    "after": 1955,
+    "spent": 480,
+    "note": "2,135 of the start balance expire 2026-10-30; preset animations are free"
+  }
 }

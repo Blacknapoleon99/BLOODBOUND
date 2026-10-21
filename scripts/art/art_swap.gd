@@ -13,8 +13,11 @@ const CAUSEWAY_SEGMENT_LENGTH: float = 4.0
 ## Greybox solids (main.gd `_make_solid` labels) that get the causeway segment. One for now.
 const CAUSEWAY_SOLIDS: Array[String] = ["Starting causeway"]
 
-## The Hollow Bishop (Tripo3D, cleaned in Blender): body authored in boss-local metres (hem at
-## y -12, mitre tip at 18.5) and the slam hand palm-up with its origin on the stigmata socket.
+## The Hollow Bishop (Tripo3D, rigged + animated there): the body GLB is 1 m tall with its feet
+## at the origin, fitted here to boss-local metres (hem at y -12, mitre tip at 18.5); the slam
+## hand is palm-up with its origin on the stigmata socket.
+const BISHOP_HEIGHT: float = 30.5
+const BISHOP_HEM_Y: float = -12.0
 const BISHOP_BODY_PATH: String = "res://assets/models/boss/bishop_body.glb"
 const BISHOP_HAND_PATH: String = "res://assets/models/boss/bishop_hand.glb"
 ## Greybox boxes the body model replaces (Heart stays: its glow is the weak-window cue;
@@ -22,7 +25,8 @@ const BISHOP_HAND_PATH: String = "res://assets/models/boss/bishop_hand.glb"
 const BISHOP_PARTS: Array[String] = ["Robe", "Spine", "Shoulders", "Mitre", "LeftArm", "Skull", "Rib", "Eye"]
 const HAND_PARTS: Array[String] = ["Palm", "Finger", "Thumb"]
 
-## Enemies spawn at runtime (rooms, ambushes), so they are dressed as they enter the tree.
+## Characters spawn at runtime (player, rooms, ambushes), so they are dressed as they enter the
+## tree. Keyed by class_name, or by script path for scripts without one (the player).
 ## Per enemy class: the visual node (property or child path), greybox meshes to hide, and the
 ## model's fit. Tripo models are 1 m tall, feet at the origin, facing +Z; `yaw` turns that front
 ## to the visual's own forward (-Z for scripts that aim it with looking_at, +X for ones that
@@ -30,6 +34,16 @@ const HAND_PARTS: Array[String] = ["Palm", "Finger", "Thumb"]
 const ENEMY_MODELS: Dictionary = {
     &"PlaguedSoldier": {"path": "res://assets/models/enemies/plagued_soldier.glb", "visual": "visual",
         "hide": ["Body", "Head"], "yaw": PI, "height": 1.8, "feet": -0.9},
+    &"res://scripts/player.gd": {"path": "res://assets/models/player/cursed_knight.glb", "visual": "VisualRoot",
+        "hide": ["PlaceholderKnight"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.85, "steer": true, "move": &"run"},
+    &"BoneArcher": {"path": "res://assets/models/enemies/bone_archer.glb", "visual": "_visual",
+        "hide": ["Body"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.9},
+    &"ShieldedKnight": {"path": "res://assets/models/enemies/shielded_knight.glb", "visual": "_visual",
+        "hide": ["Body"], "yaw": PI * 0.5, "height": 1.9, "feet": -0.95},
+    &"CryptHound": {"path": "res://assets/models/enemies/crypt_hound.glb", "visual": "_visual",
+        "hide": ["Head", "Body"], "yaw": PI * 0.5, "height": 1.15, "feet": -0.4},
+    &"Gravewarden": {"path": "res://assets/models/enemies/gravewarden.glb", "visual": "_visual",
+        "hide": ["Armour", "Helm"], "yaw": PI * 0.5, "height": 2.6, "feet": -1.3},
     &"FlyingWraith": {"path": "res://assets/models/enemies/flying_wraith.glb", "visual": "_visual",
         "hide": ["Shroud", "Skull"], "yaw": PI * 0.5, "height": 1.5, "feet": -0.65},
 }
@@ -46,6 +60,7 @@ static func apply(level: Node3D) -> int:
     var tree: SceneTree = level.get_tree()
     if tree != null and not tree.node_added.is_connected(_on_node_added):
         tree.node_added.connect(_on_node_added)
+    _light_for_art(level)
     for node: Node in level.find_children("*", "", true, false):  # enemies placed by the build
         var cfg: Dictionary = _enemy_config(node)
         if not cfg.is_empty() and node.is_node_ready():
@@ -60,8 +75,12 @@ static func apply(level: Node3D) -> int:
         if body != null and tile_box(body, label + " appearance", segment, CAUSEWAY_SEGMENT_LENGTH):
             swapped += 1
     var bishop: Node3D = level.get_node_or_null("HollowBishop") as Node3D
-    if bishop != null and dress(bishop, BISHOP_PARTS, BISHOP_BODY_PATH) != null:
+    var bishop_art: Node3D = dress(bishop, BISHOP_PARTS, BISHOP_BODY_PATH) if bishop != null else null
+    if bishop_art != null:
         swapped += 1
+        bishop_art.transform = Transform3D(Basis.from_scale(Vector3.ONE * BISHOP_HEIGHT), Vector3(0.0, BISHOP_HEM_Y, 0.0))
+        if ArtAnimator.attach(bishop, bishop_art, false, &"walk") == null:
+            play_loop(bishop_art, &"idle")
         var hand: Node3D = bishop.get("hand") as Node3D
         if hand != null and dress(hand, HAND_PARTS, BISHOP_HAND_PATH) != null:
             swapped += 1
@@ -94,9 +113,31 @@ static func _on_node_added(node: Node) -> void:
         node.ready.connect(_dress_enemy.bind(node, cfg), CONNECT_ONE_SHOT)
 
 
+## Textured models need more light than flat greybox colours to stay readable at 22 m: a
+## shadowless cool fill from the camera side (cheap on the Web build) plus a filmic tonemap.
+static func _light_for_art(level: Node3D) -> void:
+    if level.has_node("ArtFillLight"):
+        return
+    var fill: DirectionalLight3D = DirectionalLight3D.new()
+    fill.name = "ArtFillLight"
+    fill.rotation_degrees = Vector3(-18.0, 8.0, 0.0)  # from slightly above/behind the camera, toward -Z
+    fill.light_color = Color(0.78, 0.82, 1.0)
+    fill.light_energy = 0.85
+    fill.shadow_enabled = false
+    level.add_child(fill)
+    for env_node: Node in level.find_children("*", "WorldEnvironment", false, false):
+        var env: Environment = (env_node as WorldEnvironment).environment
+        if env != null:
+            env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+            env.tonemap_exposure = 1.15
+
+
 static func _enemy_config(node: Node) -> Dictionary:
     var script: Script = node.get_script() as Script
-    return {} if script == null else ENEMY_MODELS.get(StringName(script.get_global_name()), {})
+    if script == null:
+        return {}
+    var key: StringName = script.get_global_name()
+    return ENEMY_MODELS.get(key if key != &"" else StringName(script.resource_path), {})
 
 
 ## Runs after the enemy's own _ready has built its greybox visual.
@@ -112,6 +153,8 @@ static func _dress_enemy(enemy: Node, cfg: Dictionary) -> void:
         return
     var h: float = cfg["height"]
     art.transform = Transform3D(Basis(Vector3.UP, cfg["yaw"]).scaled(Vector3.ONE * h), Vector3(0.0, cfg["feet"], 0.0))
+    if enemy is CharacterBody3D and ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk")) != null:
+        return
     play_loop(art, &"idle")
 
 
