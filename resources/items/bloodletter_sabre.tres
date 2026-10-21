@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"bloodletter_sabre"
+display_name = "Bloodletter Sabre"
+description = "A curved blade that drinks as it cuts."
+slot = 0
+vigor = 0
+might = 1
+agility = 0
+devotion = 0
+attack_speed = 1.1
+heavy_damage = 0
+ui_color = Color(0.75, 0.12, 0.15, 1)

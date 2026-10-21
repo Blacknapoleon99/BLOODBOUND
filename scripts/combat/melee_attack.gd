@@ -29,8 +29,10 @@ func can_cancel_into_dodge() -> bool:
     return phase == Phase.RECOVERY and current != null and current.dodge_cancel_recovery
 
 
-## Extra damage per AttackData.id (relics such as Executioner's Seal).
+## Extra damage per AttackData.id (relics such as Executioner's Seal, Might from equipment).
 var bonus_damage: Dictionary = {}
+## Weapon attack speed: every phase lasts duration / speed_scale.
+var speed_scale: float = 1.0
 
 
 func start(data: AttackData, attack_facing: Vector3) -> bool:
@@ -78,7 +80,7 @@ func _physics_process(delta: float) -> void:
 
 func _enter(next: Phase, duration: float) -> void:
     phase = next
-    _phase_left = duration
+    _phase_left = duration / maxf(0.1, speed_scale)
     phase_changed.emit(next)
 
 

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"ossuary_plate"
+display_name = "Ossuary Plate"
+description = "Armour of fused ribs. Heavy, but it holds."
+slot = 1
+vigor = 2
+might = 0
+agility = -1
+devotion = 0
+attack_speed = 1.0
+heavy_damage = 0
+ui_color = Color(0.82, 0.78, 0.68, 1)

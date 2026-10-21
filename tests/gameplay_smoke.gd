@@ -137,14 +137,19 @@ func _run() -> void:
     await _m5_fracture_checks()
 
     # --- M3 Hollow Bishop → victory / restart ----------------------------------
+    var spoils_before: int = Profile.pending_spoils
     await _m3_boss_checks()
     _check(bool(_main.get("game_won")), "defeating the Bishop wins the run")
     _check(Audio.current_music == &"" and int(Audio.played.get(&"victory", 0)) > 0, "victory stops the music and plays the victory chord")
     _check(bool(_player.get("game_frozen")), "player is frozen on victory")
     await _shot("08_victory")
+    _check(Profile.pending_spoils == spoils_before + 1, "victory earns spoils for the Armory (%d -> %d)" % [spoils_before, Profile.pending_spoils])
     _tap(KEY_R)
     await _frames(10)
-    _check(current_scene.scene_file_path == "res://scenes/draft.tscn", "R after victory starts a new run with a fresh draft")
+    _check(current_scene.scene_file_path == "res://scenes/armory.tscn", "R after victory opens the Armory")
+    _tap(KEY_ENTER)  # Continue is focused
+    await _frames(10)
+    _check(current_scene.scene_file_path == "res://scenes/draft.tscn", "the Armory continues into a fresh draft")
     await _draft_three()
     _bind()
     await _seconds(0.5)
@@ -158,10 +163,11 @@ func _run() -> void:
     _check(current_scene.scene_file_path == "res://scenes/main_menu.tscn" and not paused, "pause → Main menu returns to the title screen, unpaused")
     await _m7_altar_and_new_card_checks()
     await _m9_archer_and_ambush_checks()
-    await _m10_audio_checks()
     await _m11_relic_checks()
     await _m12_enemy_ability_checks()
     await _m13_hazard_checks()
+    await _m14_equipment_checks()
+    await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -291,6 +297,7 @@ func _test_defaults() -> void:
     GameSettings.reset_defaults()
     Ambush.enabled = false  # scripted checks walk the level freely; ambushes have their own checks
     SpikeTrap.enabled = false  # likewise for the traps (see _m13_hazard_checks)
+    Profile.reset()  # starter gear only (no stats): equipment has its own checks
     PendulumBlade.enabled = false
 
 
@@ -1068,7 +1075,10 @@ func _m6_menu_checks() -> void:
     start.grab_focus()
     _tap(KEY_ENTER)
     await _frames(12)
-    _check(current_scene.scene_file_path == "res://scenes/draft.tscn" and RunState.active, "Enter on Start opens the card draft for a new run")
+    _check(current_scene.scene_file_path == "res://scenes/armory.tscn", "Enter on Start opens the Armory")
+    _tap(KEY_ENTER)  # Continue is focused
+    await _frames(12)
+    _check(current_scene.scene_file_path == "res://scenes/draft.tscn" and RunState.active, "Continue in the Armory opens the card draft for a new run")
     var picked: Array[StringName] = await _draft_three()
     _check(current_scene.scene_file_path == "res://scenes/main.tscn", "finishing the draft loads the level")
     _bind()
@@ -1683,6 +1693,7 @@ const SOUND_IDS: Array[StringName] = [
     &"card_pact", &"card_choir", &"card_transfusion", &"card_refused", &"bishop_roar", &"bishop_slam",
     &"lance_whistle", &"censer_swing", &"beam_charge", &"beam_fire", &"summon", &"archer_draw",
     &"arrow_release", &"walls_rise", &"altar", &"ui_click", &"victory",
+    &"bone_rain", &"geyser", &"hound_pounce", &"husk_burst", &"soldier_lunge", &"equip",
 ]
 
 
@@ -1999,6 +2010,102 @@ func _m13_hazard_checks() -> void:
     SpikeTrap.enabled = false
     PendulumBlade.enabled = false
     await _seconds(0.3)
+
+
+## Attributes, items and the Armory: spoils, equipping, stat preview, effect in the level,
+## attack speed, and persistence.
+func _m14_equipment_checks() -> void:
+    var ids: Dictionary = {}
+    for item: ItemData in ItemPool.ALL:
+        ids[item.id] = true
+    _check(ItemPool.ALL.size() == 13 and ids.size() == 13, "13 distinct items exist")
+    var starters_plain: bool = ItemPool.STARTERS.all(func(id: StringName) -> bool: return ItemPool.by_id(id).stat_line() == "No bonuses")
+    _check(starters_plain, "starter gear has no bonuses")
+    for slot: int in [ItemData.Slot.WEAPON, ItemData.Slot.ARMOR, ItemData.Slot.CHARM]:
+        _check(ItemPool.ALL.filter(func(i: ItemData) -> bool: return i.slot == slot).size() >= 3, "at least 3 %s items" % ItemData.slot_name(slot))
+
+    # Base numbers used by the Armory preview match the real player.
+    Profile.reset()
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    var health: Health = _player.get("health")
+    var energy: BloodEnergy = _energy()
+    var light: AttackData = _player.get("light_attack")
+    var heavy: AttackData = _player.get("heavy_attack")
+    var base_ok: bool = health.max_health == Equipment.BASE_HP and light.damage == Equipment.BASE_LIGHT and heavy.damage == Equipment.BASE_HEAVY
+    base_ok = base_ok and light.next_combo.next_combo.damage == Equipment.BASE_FINISHER and is_equal_approx(float(_player.get("move_speed")), Equipment.BASE_SPEED)
+    base_ok = base_ok and is_equal_approx(float(_player.get("dodge_cooldown")), Equipment.BASE_DODGE_COOLDOWN) and is_equal_approx(energy.per_hit, Equipment.BASE_BLOOD_PER_HIT) and is_equal_approx(energy.maximum, Equipment.BASE_MAX_BLOOD)
+    _check(base_ok, "the Armory base stats match the player")
+
+    # The Armory: spoils, equipping, preview.
+    change_scene_to_file("res://scenes/armory.tscn")
+    await _frames(10)
+    var armory: Control = current_scene
+    var offer: Array = armory.get("spoil_offer")
+    _check((armory.get("spoils_box") as Control).visible and offer.size() == 3 and offer.all(func(i: ItemData) -> bool: return not Profile.stash.has(i.id)), "a new profile has spoils waiting: 3 items not yet owned")
+    var claimed: ItemData = offer[1]
+    _tap(KEY_2)
+    await _frames(4)
+    _check(Profile.stash.has(claimed.id) and Profile.equipped[claimed.slot] == claimed.id and Profile.pending_spoils == 0, "claiming spoils adds and equips %s" % claimed.display_name)
+    _check(not (armory.get("spoils_box") as Control).visible, "no more spoils, the offer hides")
+    for id: StringName in [&"gravecleaver", &"ossuary_plate", &"censer_locket"]:
+        Profile.add_item(id)
+    armory.call("refresh")
+    await _frames(2)
+    var buttons: Dictionary = armory.get("item_buttons")
+    (buttons[&"gravecleaver"] as Button).pressed.emit()
+    await _frames(2)
+    buttons = armory.get("item_buttons")
+    (buttons[&"ossuary_plate"] as Button).pressed.emit()
+    await _frames(2)
+    buttons = armory.get("item_buttons")
+    (buttons[&"censer_locket"] as Button).pressed.emit()
+    await _frames(2)
+    _check(Profile.item_in(ItemData.Slot.WEAPON).id == &"gravecleaver" and Profile.item_in(ItemData.Slot.ARMOR).id == &"ossuary_plate" and Profile.item_in(ItemData.Slot.CHARM).id == &"censer_locket", "clicking stash items equips one per slot")
+    var stats: String = (armory.get("stats_label") as Label).text
+    var attrs: String = (armory.get("attributes_label") as Label).text
+    _check(attrs.contains("Vigor 2") and attrs.contains("Might 2") and attrs.contains("Agility -2") and attrs.contains("Devotion 2"), "attributes add up across the three slots (%s)" % attrs.replace("\n", " "))
+    _check(stats.contains("Health 7") and stats.contains("heavy 6") and stats.contains("x0.85"), "the stat preview shows the result (%s)" % stats.replace("\n", " | "))
+    Profile.save("user://test_profile.cfg")
+
+    # The gear works in the level.
+    (armory.get("continue_button") as Button).pressed.emit()
+    await _frames(10)
+    _check(current_scene.scene_file_path == "res://scenes/draft.tscn", "Continue goes to the draft")
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    health = _player.get("health")
+    energy = _energy()
+    var melee: MeleeAttack = _melee()
+    _check(health.max_health == 7 and health.current == 7, "Vigor 2: 7 max HP in the level")
+    _check(absf(float(_player.get("move_speed")) - Equipment.BASE_SPEED * 0.92) < 0.01, "Agility -2: run speed %.2f" % float(_player.get("move_speed")))
+    _check(is_equal_approx(energy.per_hit, 0.7) and is_equal_approx(energy.maximum, 7.0), "Devotion 2: %.1f blood per hit, max %.0f" % [energy.per_hit, energy.maximum])
+    await _seconds(0.3)
+    melee.start(_player.get("heavy_attack"), Vector3.RIGHT)
+    _check(melee.hitbox.damage == 6, "Might 2 + Gravecleaver: heavy strike deals 6 (%d)" % melee.hitbox.damage)
+    var heavy_frames: int = 0
+    while melee.is_busy() and heavy_frames < 300:
+        await physics_frame
+        heavy_frames += 1
+    var heavy_data: AttackData = _player.get("heavy_attack")
+    var expected: int = _frames_for((heavy_data.startup + heavy_data.active + heavy_data.recovery) / 0.85)
+    _check(absf(heavy_frames - expected) <= 3, "Gravecleaver swings at x0.85 speed (%d frames, expected ~%d)" % [heavy_frames, expected])
+    await _seconds(0.5)
+
+    # Persistence: the saved profile comes back.
+    Profile.reset()
+    Profile.load_from("user://test_profile.cfg")
+    _check(Profile.stash.has(&"gravecleaver") and Profile.item_in(ItemData.Slot.WEAPON).id == &"gravecleaver" and Profile.item_in(ItemData.Slot.CHARM).id == &"censer_locket", "the profile (stash + equipped) persists through save and load")
+    DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_profile.cfg"))
+    Profile.reset()
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
 
 
 func _m3_boss_checks() -> void:

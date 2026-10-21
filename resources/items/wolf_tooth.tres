@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"wolf_tooth"
+display_name = "Wolf Tooth"
+description = "A fang on a cord. Quick and cruel."
+slot = 2
+vigor = 0
+might = 1
+agility = 1
+devotion = 0
+attack_speed = 1.0
+heavy_damage = 0
+ui_color = Color(0.8, 0.78, 0.7, 1)

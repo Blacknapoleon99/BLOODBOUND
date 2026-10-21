@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"saints_knucklebone"
+display_name = "Saint's Knucklebone"
+description = "A relic of a relic. It keeps the heart beating."
+slot = 2
+vigor = 1
+might = 0
+agility = 0
+devotion = 0
+attack_speed = 1.0
+heavy_damage = 0
+ui_color = Color(0.95, 0.9, 0.75, 1)

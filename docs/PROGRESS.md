@@ -116,3 +116,21 @@ Relics & card upgrades (passive run modifiers offered at altars and the fracture
 
 ### Next action
 User playtest of `build/windows-run4` (draft → altars → fracture → Bishop) for feel, sound mix, relic balance and run length.
+
+## 2026-10-21 — Playtest feedback: manual melee, pace, abilities, hazards, equipment
+
+- **Melee:** left click light / right click heavy; no auto-attack.
+- **Pace:** faster everything, and a harder Bishop.
+- **Bishop:** new Bone Rain and Marrow Geyser attacks.
+- **Enemies:**
+  - soldier Lunge and Frenzy;
+  - Husk burst;
+  - archer Grave Arrow and Bone Hop;
+  - new Crypt Hound.
+- **Route:** spike traps, a pendulum blade, faster slabs and ferry.
+- **Equipment:** 13 items, 4 attributes, and the Armory between runs with spoils.
+- **Evidence:** 347/347 smoke checks; build `build/windows-run5/Bloodbound.exe`.
+
+### Next action
+- ElevenLabs sound pass. This needs the user's go-ahead for the credit cost.
+- User playtest of windows-run5.

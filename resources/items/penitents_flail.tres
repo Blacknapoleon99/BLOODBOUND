@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"penitents_flail"
+display_name = "Penitent's Flail"
+description = "Iron thorns on a chain, swung in contrition."
+slot = 0
+vigor = 1
+might = 1
+agility = 0
+devotion = 0
+attack_speed = 0.95
+heavy_damage = 1
+ui_color = Color(0.45, 0.35, 0.3, 1)

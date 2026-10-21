@@ -259,3 +259,39 @@
 - Screenshots: `docs/screenshots/09_altar_offer.png`, `10_fracture_offer.png` (visible run of `tests/shot_draft.gd`). Text fits the 250×230 buttons.
 - `build/windows-run4/Bloodbound.exe` exported (exit 0); the release export probe exits 0.
 - Not verified by a human: balance of relic values over a full run.
+
+## Playtest-feedback run: manual melee, pace, abilities, hazards, equipment (2026-10-21)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 347/347 checks passed**.
+- New checks cover:
+  - **Melee:** left/right click bindings; a left click starts the light attack; nothing swings without input.
+  - **Bishop barrage:**
+    - Bone Rain marks rings, then marks a second wave, and hurts a player who stands still;
+    - running escapes the Marrow Geyser, while standing still gets hit;
+    - silence cancels a barrage.
+  - **Enemy abilities:**
+    - Plague Lunge; Frenzy, cleared on revive;
+    - Husk burst (measured as the lowest HP during the burst);
+    - Grave Arrow lands on the player's spot; Bone Hop;
+    - the Hound crouches, pounces, hurts a still player, dies in recovery; hounds are in the ambushes.
+  - **Hazards:**
+    - 3 spike traps and a pendulum exist; a trap cycles through all states and hurts a player standing on it;
+    - crossing while the spikes are down is safe; the pendulum hits and sweeps at a jumpable height;
+    - respawn resets the traps.
+  - **Equipment:**
+    - 13 items, at least 3 per slot; starters have no bonuses; Armory base stats match the player;
+    - spoils offer 3 unowned items, and claiming one adds and equips it (via key 2);
+    - clicking equips one item per slot; attributes and preview add up (Health 7, heavy 6, x0.85);
+    - in the level: Vigor, Agility and Devotion apply; heavy deals 6 at ×0.85 swing speed (frame-measured);
+    - the profile persists;
+  - **Flow:** victory earns a spoil; Start/R → Armory → draft.
+- Several checks hard-coded the old tuning and were updated: dodge cooldown wording, Husk cap, arrow reaction distance, Wraith Step numbers, final-hit timing in the faster Unmaking, and patrol measured as max displacement.
+- **Bugs caught by the tests during this work:**
+  - a leash clamp that pushed soldiers standing outside their range (replaced by a predictive stop);
+  - a typed-array assignment error in the Armory.
+- Two failures were test choreography and are documented in the test:
+  - the Husk-burst check stood in the revived soldier's contact range;
+  - the archer was cornered against its wall.
+- Build: `build/windows-run5/Bloodbound.exe`, exit 0. The release export probe (now Start → Armory → draft → level) exits 0.
+- Screenshot: `docs/screenshots/11_armory.png`.
+- Not verified by a human: feel of the new pace, difficulty of the Bishop at 120 HP, hazard timing on a keyboard.

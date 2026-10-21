@@ -73,6 +73,8 @@ func _ready() -> void:
         RunState.relics.clear()  # a directly opened level starts bare
     for relic: RelicData in RunState.relics:
         _apply_relic(relic, false)
+    Profile.ensure_loaded()
+    Equipment.apply(player, card_system, Profile.equipped_items())
     player.connect("died", _on_player_died)
     _connect_audio()
 
@@ -198,7 +200,7 @@ func _unhandled_input(event: InputEvent) -> void:
         return
     if event.is_action_pressed(&"restart") and game_won:
         RunState.end_run()
-        get_tree().change_scene_to_file("res://scenes/draft.tscn")  # a new run starts with a new draft
+        get_tree().change_scene_to_file("res://scenes/armory.tscn")  # spoils + gear, then a new draft
         return
     if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
         return
@@ -508,7 +510,9 @@ func _on_boss_defeated() -> void:
     Audio.sfx(&"victory", 0.0)
     game_won = true
     player.set("game_frozen", true)
-    _flash("VICTORY — the Hollow Bishop is unmade. Press R to restart.", 999999.0)
+    Profile.pending_spoils += 1
+    Profile.save()
+    _flash("VICTORY — the Hollow Bishop is unmade. Spoils await in the Armory: press R.", 999999.0)
 
 
 func _on_sunder_impact(x: float) -> void:

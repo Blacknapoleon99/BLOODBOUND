@@ -172,3 +172,43 @@ Playtester: more mechanics and things to do between the start and the Bishop.
 - Upgrades are runtime `duplicate()`s with `upgrade_source` pointing at the original. They are never saved over the .tres. The id is unchanged, so cooldowns, sounds and effects carry over.
 - Effects are applied where the rule lives, not through a global modifier system. Stat relics change the player, energy or health in `_apply_relic`. Damage relics use `MeleeAttack.bonus_damage[id]` and `CardSystem.spell_damage_bonus`. Rosary uses `CardSystem.cooldown_scale`. Kill relics use `Health` broadcasting deaths to the `death_listeners` group.
 - Gotcha found by test: `CardPool.offer` returns `Array[CardData]`, and appending a RelicData to it fails. The offer helpers convert to untyped arrays.
+
+## DEC-029 — Manual melee on the mouse; no auto-attack (2026-10-21)
+
+- Playtester: melee should not be automatic. Left click is the light combo (hold to chain) and right click is the heavy. J/L and the gamepad still work. The auto-attack and its setting are removed.
+- Holding counts only if the press reached the player's `_unhandled_input`. A click consumed by the HUD or by card targeting (an armed card's target click, right-click cancel) never starts or continues a combo.
+
+## DEC-030 — Faster and harder (2026-10-21)
+
+- **Player:** run speed 7 → 8.5, snappier acceleration, dodge 17 m/s with a 0.4 s cooldown.
+- **Enemies:** soldier chases at 4.4 and Husks at 3.6. Archers aim in 0.7 s and recover in 1.0 s. Arrows fly at 18 m/s.
+- **Bishop:**
+  - 120 HP (phases at 88/50/18) and up to 3 Husks;
+  - slam telegraph 0.75 s, sunder 1.0 s, roar 1.3 s;
+  - cooldowns 1.25/1.0/0.7/0.45 s by phase; lances at 21 m/s.
+- **Fairness floors kept:** the soldier slash still telegraphs ≥ 0.5 s (30 frames). The slam floor was lowered from 80 to 60 frames (aim + telegraph ≈ 1.05 s).
+
+## DEC-031 — Unique abilities (2026-10-21)
+
+- **`StrikeZone`:** a shared telegraphed area strike (red ring → strike → fade). It powers the Bishop's **Bone Rain** (two offset waves: step between them) and **Marrow Geyser** (three spikes chase your position: keep moving). Both are `BishopBarrage` actors in the phase patterns. Silence cancels them while they are still being marked.
+- **Plagued Soldier:**
+  - **Plague Lunge** at 3–6 m: 0.55 s crouch, an 11 m/s dash, and a predictive leash so it never overshoots.
+  - **Frenzy** at half HP (≥ 4 max HP): red, 30% faster chase, attacks twice as often.
+- **Husk:** **Death Burst**, a plague cloud 0.6 s after death.
+- **Bone Archer:** every 3rd shot is a lobbed **Grave Arrow** that lands on your marked spot. When crowded it **Bone Hops** backwards, from idle or recovery.
+- **New Crypt Hound:** runs in at 6.5 m/s, crouches 0.45 s (glow), pounces in an arc, then lands exposed for 0.8 s. It can't be knocked out of a pounce. Hounds join both ambushes; the landing ambush now has 4 foes.
+
+## DEC-032 — A harder route (2026-10-21)
+
+- **Spike traps** (`SpikeTrap`): cycle down 1.5 s → warning glow 0.5 s → up 0.7 s. One is on the start causeway, one on the approach causeway, and one on the threshold off the ferry.
+- **Pendulum blade** (`PendulumBlade`): swings over the approach causeway at waist height. Jump it or time it.
+- Collapsing slabs drop after 0.5 s (was 0.7). The ferry crosses in 2.1 s with a 0.6 s pause (was 2.8/0.9).
+- The existing platform geometry is unchanged, so every traversal check still proves the route is completable. Respawning resets all traps.
+- `SpikeTrap.enabled` / `PendulumBlade.enabled` are off in scripted tests (like `Ambush.enabled`), and the hazards have their own checks.
+
+## DEC-033 — Equipment, attributes and the Armory (2026-10-21)
+
+- **Items** are `ItemData` resources. There are 13 (see docs/EQUIPMENT.md): 3 slots and 4 attributes, plus weapon attack speed and heavy damage. They persist between runs in a `Profile` (user://profile.cfg): stash, equipped, pending spoils.
+- **Flow:** Start → Armory → draft → level. A victory adds a spoil (pick 1 of 3 unowned items), and R after victory opens the Armory.
+- **Application:** `Equipment.apply` runs once per level load, after relics. It reuses the relic hooks: `MeleeAttack.bonus_damage`, and the new `MeleeAttack.speed_scale` for attack speed.
+- **Tests:** they reset the Profile to starter gear (no stats), so equipment never changes scripted timings. The export probe disables persistence so it never writes the player's profile.

@@ -25,13 +25,18 @@ func _ready() -> void:
 func _run() -> void:
     var tree: SceneTree = get_tree()
     print("EXPORT PROBE: platform=%s web=%s debug=%s" % [OS.get_name(), OS.has_feature("web"), OS.is_debug_build()])
+    GameSettings.persistence_enabled = false  # never touch the player's saved settings/profile
     var menu: Node = tree.current_scene
     _check(menu != null and menu.scene_file_path.ends_with("main_menu.tscn"), "title screen is the main scene")
     var start: Button = menu.get("start_button")
     start.pressed.emit()
     for i in 15:
         await tree.process_frame
-    _check(tree.current_scene != null and tree.current_scene.scene_file_path.ends_with("draft.tscn"), "Start opens the card draft")
+    _check(tree.current_scene != null and tree.current_scene.scene_file_path.ends_with("armory.tscn"), "Start opens the Armory")
+    (tree.current_scene.get("continue_button") as Button).pressed.emit()
+    for i in 15:
+        await tree.process_frame
+    _check(tree.current_scene != null and tree.current_scene.scene_file_path.ends_with("draft.tscn"), "the Armory continues to the card draft")
     for round in RunState.DRAFT_ROUNDS:
         var view: CardOfferView = tree.current_scene.find_child("Offers", true, false) as CardOfferView
         if view == null or view.offers.is_empty():

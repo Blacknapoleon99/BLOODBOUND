@@ -1,5 +1,5 @@
 extends SceneTree
-## Captures the draft screen, a Blood Altar offer and a fracture reward to docs/screenshots (visible window only).
+## Captures the Armory, the draft screen, a Blood Altar offer and a fracture reward to docs/screenshots (visible window only).
 
 func _initialize() -> void:
     _run.call_deferred()
@@ -7,6 +7,17 @@ func _initialize() -> void:
 
 func _run() -> void:
     GameSettings.persistence_enabled = false
+    Profile.reset()
+    Profile.add_item(&"gravecleaver")
+    Profile.add_item(&"shroud_of_ash")
+    Profile.add_item(&"censer_locket")
+    Profile.equip(&"gravecleaver")
+    Profile.equip(&"censer_locket")
+    change_scene_to_file("res://scenes/armory.tscn")
+    for i in 20:
+        await process_frame
+    await RenderingServer.frame_post_draw
+    root.get_viewport().get_texture().get_image().save_png("res://docs/screenshots/11_armory.png")
     RunState.new_run(2026)
     change_scene_to_file("res://scenes/draft.tscn")
     for i in 20:

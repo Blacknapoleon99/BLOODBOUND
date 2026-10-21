@@ -2,8 +2,8 @@ extends Control
 ## Title screen: Start / Settings / Quit. Loads saved settings before anything else runs.
 ## Quit is hidden on the web build, where a page cannot close itself.
 
-## Start goes through the pre-run card draft, which then loads the level.
-const GAME_SCENE: String = "res://scenes/draft.tscn"
+## Start goes to the Armory (equipment, spoils), then the pre-run card draft, then the level.
+const GAME_SCENE: String = "res://scenes/armory.tscn"
 
 var start_button: Button
 var settings_button: Button
