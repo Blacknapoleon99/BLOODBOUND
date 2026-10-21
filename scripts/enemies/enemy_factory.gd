@@ -50,3 +50,29 @@ static func hound(parent: Node, x: float, min_x: float, max_x: float) -> CryptHo
     hound_node.global_position = Vector3(x, 1.0, 0.0)
     hound_node.defeated.connect(func() -> void: hound_node.get_tree().create_timer(1.5).timeout.connect(hound_node.queue_free))
     return hound_node
+
+
+## Any enemy type by name, standing at world x with its origin at height `y`, kept in [min_x, max_x].
+## Types: husk, archer, hound, knight, wraith, crawler.
+static func spawn(type: StringName, parent: Node, x: float, lo: float, hi: float, y: float = 1.0) -> Node3D:
+    var e: Node3D
+    match type:
+        &"archer":
+            e = archer(parent, x, lo, hi)
+        &"hound":
+            e = hound(parent, x, lo, hi)
+        &"knight", &"wraith", &"crawler":
+            var code: CodeEnemy = (ShieldedKnight.new() if type == &"knight" else FlyingWraith.new() if type == &"wraith" else BoneCrawler.new()) as CodeEnemy
+            code.name = String(type).capitalize()
+            code.min_x = lo
+            code.max_x = hi
+            parent.add_child(code)
+            code.global_position = Vector3(x, y + (2.2 if type == &"wraith" else 0.0), 0.0)
+            code.defeated.connect(func() -> void: code.get_tree().create_timer(1.5).timeout.connect(code.queue_free))
+            return code
+        _:
+            e = husk(parent, x, lo, hi)
+    e.global_position = Vector3(x, y, 0.0)
+    if e is PlaguedSoldier:
+        e.set("_home", e.position)
+    return e

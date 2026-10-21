@@ -180,6 +180,8 @@ func _run() -> void:
     await _m13_hazard_checks()
     await _m14_equipment_checks()
     await _m15_new_card_checks()
+    await _m16_map_checks()
+    await _m17_new_enemy_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -311,6 +313,7 @@ func _test_defaults() -> void:
     Ambush.enabled = false  # scripted checks walk the level freely; ambushes have their own checks
     SpikeTrap.enabled = false  # likewise for the traps (see _m13_hazard_checks)
     Profile.reset()  # starter gear only (no stats): equipment has its own checks
+    LevelLayout.classic = true  # the original short layout; the full map has its own checks
     PendulumBlade.enabled = false
 
 
@@ -2233,6 +2236,184 @@ func _m15_new_card_checks() -> void:
     var normal_dx: float = _player.global_position.x - hx0
     _check(hasted_dx > normal_dx * 1.15, "hasted you cover more ground (%.2f vs %.2f m)" % [hasted_dx, normal_dx])
     energy.regen_per_second = 0.25
+
+
+## The first map: seeded room order and its rules, every room provably completable, and the
+## full map building and joining up (opening -> 8 rooms -> approach -> arena).
+func _m16_map_checks() -> void:
+    # Layout rules.
+    var plan_a: Array[Script] = LevelLayout.plan(1234)
+    LevelLayout.classic = false
+    plan_a = LevelLayout.plan(1234)
+    var plan_b: Array[Script] = LevelLayout.plan(1234)
+    _check(plan_a.size() == 8 and plan_a == plan_b, "a seed always deals the same 8-room map")
+    var varied: bool = false
+    for seed_value: int in [1, 2, 3, 4, 5, 6]:
+        varied = varied or LevelLayout.plan(seed_value) != plan_a
+    _check(varied, "different seeds deal different maps")
+    var rules_ok: bool = true
+    for seed_value: int in range(40):
+        var plan: Array[Script] = LevelLayout.plan(seed_value)
+        var act1: Array = plan.slice(0, 3)
+        var act2: Array = plan.slice(4, 7)
+        rules_ok = rules_ok and act1.all(func(r: Script) -> bool: return LevelLayout.ACT1.has(r))
+        rules_ok = rules_ok and act2.all(func(r: Script) -> bool: return LevelLayout.ACT2.has(r))
+        rules_ok = rules_ok and plan[3] == LevelLayout.ELITE and plan[7] == LevelLayout.MERCHANT
+        var unique: Dictionary = {}
+        for r: Script in plan:
+            unique[r] = true
+        rules_ok = rules_ok and unique.size() == 8
+    _check(rules_ok, "40 seeds: Act I rooms first, elite 4th, Act II rooms, merchant last, never a repeat")
+    LevelLayout.classic = true
+
+    # Reachability: the validator itself, then every room.
+    var probe: LevelSection = LevelSection.new()
+    _check(LevelSection.can_jump(Rect2(0, 0, 4, 0), Rect2(7, 0, 4, 0)) and not LevelSection.can_jump(Rect2(0, 0, 4, 0), Rect2(13, 0, 4, 0)), "validator: a 3 m gap is jumpable, a 9 m gap is not")
+    _check(LevelSection.can_jump(Rect2(0, 0, 4, 0), Rect2(5, 1.4, 4, 0)) and not LevelSection.can_jump(Rect2(0, 0, 4, 0), Rect2(5, 2.2, 4, 0)), "validator: a 1.4 m step is climbable, 2.2 m is not")
+    probe.free()
+    var holder: Node3D = Node3D.new()
+    root.add_child(holder)
+    var all_rooms: Array[Script] = []
+    all_rooms.append_array(LevelLayout.ACT1)
+    all_rooms.append_array(LevelLayout.ACT2)
+    all_rooms.append(LevelLayout.ELITE)
+    all_rooms.append(LevelLayout.MERCHANT)
+    var broken: Array[String] = []
+    for script: Script in all_rooms:
+        var room: LevelSection = script.new() as LevelSection
+        holder.add_child(room)
+        room.build(1000.0)
+        if not room.is_completable():
+            broken.append(room.title)
+    _check(broken.is_empty(), "all %d rooms are completable with running and jumping alone (failing: %s)" % [all_rooms.size(), broken])
+    holder.queue_free()
+    await _frames(2)
+
+    # The full map in the level.
+    LevelLayout.classic = false
+    RunState.new_run(77)
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(12)
+    _bind()
+    var sections: Array = _main.get("sections")
+    var offset: float = float(_main.get("map_offset"))
+    var total: float = 0.0
+    var joined: bool = true
+    var x: float = 18.2
+    for room: LevelSection in sections:
+        joined = joined and is_equal_approx(room.origin_x, x)
+        x += room.width
+        total += room.width
+    _check(sections.size() == 8 and is_equal_approx(offset, total) and joined, "the full map builds 8 rooms end to end (%.0f m of rooms)" % total)
+    var arena: BossArena = _main.get("boss_arena")
+    _check(is_equal_approx(arena.left_x(), 58.2 + offset), "the Bishop's approach and arena follow the last room (arena at x=%.1f)" % arena.left_x())
+    # Drop into every room's checkpoint: solid ground, the HUD names the room, respawn moves there.
+    var landed_all: bool = true
+    for i in sections.size():
+        var room: LevelSection = sections[i]
+        _player.call("teleport_to", room.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
+        await _seconds(0.5)
+        landed_all = landed_all and _player.is_on_floor() and absf(_player.global_position.y - 0.85) < 0.2
+        if i == 0:
+            await _frames(2)
+            var hud_text: String = (_main.get("hud") as Label).text
+            _check(hud_text.contains("ROOM 1/8"), "the HUD names the current room")
+            _check(_main.get("respawn_point") == room.checkpoint.respawn_position, "entering a room sets its checkpoint")
+    _check(landed_all, "every room's entry checkpoint stands on solid ground")
+    LevelLayout.classic = true
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+
+
+## Shielded Knight, Flying Wraith, Bone Crawler; Bone Shards; ambush waves.
+func _m17_new_enemy_checks() -> void:
+    await _seconds(0.3)
+    _enemy.set_ai_enabled(false)
+    var shards0: int = RunState.shards
+
+    # Shielded Knight: frontal hits clang off, a heavy breaks the guard, hits from behind land.
+    var knight: ShieldedKnight = EnemyFactory.spawn(&"knight", _main, -10.0, -18.0, -7.5) as ShieldedKnight
+    knight.set_ai_enabled(false)
+    _player.call("teleport_to", Vector3(-11.4, 1.0, 0.0))
+    await _seconds(0.4)
+    knight.facing = -1.0
+    _player.set("facing_direction", 1.0)
+    var hp0: int = knight.health.current
+    _tap(KEY_J)
+    await _seconds(0.5)
+    _check(knight.health.current == hp0 and knight.blocks >= 1, "the Shielded Knight blocks a frontal jab (blocks=%d)" % knight.blocks)
+    _tap(KEY_L)
+    await _seconds(0.9)
+    _check(knight.health.current < hp0 and (knight.state == &"stagger" or knight.state == &"hitstun"), "a heavy strike breaks its guard (hp %d -> %d, %s)" % [hp0, knight.health.current, knight.state])
+    await _seconds(1.6)
+    knight.facing = 1.0  # turned away: hit it in the back
+    hp0 = knight.health.current
+    _tap(KEY_J)
+    await _seconds(0.5)
+    _check(knight.health.current < hp0, "hits from behind land")
+    knight.facing = -1.0
+    knight.set_ai_enabled(true)
+    _heal()
+    var php: int = _player_hp()
+    var bashed: bool = await _wait_until(func() -> bool: return knight.state == &"bash", 3.0)
+    await _seconds(0.4)
+    _check(bashed and _player_hp() < php, "it winds up and Shield Bashes (hp %d -> %d)" % [php, _player_hp()])
+    knight.health.apply_damage(knight.health.current)
+    await _frames(3)
+    _check(RunState.shards == shards0 + knight.shard_value, "a slain knight drops %d Bone Shards (%d)" % [knight.shard_value, RunState.shards])
+    await _seconds(1.0)
+
+    # Flying Wraith: hovers above, telegraphs and dives.
+    _heal()
+    _player.call("teleport_to", Vector3(-12.0, 1.0, 0.0))
+    var wraith: FlyingWraith = EnemyFactory.spawn(&"wraith", _main, -16.0, -19.0, -7.0) as FlyingWraith
+    await _seconds(1.5)
+    _check(wraith.global_position.y > _player.global_position.y + 1.5, "the wraith hovers above the player (dy=%.1f)" % (wraith.global_position.y - _player.global_position.y))
+    php = _player_hp()
+    var dove: bool = await _wait_until(func() -> bool: return wraith.dives >= 1, 4.0)
+    await _seconds(0.8)
+    _check(dove and _player_hp() < php, "it locks a red line on you and dives (hp %d -> %d)" % [php, _player_hp()])
+    wraith.health.apply_damage(wraith.health.current)
+    await _seconds(1.0)
+
+    # Bone Crawler: runs in, fuses, bursts.
+    _heal()
+    _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    var crawler: BoneCrawler = EnemyFactory.spawn(&"crawler", _main, -9.0, -18.0, -7.5) as BoneCrawler
+    php = _player_hp()
+    var fused: bool = await _wait_until(func() -> bool: return crawler.state == &"fuse", 3.0)
+    await _seconds(1.2)
+    _check(fused and crawler.burst_spawned and crawler.is_dead() and _player_hp() < php, "the Bone Crawler runs in, fuses and bursts (hp %d -> %d)" % [php, _player_hp()])
+    await _seconds(1.0)
+    var crawler2: BoneCrawler = EnemyFactory.spawn(&"crawler", _main, -9.0, -18.0, -7.5) as BoneCrawler
+    crawler2.set_ai_enabled(false)
+    await _seconds(0.3)
+    crawler2.health.apply_damage(1)
+    await _frames(2)
+    _check(crawler2.burst_spawned, "killed early, a crawler still bursts where it falls")
+    await _seconds(1.0)
+
+    # Ambush waves: the next wave rises when the first is dead.
+    var waves: Ambush = Ambush.create("Ambush: test waves", -14.0, -18.5, -7.5, [{"type": &"husk", "x": -10.0}, {"type": &"crawler", "x": -9.0, "wave": 1}])
+    _main.add_child(waves)
+    Ambush.enabled = true
+    _player.call("teleport_to", Vector3(-13.0, 1.0, 0.0))
+    await _seconds(0.3)
+    _check(waves.is_active() and waves.alive_count() == 1, "wave 1 of an ambush spawns")
+    for e: Node3D in waves.enemies:
+        (e.get("health") as Health).apply_damage(99)
+    await _seconds(0.3)
+    _check(waves.is_active() and waves.wave == 1 and waves.alive_count() == 1, "when it falls, wave 2 rises")
+    for e: Node3D in waves.enemies:
+        if not bool(e.call("is_dead")):
+            (e.get("health") as Health).apply_damage(99)
+    await _seconds(0.3)
+    _check(waves.state == Ambush.State.CLEARED, "the last wave cleared drops the walls")
+    Ambush.enabled = false
+    _heal()
+    await _seconds(1.5)
 
 
 func _m3_boss_checks() -> void:

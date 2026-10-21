@@ -13,6 +13,8 @@ static var deck: Array[CardData] = []
 ## Passive relics taken this run (see RelicPool). Also used, and cleared per level load, when no
 ## run is active, so relics picked in a directly opened level still work.
 static var relics: Array[RelicData] = []
+## Bone Shards: the run's currency (dropped by enemies, spent at the Pale Merchant).
+static var shards: int = 0
 static var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -26,6 +28,7 @@ static func new_run(run_seed: int = -1) -> void:
     rng.seed = run_seed
     deck.clear()
     relics.clear()
+    shards = 0
     active = true
 
 
@@ -33,6 +36,7 @@ static func end_run() -> void:
     active = false
     deck.clear()
     relics.clear()
+    shards = 0
 
 
 ## Next random offer for this run, never repeating cards already in the deck when avoidable.

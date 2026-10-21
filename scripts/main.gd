@@ -11,6 +11,7 @@ const ENEMY_POSITION: Vector3 = Vector3(5.0, 1.0, 0.0)
 const GATE_POSITION: Vector3 = Vector3(13.0, 1.0, 0.0)
 const CHECKPOINT_POSITION: Vector3 = Vector3(-4.5, 1.2, 0.0)
 const PORTCULLIS_X: float = 18.6
+## Positions after the opening are shifted by `map_offset` (the total width of the run's rooms).
 const APPROACH_START_X: float = 18.2
 const APPROACH_CHECKPOINT_POSITION: Vector3 = Vector3(20.6, 1.2, 0.0)
 const PURSUIT_START_X: float = 20.0
@@ -42,6 +43,9 @@ var loot_chest: LootChest
 var _loot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var ambushes: Array[Ambush] = []
+## The run's shuffled rooms (LevelLayout), between the opening and the Bishop's approach.
+var sections: Array[LevelSection] = []
+var map_offset: float = 0.0
 var traps: Array[Node3D] = []  # SpikeTrap and PendulumBlade hazards
 var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
@@ -75,6 +79,7 @@ func _ready() -> void:
     add_to_group(&"death_listeners")
     if not RunState.active:
         RunState.relics.clear()  # a directly opened level starts bare
+        RunState.shards = 0
     for relic: RelicData in RunState.relics:
         _apply_relic(relic, false)
     Profile.ensure_loaded()
@@ -161,11 +166,11 @@ func _process(delta: float) -> void:
 
     if not in_arena and enemy_alive and player.global_position.x > PORTCULLIS_X - 1.6:
         _flash("The portcullis is sealed while the plagued soldier stands.", 1.0)
-    if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > PURSUIT_START_X:
+    if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > PURSUIT_START_X + map_offset:
         boss.awaken()
         Audio.voice(&"vo_awaken", true)
         _flash("THE HOLLOW BISHOP rises from the abyss — run for the cathedral!", 3.5)
-    if not in_arena and not boss.fight_started and player.global_position.x > FIGHT_START_X:
+    if not in_arena and not boss.fight_started and player.global_position.x > FIGHT_START_X + map_offset:
         boss.min_x = boss_arena.left_x() + 4.0
         boss.max_x = boss_arena.right_x() - 4.0
         boss.begin_fight()
@@ -187,7 +192,7 @@ func _process(delta: float) -> void:
     var state: String = "REALITY FRACTURE — WASD move / SPACE jump / LEFT CLICK light / RIGHT CLICK heavy / SHIFT dodge / cards: 1-3 or click" if in_arena else "2.5D — A/D move / SPACE jump / LEFT CLICK light / RIGHT CLICK heavy / SHIFT dodge / cards: 1-3 or click / E amber gate"
     var player_health: Health = player.get("health")
     # ASCII only: the web build ships just Godot's default font (no box-drawing glyphs).
-    var hp: String = "HP %d/%d" % [player_health.current, player_health.max_health]
+    var hp: String = "HP %d/%d    SHARDS %d" % [player_health.current, player_health.max_health, RunState.shards]
     var objective: String = "SOLDIER: DEFEATED" if not enemy_alive else "SOLDIER: %d HP" % enemy.health.current
     if not enemy_alive:
         objective = "BISHOP: SLAIN" if boss.phase == HollowBishop.Phase.DEFEATED else "GATE: OPEN"
@@ -197,6 +202,9 @@ func _process(delta: float) -> void:
     elif in_arena:
         arena_state = "GUARDIAN: DEFEATED — ENTER THE PORTAL" if fracture.portal_open else "GUARDIAN: %d HP" % fracture.guardian.health.current
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
+    var room: LevelSection = current_section()
+    if room != null:
+        checkpoint_state = "ROOM %d/%d: %s" % [sections.find(room) + 1, sections.size(), room.title.to_upper()]
     checkpoint_state += "    DECK %d" % card_system.deck.total_cards()
     if not RunState.relics.is_empty():
         checkpoint_state += "    RELICS: " + relic_names()
@@ -414,10 +422,33 @@ func on_combatant_died(who: Node) -> void:
     if who == null or not who.is_in_group(&"enemy"):
         return
     kills += 1
+    var value: int = int(who.get("shard_value")) if "shard_value" in who else (1 if who.name.begins_with("Husk") else 2)
+    add_shards(value, (who as Node3D).global_position)
     if RunState.has_relic(&"leech_fang"):
         card_system.energy.add(1.0)
     if RunState.has_relic(&"gravebloom") and kills % 4 == 0:
         (player.get("health") as Health).heal(1)
+
+
+## Adds Bone Shards and floats a "+N" above `at`.
+func add_shards(amount: int, at: Vector3) -> void:
+    if amount <= 0:
+        return
+    RunState.shards += amount
+    var label: Label3D = Label3D.new()
+    label.text = "+%d" % amount
+    label.modulate = Color(0.92, 0.86, 0.66)
+    label.font_size = 64
+    label.outline_size = 8
+    label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    label.no_depth_test = true
+    label.add_to_group(&"shard_popup")
+    add_child(label)
+    label.global_position = at + Vector3(0.0, 1.2, 0.0)
+    var tween: Tween = label.create_tween()
+    tween.tween_property(label, "global_position:y", label.global_position.y + 1.2, 0.9)
+    tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
+    tween.tween_callback(label.queue_free)
 
 
 func relic_names() -> String:
@@ -429,13 +460,13 @@ func _camera_goal() -> Vector3:
     var offset: Vector3 = Vector3(0.0, 4.8, 22.0)
     if bool(player.get("in_3d_mode")):
         offset = Vector3(0.0, 5.8, 11.5)
-    elif player.global_position.x > PORTCULLIS_X:
+    elif player.global_position.x > APPROACH_START_X + map_offset + 0.4:
         offset = Vector3(0.0, 6.5, 24.0)  # pull back so the Bishop fits in frame
     return player.global_position + offset
 
 
 func _camera_look_target() -> Vector3:
-    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and player.global_position.x > PORTCULLIS_X
+    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and player.global_position.x > APPROACH_START_X + map_offset + 0.4
     return player.global_position + Vector3(0.0, 4.0 if in_boss_arena else 1.2, 0.0)
 
 
@@ -751,17 +782,19 @@ func _build_greybox() -> void:
     add_child(portcullis)
     _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, 3.6), Color(0.32, 0.3, 0.34), portcullis)
 
+    _build_sections()
     _build_approach()
     # Ambushes: E1 after the soldier (its altar is the reward), E2 on the landing mid-pursuit.
     var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"hound", "x": 16.0}, {"type": &"archer", "x": 17.5}]
-    var e2_spawns: Array[Dictionary] = [{"type": &"hound", "x": 40.8}, {"type": &"husk", "x": 41.6}, {"type": &"archer", "x": 42.2}, {"type": &"archer", "x": 43.2}]
-    for spec: Array in [["Ambush: Gate ossuary", 10.0, 9.3, 18.3, e1_spawns], ["Ambush: Landing", 38.6, 37.8, 43.8, e2_spawns]]:
+    var o: float = map_offset
+    var e2_spawns: Array[Dictionary] = [{"type": &"hound", "x": 40.8 + o}, {"type": &"husk", "x": 41.6 + o}, {"type": &"archer", "x": 42.2 + o}, {"type": &"archer", "x": 43.2 + o}]
+    for spec: Array in [["Ambush: Gate ossuary", 10.0, 9.3, 18.3, e1_spawns], ["Ambush: Landing", 38.6 + o, 37.8 + o, 43.8 + o, e2_spawns]]:
         var ambush: Ambush = Ambush.create(spec[0], spec[1], spec[2], spec[3], spec[4])
         ambush.started.connect(_on_ambush_started)
         ambush.cleared.connect(_on_ambush_cleared)
         add_child(ambush)
         ambushes.append(ambush)
-    for spot: Vector3 in [Vector3(16.8, 0.0, 0.0), Vector3(40.7, 0.0, 0.0)]:
+    for spot: Vector3 in [Vector3(16.8, 0.0, 0.0), Vector3(40.7 + o, 0.0, 0.0)]:
         var altar: BloodAltar = BloodAltar.create("Blood Altar %d" % (altars.size() + 1), spot)
         add_child(altar)
         altars.append(altar)
@@ -770,18 +803,18 @@ func _build_greybox() -> void:
     boss_arena = BossArena.new()
     boss_arena.name = "BossArena"
     add_child(boss_arena)
-    boss_arena.build(BOSS_ARENA_START_X)
+    boss_arena.build(BOSS_ARENA_START_X + o)
     _make_solid("Cathedral door", Vector3(boss_arena.right_x() + 0.6, 3.0, 0.0), Vector3(1.2, 7.0, 4.0), Color(0.14, 0.1, 0.12))
-    boss_checkpoint = Checkpoint.create(BOSS_CHECKPOINT_POSITION)
+    boss_checkpoint = Checkpoint.create(BOSS_CHECKPOINT_POSITION + Vector3(o, 0.0, 0.0))
     boss_checkpoint.name = "BossCheckpoint"
     boss_checkpoint.activated.connect(_on_checkpoint_activated)
     add_child(boss_checkpoint)
     boss = HollowBishop.new()
     boss.name = "HollowBishop"
-    boss.position = Vector3(32.0, 0.0, -22.0)
+    boss.position = Vector3(32.0 + o, 0.0, -22.0)
     # While it stalks the approach it follows the player across this span.
-    boss.min_x = APPROACH_START_X + 6.0
-    boss.max_x = BOSS_ARENA_START_X - 2.0
+    boss.min_x = APPROACH_START_X + o + 6.0
+    boss.max_x = BOSS_ARENA_START_X + o - 2.0
     add_child(boss)
     boss.defeated.connect(_on_boss_defeated)
     boss.phase_changed.connect(_on_boss_audio_phase)
@@ -799,27 +832,59 @@ func _build_greybox() -> void:
 ## across a 10 m gap → arena threshold. Every jump fits the ~5.6 m running jump; falling
 ## respawns at the approach checkpoint and restores the slabs.
 func _build_approach() -> void:
-    _make_solid("Approach causeway", Vector3(22.2, -0.5, 0.0), Vector3(8.0, 1.0, 4.0), Color(0.19, 0.18, 0.22))
-    approach_checkpoint = Checkpoint.create(APPROACH_CHECKPOINT_POSITION)
+    var o: float = map_offset
+    _make_solid("Approach causeway", Vector3(22.2 + o, -0.5, 0.0), Vector3(8.0, 1.0, 4.0), Color(0.19, 0.18, 0.22))
+    approach_checkpoint = Checkpoint.create(APPROACH_CHECKPOINT_POSITION + Vector3(o, 0.0, 0.0))
     approach_checkpoint.name = "ApproachCheckpoint"
     approach_checkpoint.activated.connect(_on_checkpoint_activated)
     add_child(approach_checkpoint)
     for i in 3:
-        var slab: CollapsingSlab = CollapsingSlab.create("Collapsing slab %d" % i, Vector3(28.45 + 3.5 * i, -0.5, 0.0), Vector3(2.5, 1.0, 4.0))
+        var slab: CollapsingSlab = CollapsingSlab.create("Collapsing slab %d" % i, Vector3(28.45 + o + 3.5 * i, -0.5, 0.0), Vector3(2.5, 1.0, 4.0))
         slab.collapse_delay = 0.5  # keep moving
         add_child(slab)
         collapsing_slabs.append(slab)
-    _make_solid("Approach landing", Vector3(40.7, -0.5, 0.0), Vector3(6.0, 1.0, 4.0), Color(0.18, 0.17, 0.21))
-    ferry = MovingPlatform.create("Bone ferry", Vector3(45.25, -0.3, 0.0), Vector3(52.15, -0.3, 0.0), Vector3(3.0, 0.6, 4.0))
+    _make_solid("Approach landing", Vector3(40.7 + o, -0.5, 0.0), Vector3(6.0, 1.0, 4.0), Color(0.18, 0.17, 0.21))
+    ferry = MovingPlatform.create("Bone ferry", Vector3(45.25 + o, -0.3, 0.0), Vector3(52.15 + o, -0.3, 0.0), Vector3(3.0, 0.6, 4.0))
     ferry.travel_time = 2.1
     ferry.pause_time = 0.6
     add_child(ferry)
-    _make_solid("Arena threshold", Vector3(55.95, -0.5, 0.0), Vector3(4.5, 1.0, 4.0), Color(0.19, 0.17, 0.2))
+    _make_solid("Arena threshold", Vector3(55.95 + o, -0.5, 0.0), Vector3(4.5, 1.0, 4.0), Color(0.19, 0.17, 0.2))
     # Hazards on the run to the cathedral: spikes and a swinging blade on the approach causeway,
     # spikes on the threshold right off the ferry.
-    _add_trap(SpikeTrap.create("Spike trap: approach", 22.8, 0.0, 2.0, 0.9))
-    _add_trap(PendulumBlade.create("Pendulum blade", Vector3(25.3, 5.9, 0.0), 5.0, 0.0))
-    _add_trap(SpikeTrap.create("Spike trap: threshold", 55.6, 0.0, 1.6, 1.3))
+    _add_trap(SpikeTrap.create("Spike trap: approach", 22.8 + o, 0.0, 2.0, 0.9))
+    _add_trap(PendulumBlade.create("Pendulum blade", Vector3(25.3 + o, 5.9, 0.0), 5.0, 0.0))
+    _add_trap(SpikeTrap.create("Spike trap: threshold", 55.6 + o, 0.0, 1.6, 1.3))
+
+
+## Builds the run's shuffled rooms (LevelLayout) from x = APPROACH_START_X onward and shifts the
+## approach and arena after them by their total width.
+func _build_sections() -> void:
+    var x: float = APPROACH_START_X
+    var run_seed: int = RunState.seed_value if RunState.active else 4242
+    for script: Script in LevelLayout.plan(run_seed):
+        var section: LevelSection = script.new() as LevelSection
+        add_child(section)
+        section.build(x)
+        sections.append(section)
+        altars.append_array(section.altars)
+        for ambush: Ambush in section.ambushes:
+            ambush.started.connect(_on_ambush_started)
+            ambush.cleared.connect(_on_ambush_cleared)
+            ambushes.append(ambush)
+        traps.append_array(section.traps)
+        collapsing_slabs.append_array(section.slabs)
+        section.checkpoint.activated.connect(_on_checkpoint_activated)
+        x += section.width
+    map_offset = x - APPROACH_START_X
+
+
+## The room the player is in ("" in the opening and the Bishop's approach).
+func current_section() -> LevelSection:
+    var px: float = player.global_position.x
+    for section: LevelSection in sections:
+        if px >= section.origin_x and px < section.origin_x + section.width:
+            return section
+    return null
 
 
 func _add_trap(trap: Node3D) -> void:

@@ -16,11 +16,13 @@ static var enabled: bool = true
 var trigger_x: float
 var left_x: float
 var right_x: float
-## [{"type": &"husk"|&"archer", "x": float}]
+## [{"type": &"husk"|&"archer"|&"hound"|&"knight"|&"wraith"|&"crawler", "x": float, "wave": int}]
+## Waves: wave 0 spawns when the walls rise; each next wave when the previous one is dead.
 var spawns: Array[Dictionary] = []
 var state: State = State.ARMED
 var enemies: Array[Node3D] = []
 var _walls: Array[StaticBody3D] = []
+var wave: int = 0
 
 
 static func create(label: String, trigger: float, left: float, right: float, spawn_list: Array[Dictionary]) -> Ambush:
@@ -61,7 +63,9 @@ func _physics_process(_delta: float) -> void:
                     and absf(player.global_position.y - global_position.y) < 4.0:
                 _start()
         State.ACTIVE:
-            if alive_count() == 0:
+            if alive_count() == 0 and _spawn_wave(wave + 1) > 0:
+                wave += 1
+            elif alive_count() == 0:
                 state = State.CLEARED
                 _set_walls(false)
                 cleared.emit(self)
@@ -71,18 +75,22 @@ func _start() -> void:
     state = State.ACTIVE
     _set_walls(true)
     enemies.clear()
+    wave = 0
+    _spawn_wave(0)
+    started.emit(self)
+
+
+## Spawns every spawn of wave `n`; returns how many.
+func _spawn_wave(n: int) -> int:
+    var count: int = 0
     for spawn: Dictionary in spawns:
-        var x: float = float(spawn["x"])
-        var enemy: Node3D
-        if spawn["type"] == &"archer":
-            enemy = EnemyFactory.archer(get_parent(), x, left_x + 0.8, right_x - 0.8)
-        elif spawn["type"] == &"hound":
-            enemy = EnemyFactory.hound(get_parent(), x, left_x + 0.8, right_x - 0.8)
-        else:
-            enemy = EnemyFactory.husk(get_parent(), x, left_x + 0.8, right_x - 0.8)
+        if int(spawn.get("wave", 0)) != n:
+            continue
+        var enemy: Node3D = EnemyFactory.spawn(spawn["type"], get_parent(), float(spawn["x"]), left_x + 0.8, right_x - 0.8, global_position.y + 1.0)
         enemy.add_to_group(&"ambush_enemy")
         enemies.append(enemy)
-    started.emit(self)
+        count += 1
+    return count
 
 
 ## Player died / fell during the fight: remove its enemies, drop the walls, arm it again.
