@@ -108,3 +108,11 @@ Playtest the full run (draft → ambushes → fracture → pursuit → four-phas
 
 ### Next action
 Relics & card upgrades (passive run modifiers offered at altars and the fracture reward).
+
+## 2026-10-21 — Relics & card upgrades
+
+- 8 relics plus card upgrades. Altars offer 2 cards + 1 relic. The fracture offers 2 relics + 1 upgrade. Relics are shown in the HUD and carried in RunState.
+- Evidence: 297/297 smoke checks; build `build/windows-run4/Bloodbound.exe`.
+
+### Next action
+User playtest of `build/windows-run4` (draft → altars → fracture → Bishop) for feel, sound mix, relic balance and run length.

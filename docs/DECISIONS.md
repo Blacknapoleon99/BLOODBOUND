@@ -164,3 +164,11 @@ Playtester: more mechanics and things to do between the start and the Bishop.
 - Settings: Music and Sound-effects sliders (0–1, saved under `[audio]`) set the bus volumes.
 - Found by the new "every sound is triggered" test: the player's `landed` signal never fired, because `_was_on_floor` was sampled after `move_and_slide()`. It now stores the pre-move floor state.
 - Known quirk: under the headless dummy audio driver Godot reports leaked AudioStreamWAV playbacks at exit. The real WASAPI driver reports none.
+
+## DEC-028 — Relics and card upgrades (2026-10-21)
+
+- Relics are `RelicData` resources (8, see docs/CARDS.md), held in `RunState.relics` (static, like the deck). A level opened without an active run clears them on load.
+- Offers are mixed lists of `CardData` / `RelicData`. `CardOfferView.describe` labels each one. Altar: 2 cards + 1 relic (the relic last, so "1" still takes a card). Fracture: 2 relics + 1 upgrade.
+- Upgrades are runtime `duplicate()`s with `upgrade_source` pointing at the original. They are never saved over the .tres. The id is unchanged, so cooldowns, sounds and effects carry over.
+- Effects are applied where the rule lives, not through a global modifier system. Stat relics change the player, energy or health in `_apply_relic`. Damage relics use `MeleeAttack.bonus_damage[id]` and `CardSystem.spell_damage_bonus`. Rosary uses `CardSystem.cooldown_scale`. Kill relics use `Health` broadcasting deaths to the `death_listeners` group.
+- Gotcha found by test: `CardPool.offer` returns `Array[CardData]`, and appending a RelicData to it fails. The offer helpers convert to untyped arrays.

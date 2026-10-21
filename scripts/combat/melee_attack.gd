@@ -29,12 +29,17 @@ func can_cancel_into_dodge() -> bool:
     return phase == Phase.RECOVERY and current != null and current.dodge_cancel_recovery
 
 
+## Extra damage per AttackData.id (relics such as Executioner's Seal).
+var bonus_damage: Dictionary = {}
+
+
 func start(data: AttackData, attack_facing: Vector3) -> bool:
     if is_busy() or data == null:
         return false
     current = data
     facing = _flat(attack_facing)
     hitbox.configure_from(data)
+    hitbox.damage += int(bonus_damage.get(data.id, 0))
     _place_hitbox()
     attack_started.emit(data)
     _enter(Phase.STARTUP, data.startup)

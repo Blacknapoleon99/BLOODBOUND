@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/relics/relic_data.gd" id="1_relic"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"executioners_seal"
+display_name = "Executioner's Seal"
+description = "Your combo finisher and heavy strike deal +1 damage."
+ui_color = Color(0.8, 0.55, 0.2, 1)

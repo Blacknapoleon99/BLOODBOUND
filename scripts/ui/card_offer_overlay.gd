@@ -1,9 +1,9 @@
 class_name CardOfferOverlay
 extends CanvasLayer
-## Mid-run reward: pauses the game and offers 1 of 3 cards (Blood Altars, cleared fracture).
-## Picking or skipping resumes play.
+## Mid-run reward: pauses the game and offers 1 of 3 choices (cards, upgrades, relics) at
+## Blood Altars and from a cleared fracture. Picking or skipping resumes play.
 
-signal resolved(card: CardData)
+signal resolved(choice: Resource)
 
 var offer_view: CardOfferView
 var title_label: Label
@@ -51,14 +51,14 @@ func _build() -> void:
     column.add_child(skip_button)
 
 
-func open(title: String, cards: Array[CardData]) -> void:
+func open(title: String, cards: Array) -> void:
     title_label.text = title
     _root.visible = true
     get_tree().paused = true
     offer_view.show_offers(cards)
 
 
-func _finish(card: CardData) -> void:
+func _finish(choice: Resource) -> void:
     _root.visible = false
     get_tree().paused = false
-    resolved.emit(card)
+    resolved.emit(choice)

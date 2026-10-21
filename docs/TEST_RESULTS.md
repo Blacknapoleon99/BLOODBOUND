@@ -246,3 +246,16 @@
 - New checks: all 32 sounds and both music loops load with non-zero length. The level plays `music_level`, which loops (LOOP_FORWARD). The boss track starts with the fight. Victory stops the music and plays `victory`. The Music slider sets the Music bus dB. Volumes persist through save/reload. Every one of the 32 sound ids was triggered by real gameplay during the suite.
 - `--export-release "Windows Desktop" build/windows-run3/Bloodbound.exe` → exit 0. Audio is in the pack. The release export probe exits 0.
 - Not verified: how the sounds feel when heard by a person (no one has listened to the mix yet).
+
+## Relics & upgrades run (2026-10-21)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 297/297 checks passed** (21 new).
+- New checks:
+  - the pool has 8 distinct relics; the altar offers 2 cards + relic; the fracture offers 2 relics + upgrade; buttons are labelled;
+  - an upgrade replaces the card (deck size unchanged), costs 1 less with a shorter cooldown, and is never offered again;
+  - each relic's effect was measured in play: Bone Ward 6/6 HP; Vessel 8 max and +2; Wraith Step 0.40/0.30; Seal heavy +1 and jabs unchanged; Rosary cooldown ×0.75 on a real Blood Spear play; Thorned spear hitbox +1; Leech Fang +1 blood on a real kill; Gravebloom heals on the 4th kill only;
+  - with all relics held, the altar falls back to cards; the HUD lists relics;
+  - relics and upgrades carry from RunState into a freshly loaded level.
+- Screenshots: `docs/screenshots/09_altar_offer.png`, `10_fracture_offer.png` (visible run of `tests/shot_draft.gd`). Text fits the 250×230 buttons.
+- `build/windows-run4/Bloodbound.exe` exported (exit 0); the release export probe exits 0.
+- Not verified by a human: balance of relic values over a full run.

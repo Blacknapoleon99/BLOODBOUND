@@ -33,7 +33,25 @@ enum Targeting {
 @export_group("Draft")
 ## Relative chance to appear in a random offer (draft, altars).
 @export var offer_weight: float = 1.0
+@export_group("Upgrade")
+## True for a tempered copy (see `upgraded_copy`). Upgraded cards are never upgraded again.
+@export var upgraded: bool = false
 @export_group("Presentation")
 @export var ui_color: Color = Color(0.6, 0.1, 0.12)
 ## Hook for later authored VFX; unused by the greybox.
 @export var vfx_id: StringName = &""
+
+## When this card is an upgrade being offered: the deck card it replaces.
+var upgrade_source: CardData
+
+
+## A tempered copy: 1 blood cheaper (never below 0) and a 30% shorter cooldown. The id stays
+## the same, so cooldowns, sounds and effects are shared with the original.
+func upgraded_copy() -> CardData:
+    var copy: CardData = duplicate() as CardData
+    copy.cost = maxi(0, cost - 1)
+    copy.cooldown = snappedf(cooldown * 0.7, 0.05)
+    copy.display_name = display_name + "+"
+    copy.upgraded = true
+    copy.upgrade_source = self
+    return copy

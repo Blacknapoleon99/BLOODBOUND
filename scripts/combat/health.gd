@@ -27,6 +27,9 @@ func apply_damage(amount: int) -> void:
     changed.emit(current, max_health)
     if current == 0:
         died.emit()
+        # Lets run-wide listeners (kill-count relics) react without wiring every enemy.
+        if is_inside_tree():
+            get_tree().call_group(&"death_listeners", &"on_combatant_died", get_parent())
 
 
 func heal(amount: int) -> void:

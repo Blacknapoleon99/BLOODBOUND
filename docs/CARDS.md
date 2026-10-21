@@ -28,3 +28,24 @@ Cards are real-time abilities paid for with **blood**. You start each run at 2 b
 | **Transfusion** | 3 blood | 10 s | Heal 2 HP. Refused at full health. |
 
 New cards go in `resources/cards/*.tres` and are listed in `scripts/cards/card_pool.gd`.
+
+## Relics
+
+Passive modifiers that last the run. Every Blood Altar offers **2 cards + 1 relic**. A cleared fracture offers **2 relics + 1 card upgrade**. Relics never repeat. Once all 8 are taken, the empty slots are filled with cards.
+
+| Relic | Effect |
+|---|---|
+| **Leech Fang** | Every foe you slay feeds you 1 blood. |
+| **Executioner's Seal** | Combo finisher and heavy strike +1 damage. |
+| **Thorned Reliquary** | Blood Spear and Epitaph +1 damage. |
+| **Wraith Step** | Dodge i-frames +0.12 s (0.40 s), dodge cooldown −0.15 s (0.30 s). |
+| **Vessel of Plenty** | Max blood 6 → 8, and +2 blood when taken. |
+| **Bone Ward** | +1 max HP. |
+| **Penitent's Rosary** | Card cooldowns −25%. |
+| **Gravebloom** | Every 4th foe slain heals 1 HP. |
+
+New relics go in `resources/relics/*.tres`, are listed in `scripts/relics/relic_pool.gd`, and get their effect in `main.gd` (`_apply_relic` for stat changes, `on_combatant_died` for kill triggers).
+
+## Card upgrades
+
+An upgrade ("tempered" card, name ends in **+**) costs 1 blood less (never below 0) and has a 30% shorter cooldown. It replaces every copy of that card in the deck. A card is upgraded at most once. The offered upgrade is a random un-upgraded card from your deck.

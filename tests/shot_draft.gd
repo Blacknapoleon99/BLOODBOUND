@@ -1,5 +1,5 @@
 extends SceneTree
-## Captures the draft screen and a Blood Altar offer to docs/screenshots (visible window only).
+## Captures the draft screen, a Blood Altar offer and a fracture reward to docs/screenshots (visible window only).
 
 func _initialize() -> void:
     _run.call_deferred()
@@ -19,10 +19,16 @@ func _run() -> void:
         await process_frame
     var main: Node = current_scene
     var overlay: CardOfferOverlay = main.get("offer_overlay")
-    overlay.open("BLOOD ALTAR — choose a card for your deck", CardPool.offer(RandomNumberGenerator.new(), 3, []))
+    overlay.open("BLOOD ALTAR — a card for your deck, or a relic", main.call("_altar_offer"))
     for i in 10:
         await process_frame
     await RenderingServer.frame_post_draw
     root.get_viewport().get_texture().get_image().save_png("res://docs/screenshots/09_altar_offer.png")
+    overlay.skip_button.pressed.emit()
+    overlay.open("THE FRACTURE YIELDS — a relic, or temper a card", main.call("_fracture_offer"))
+    for i in 10:
+        await process_frame
+    await RenderingServer.frame_post_draw
+    root.get_viewport().get_texture().get_image().save_png("res://docs/screenshots/10_fracture_offer.png")
     paused = false
     quit()

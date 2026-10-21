@@ -47,6 +47,6 @@ func _next_round() -> void:
     offer_view.show_offers(RunState.next_offer())
 
 
-func _on_picked(card: CardData) -> void:
-    RunState.deck.append(card)
+func _on_picked(choice: Resource) -> void:
+    RunState.deck.append(choice as CardData)
     _next_round.call_deferred()

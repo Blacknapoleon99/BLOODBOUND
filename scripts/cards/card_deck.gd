@@ -43,6 +43,17 @@ func add_card(card: CardData) -> void:
     draw_pile.insert(_rng.randi_range(0, draw_pile.size()), card)
 
 
+## Swaps every copy of `old` (draw pile, discard, hand) for `new`. Returns how many changed.
+func replace_card(old: CardData, new: CardData) -> int:
+    var changed: int = 0
+    for pile: Array[CardData] in [draw_pile, discard_pile, hand]:
+        for i in pile.size():
+            if pile[i] == old:
+                pile[i] = new
+                changed += 1
+    return changed
+
+
 func all_cards() -> Array[CardData]:
     var cards: Array[CardData] = []
     cards.append_array(draw_pile)

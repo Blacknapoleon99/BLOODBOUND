@@ -67,6 +67,11 @@ func _ready() -> void:
         _reward_rng.seed = 4242
     add_child(player)
     player.global_position = SPAWN_POSITION
+    add_to_group(&"death_listeners")
+    if not RunState.active:
+        RunState.relics.clear()  # a directly opened level starts bare
+    for relic: RelicData in RunState.relics:
+        _apply_relic(relic, false)
     player.connect("died", _on_player_died)
     _connect_audio()
 
@@ -178,6 +183,8 @@ func _process(delta: float) -> void:
         arena_state = "GUARDIAN: DEFEATED — ENTER THE PORTAL" if fracture.portal_open else "GUARDIAN: %d HP" % fracture.guardian.health.current
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
     checkpoint_state += "    DECK %d" % card_system.deck.total_cards()
+    if not RunState.relics.is_empty():
+        checkpoint_state += "    RELICS: " + relic_names()
     for altar: BloodAltar in altars:
         if altar.player_in_reach(player) and _message == "":
             _message = "E: offer blood at the altar for a new card"
@@ -203,7 +210,7 @@ func _unhandled_input(event: InputEvent) -> void:
         if altar.player_in_reach(player):
             _pending_altar = altar
             Audio.sfx(&"altar", 0.0)
-            offer_overlay.open("BLOOD ALTAR — choose a card for your deck", _reward_offer())
+            offer_overlay.open("BLOOD ALTAR — a card for your deck, or a relic", _altar_offer())
             return
     if bool(player.get("in_3d_mode")):
         if fracture.portal_open:
@@ -262,28 +269,118 @@ func _on_fracture_exited(cleared: bool) -> void:
     if cleared:
         _flash("The fracture seals behind you. Blood and vigour restored.", 3.5)
         _pending_altar = null
-        offer_overlay.open("THE FRACTURE YIELDS A RELIC — choose a card", _reward_offer())
+        offer_overlay.open("THE FRACTURE YIELDS — a relic, or temper a card", _fracture_offer())
 
 
-## Next reward offer: from the run's seeded stream when a run is active, else a local one.
-func _reward_offer() -> Array[CardData]:
-    if RunState.active:
-        return RunState.next_offer()
+## The run's seeded stream when a run is active, else a local one (level opened directly).
+func _offer_rng() -> RandomNumberGenerator:
+    return RunState.rng if RunState.active else _reward_rng
+
+
+## Offers are mixed lists, so both helpers return plain (untyped) arrays.
+func _card_offer(count: int) -> Array:
     var owned: Array = card_system.deck.all_cards().map(func(c: CardData) -> StringName: return c.id)
-    return CardPool.offer(_reward_rng, RunState.OFFER_SIZE, owned)
+    return Array(CardPool.offer(_offer_rng(), count, owned), TYPE_NIL, &"", null)
 
 
-func _on_offer_resolved(card: CardData) -> void:
+func _relic_offer(count: int) -> Array:
+    return Array(RelicPool.offer(_offer_rng(), count, RunState.owned_relic_ids()), TYPE_NIL, &"", null)
+
+
+## Blood Altar: two new cards and a relic (three cards once every relic is taken).
+func _altar_offer() -> Array:
+    var relics: Array = _relic_offer(1)
+    var choices: Array = _card_offer(RunState.OFFER_SIZE - relics.size())
+    choices.append_array(relics)
+    return choices
+
+
+## Cleared fracture: two relics and an upgrade of a random un-upgraded deck card, topped up
+## with new cards when relics or upgradable cards run out.
+func _fracture_offer() -> Array:
+    var choices: Array = _relic_offer(2)
+    var upgradable: Array[CardData] = []
+    for card: CardData in card_system.deck.all_cards():
+        if not card.upgraded and not upgradable.has(card):
+            upgradable.append(card)
+    if not upgradable.is_empty():
+        var base: CardData = upgradable[_offer_rng().randi_range(0, upgradable.size() - 1)]
+        choices.append(base.upgraded_copy())
+    if choices.size() < RunState.OFFER_SIZE:
+        choices.append_array(_card_offer(RunState.OFFER_SIZE - choices.size()))
+    return choices
+
+
+func _on_offer_resolved(choice: Resource) -> void:
     if _pending_altar:
         _pending_altar.consume()
         _pending_altar = null
-    if card == null:
+    if choice == null:
         _flash("You leave the offering untouched.", 2.0)
+        return
+    if choice is RelicData:
+        var relic: RelicData = choice
+        RunState.relics.append(relic)
+        _apply_relic(relic, true)
+        _flash("Relic claimed: %s — %s" % [relic.display_name, relic.description], 4.0)
+        return
+    var card: CardData = choice
+    if card.upgrade_source != null:
+        card_system.upgrade_card(card.upgrade_source, card)
+        RunState.replace_card(card.upgrade_source, card)
+        _flash("%s is tempered: cost %d, cooldown %ss." % [card.display_name, card.cost, str(card.cooldown)], 3.5)
         return
     card_system.add_card(card)
     if RunState.active:
         RunState.deck.append(card)
     _flash("%s joins your deck (%d cards)." % [card.display_name, card_system.deck.total_cards()], 3.0)
+
+
+## Applies one relic's stat changes to this level's player. `fresh` = just picked (instant
+## bonuses such as Vessel of Plenty's blood). Rule relics (Leech Fang, Gravebloom) are read
+## when they trigger, in on_combatant_died.
+func _apply_relic(relic: RelicData, fresh: bool) -> void:
+    var energy: BloodEnergy = card_system.energy
+    var health: Health = player.get("health")
+    match relic.id:
+        &"executioners_seal":
+            var melee: MeleeAttack = player.get("melee")
+            for id: StringName in [&"player_light_finisher", &"player_heavy"]:
+                melee.bonus_damage[id] = int(melee.bonus_damage.get(id, 0)) + 1
+        &"thorned_reliquary":
+            card_system.spell_damage_bonus += 1
+        &"wraith_step":
+            player.set("dodge_invulnerable_time", float(player.get("dodge_invulnerable_time")) + 0.12)
+            player.set("dodge_cooldown", maxf(0.2, float(player.get("dodge_cooldown")) - 0.15))
+        &"vessel_of_plenty":
+            energy.maximum += 2.0
+            energy.add(2.0 if fresh else 0.0)
+            energy.changed.emit(energy.current, energy.maximum)
+        &"bone_ward":
+            health.max_health += 1
+            health.heal(1)
+            health.changed.emit(health.current, health.max_health)
+        &"penitents_rosary":
+            card_system.cooldown_scale *= 0.75
+
+
+var kills: int = 0
+
+
+## Health broadcasts every death to the "death_listeners" group.
+func on_combatant_died(who: Node) -> void:
+    if who == null or not who.is_in_group(&"enemy"):
+        return
+    kills += 1
+    if RunState.has_relic(&"leech_fang"):
+        card_system.energy.add(1.0)
+    if RunState.has_relic(&"gravebloom") and kills % 4 == 0:
+        (player.get("health") as Health).heal(1)
+
+
+func relic_names() -> String:
+    var names: Array = RunState.relics.map(func(r: RelicData) -> String: return r.display_name)
+    return ", ".join(names)
 
 
 func _camera_goal() -> Vector3:

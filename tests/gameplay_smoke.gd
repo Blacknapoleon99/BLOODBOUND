@@ -156,6 +156,7 @@ func _run() -> void:
     await _m7_altar_and_new_card_checks()
     await _m9_archer_and_ambush_checks()
     await _m10_audio_checks()
+    await _m11_relic_checks()
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -1688,6 +1689,115 @@ func _m10_audio_checks() -> void:
         if int(Audio.played.get(id, 0)) == 0:
             silent.append(id)
     _check(silent.is_empty(), "every sound was triggered by gameplay during this run (never played: %s)" % [silent])
+
+
+## Relics & card upgrades: offers mix cards/relics/upgrades, every relic does what it says,
+## upgrades replace the deck card, and relics follow the run into a reloaded level.
+func _m11_relic_checks() -> void:
+    var ids: Dictionary = {}
+    for relic: RelicData in RelicPool.ALL:
+        ids[relic.id] = true
+    _check(RelicPool.ALL.size() == 8 and ids.size() == 8, "8 distinct relics in the pool")
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    await _seconds(0.3)
+    var cards: CardSystem = _cards()
+    var energy: BloodEnergy = _energy()
+    var health: Health = _player.get("health")
+    var melee: MeleeAttack = _melee()
+    energy.regen_per_second = 0.0
+    _enemy.set_ai_enabled(false)
+
+    var altar_offer: Array = _main.call("_altar_offer")
+    _check(altar_offer.size() == 3 and altar_offer[0] is CardData and altar_offer[1] is CardData and altar_offer[2] is RelicData, "a Blood Altar offers 2 cards and 1 relic")
+    var fracture_offer: Array = _main.call("_fracture_offer")
+    var relic_count: int = fracture_offer.filter(func(c: Resource) -> bool: return c is RelicData).size()
+    var upgrades: Array = fracture_offer.filter(func(c: Resource) -> bool: return c is CardData and c.upgrade_source != null)
+    _check(fracture_offer.size() == 3 and relic_count == 2 and upgrades.size() == 1, "the fracture offers 2 relics and 1 card upgrade")
+    _check(CardOfferView.describe(altar_offer[2]).begins_with("RELIC:") and CardOfferView.describe(upgrades[0]).begins_with("UPGRADE:"), "offer buttons label relics and upgrades")
+
+    # Upgrade: the tempered copy replaces the original everywhere in the deck.
+    var upgrade: CardData = upgrades[0]
+    var base: CardData = upgrade.upgrade_source
+    var before_total: int = cards.deck.total_cards()
+    _main.call("_on_offer_resolved", upgrade)
+    var all: Array[CardData] = cards.deck.all_cards()
+    _check(all.has(upgrade) and not all.has(base) and cards.deck.total_cards() == before_total, "an upgrade replaces %s with %s in the deck" % [base.display_name, upgrade.display_name])
+    _check(upgrade.cost == maxi(0, base.cost - 1) and upgrade.cooldown < base.cooldown and upgrade.upgraded and not base.upgraded, "upgrades cost 1 less (%d -> %d) and cool down faster (%.2f -> %.2f)" % [base.cost, upgrade.cost, base.cooldown, upgrade.cooldown])
+    var again: Array = _main.call("_fracture_offer")
+    _check(again.all(func(c: Resource) -> bool: return not (c is CardData and c.upgrade_source == upgrade)), "an upgraded card is never offered for upgrade again")
+
+    # Stat relics apply at once.
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"bone_ward"))
+    _check(health.max_health == 6 and health.current == 6, "Bone Ward: +1 max HP (%d/%d)" % [health.current, health.max_health])
+    energy.set_amount(1.0)
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"vessel_of_plenty"))
+    _check(is_equal_approx(energy.maximum, 8.0) and is_equal_approx(energy.current, 3.0), "Vessel of Plenty: max blood 8 and 2 blood now (%.1f/%.1f)" % [energy.current, energy.maximum])
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"wraith_step"))
+    _check(is_equal_approx(float(_player.get("dodge_invulnerable_time")), 0.40) and is_equal_approx(float(_player.get("dodge_cooldown")), 0.30), "Wraith Step: dodge i-frames 0.40 s, cooldown 0.30 s")
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"executioners_seal"))
+    var heavy: AttackData = _player.get("heavy_attack")
+    melee.start(heavy, Vector3.RIGHT)
+    _check(melee.hitbox.damage == heavy.damage + 1, "Executioner's Seal: heavy strike deals %d (base %d)" % [melee.hitbox.damage, heavy.damage])
+    await _seconds(1.2)
+    melee.start(_player.get("light_attack"), Vector3.RIGHT)
+    _check(melee.hitbox.damage == (_player.get("light_attack") as AttackData).damage, "Executioner's Seal leaves the opening jabs alone")
+    await _seconds(0.8)
+
+    # Rule relics.
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"penitents_rosary"))
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"thorned_reliquary"))
+    _player.call("teleport_to", _enemy.global_position + Vector3(-4.0, 0.5, 0.0))
+    await _seconds(0.4)
+    energy.set_amount(8.0)
+    var spear_slot: int = _deal(&"blood_spear")
+    var spear_card: CardData = cards.deck.card_in_slot(spear_slot)
+    _check(cards.play_slot(spear_slot) == &"ok", "Blood Spear plays with relics held")
+    _check(absf(cards.cooldown_left(spear_card) - spear_card.cooldown * 0.75) < 0.05, "Penitent's Rosary: cooldown %.2f s instead of %.2f s" % [cards.cooldown_left(spear_card), spear_card.cooldown])
+    var spear: BloodSpearProjectile = null
+    for node: Node in _main.get_children():
+        if node is BloodSpearProjectile:
+            spear = node
+    _check(spear != null and spear.hitbox.damage == spear_card.damage + 1, "Thorned Reliquary: the spear carries %d damage (base %d)" % [spear.hitbox.damage if spear else -1, spear_card.damage])
+    await _seconds(1.0)
+
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"leech_fang"))
+    energy.set_amount(0.0)
+    _enemy.health.apply_damage(_enemy.health.current)
+    await _frames(2)
+    _check(energy.current >= 0.99, "Leech Fang: slaying a foe feeds 1 blood (blood=%.1f)" % energy.current)
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"gravebloom"))
+    health.apply_damage(2)
+    var hp_before: int = health.current
+    _main.set("kills", 3)
+    _main.call("on_combatant_died", _enemy)
+    _check(health.current == hp_before + 1, "Gravebloom: the 4th kill heals 1 HP (%d -> %d)" % [hp_before, health.current])
+    _main.call("on_combatant_died", _enemy)
+    _check(health.current == hp_before + 1, "Gravebloom heals only on every 4th kill")
+    _check(_relic_offer_is_empty(), "with all 8 relics held, altars fall back to 3 cards")
+    await _frames(2)
+    var hud_text: String = (_main.get("hud") as Label).text
+    _check(hud_text.contains("RELICS:") and hud_text.contains("Gravebloom"), "the HUD lists held relics")
+
+    # Relics and upgrades follow the run into a fresh level load.
+    RunState.new_run(31)
+    RunState.deck.assign(CardSystem.DEFAULT_CARDS.duplicate())
+    var tempered: CardData = RunState.deck[0].upgraded_copy()
+    RunState.replace_card(RunState.deck[0], tempered)
+    RunState.relics.append(RelicPool.by_id(&"bone_ward"))
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    health = _player.get("health")
+    _check(health.max_health == 6 and _cards().deck.all_cards().has(tempered), "a run's relics and upgrades carry into the level (max HP %d)" % health.max_health)
+    RunState.end_run()
+
+
+func _relic_offer_is_empty() -> bool:
+    var offer: Array = _main.call("_altar_offer")
+    return offer.size() == 3 and offer.all(func(c: Resource) -> bool: return c is CardData)
 
 
 func _m3_boss_checks() -> void:

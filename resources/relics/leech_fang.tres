@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/relics/relic_data.gd" id="1_relic"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"leech_fang"
+display_name = "Leech Fang"
+description = "Every foe you slay feeds you 1 blood."
+ui_color = Color(0.75, 0.1, 0.15, 1)

@@ -40,6 +40,9 @@ const DEFAULT_CARDS: Array[CardData] = [
 @export var plane_target_depth: float = 2.5
 
 var deck: CardDeck = CardDeck.new()
+## Relic modifiers (set by main.gd): cooldown multiplier, and bonus damage for Blood Spear / Epitaph.
+var cooldown_scale: float = 1.0
+var spell_damage_bonus: int = 0
 var _cooldowns: Dictionary = {}  # card id -> seconds left
 var _queued_slot: int = -1
 var _queued_target: Hurtbox
@@ -107,7 +110,7 @@ func play_slot(slot: int, chosen_target: Hurtbox = null) -> StringName:
         return reason
 
     energy.spend(card.cost)
-    _cooldowns[card.id] = card.cooldown
+    _cooldowns[card.id] = card.cooldown * cooldown_scale
     deck.play_slot(slot)
     _apply(card, target)
     card_played.emit(card, slot)
@@ -137,6 +140,12 @@ func _validate(card: CardData) -> StringName:
 ## Adds a card to the deck mid-run (Blood Altar reward).
 func add_card(card: CardData) -> void:
     deck.add_card(card)
+    deck_changed.emit()
+
+
+## Replaces a deck card with its upgraded copy (fracture reward).
+func upgrade_card(old: CardData, new: CardData) -> void:
+    deck.replace_card(old, new)
     deck_changed.emit()
 
 
@@ -244,7 +253,9 @@ func _apply(card: CardData, target: Variant) -> void:
         &"blood_spear":
             var aim: Vector3 = _aim_point(target as Hurtbox)
             var from: Vector3 = player.global_position + Vector3(0.0, 0.6, 0.0)
-            get_tree().current_scene.add_child(BloodSpearProjectile.create(from, aim, card))
+            var spear: BloodSpearProjectile = BloodSpearProjectile.create(from, aim, card)
+            spear.hitbox.damage += spell_damage_bonus
+            get_tree().current_scene.add_child(spear)
         &"grave_shield":
             player.call("raise_shield", card.blocks_category, card.duration)
         &"ritual_chains":
@@ -256,7 +267,9 @@ func _apply(card: CardData, target: Variant) -> void:
             (player.get("health") as Health).heal(int(card.amount))
         &"epitaph":
             var spot: Vector3 = _aim_point(target as Hurtbox)
-            get_tree().current_scene.add_child(EpitaphSpike.create(spot, card))
+            var spike: EpitaphSpike = EpitaphSpike.create(spot, card)
+            spike.hitbox.damage += spell_damage_bonus
+            get_tree().current_scene.add_child(spike)
         &"ashen_choir":
             get_tree().current_scene.add_child(AshenPhantom.create(self, player, card))
         &"bell_of_silence":
