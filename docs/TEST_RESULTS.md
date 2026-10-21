@@ -382,3 +382,14 @@
 - Screenshot: `docs/screenshots/13_coop.png`.
 - `build/windows-run10/Bloodbound.exe`; the release export probe exits 0.
 - **Not verified:** a physical second gamepad (pad device mapping is by connected-joypad order), and co-op feel and balance.
+
+## Art pipeline test (2026-10-21)
+
+- **Model:** `causeway_segment_4m.glb`, original Blender work, 1,936 tris, 4 materials.
+- **Swap:** it replaces "Starting causeway appearance" through `ArtSwap.apply` (`scripts/art/art_swap.gd`). The greybox mesh is hidden and the collision is unchanged.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446** with art enabled.
+- `godot_console --path . -s res://tests/shot_art_swap.gd`:
+  - with art on: `model=true greybox_visible=false collision=(12, 1, 4)`;
+  - with art off: `model=false greybox_visible=true collision=(12, 1, 4)`.
+- Screenshots: `docs/screenshots/15_art_causeway.png` and `15_art_causeway_greybox.png`.
+- **Not verified:** the Web export render of the GLB, and the `-- --greybox` command-line toggle (the code path is the same as `ArtSwap.enabled = false`, which was exercised).

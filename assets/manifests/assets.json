@@ -1,1 +1,22 @@
-{"assets":[],"schema_version":1,"notes":"Record source, license, user approval, generated filename, GLB export and validation here."}
+{
+  "schema_version": 1,
+  "notes": "Record source, license, user approval, generated filename, GLB export and validation here.",
+  "assets": [
+    {
+      "id": "causeway_segment_4m",
+      "file": "assets/models/environment/causeway_segment_4m.glb",
+      "source_file": "assets/source/environment/causeway_segment_4m.blend",
+      "provider": "original (Blender 5.2.2 via MCP for Blender, scripted bmesh, seed 1337)",
+      "license": "project-original",
+      "cost": "none",
+      "approval": "not required (free, no third-party transfer)",
+      "tris": 1936,
+      "materials": ["bb_stone_a", "bb_stone_b", "bb_stone_c", "bb_mortar"],
+      "textures": "none (flat PBR values)",
+      "dimensions_m": [4.0, 1.0, 4.0],
+      "pivot": "box centre; walkable top at +0.5; front face +Z (Godot)",
+      "replaces": "main.gd _build_greybox 'Starting causeway appearance' via scripts/art/art_swap.gd",
+      "validation": "tools/run_checks.ps1 + tests/shot_art_swap.gd (docs/screenshots/15_art_causeway.png)"
+    }
+  ]
+}
