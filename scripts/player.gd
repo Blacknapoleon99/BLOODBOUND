@@ -28,10 +28,10 @@ signal blocked(info: DamageInfo)
 signal died
 
 @export_group("Run")
-@export var move_speed: float = 7.0
-@export var ground_acceleration: float = 45.0
-@export var ground_deceleration: float = 55.0
-@export var air_acceleration: float = 28.0
+@export var move_speed: float = 8.5
+@export var ground_acceleration: float = 60.0
+@export var ground_deceleration: float = 70.0
+@export var air_acceleration: float = 36.0
 
 @export_group("Jump")
 @export var jump_speed: float = 9.5
@@ -43,10 +43,10 @@ signal died
 @export var jump_buffer_time: float = 0.12
 
 @export_group("Dodge")
-@export var dodge_speed: float = 15.0
+@export var dodge_speed: float = 17.0
 @export var dodge_duration: float = 0.22
 @export var dodge_invulnerable_time: float = 0.28
-@export var dodge_cooldown: float = 0.45
+@export var dodge_cooldown: float = 0.4
 
 @export_group("Combat")
 @export var light_attack: AttackData

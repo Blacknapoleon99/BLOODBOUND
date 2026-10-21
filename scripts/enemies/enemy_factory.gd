@@ -13,7 +13,7 @@ static func husk(parent: Node, x: float, roam_min: float, roam_max: float) -> Pl
     husk_node.patrol_min_x = roam_min
     husk_node.patrol_max_x = roam_max
     husk_node.aggro_range = 9.0
-    husk_node.chase_speed = 2.6
+    husk_node.chase_speed = 3.6
     husk_node.attack_cooldown = 1.2
     husk_node.poise_max = 1
     (husk_node.get_node("Health") as Health).max_health = 2

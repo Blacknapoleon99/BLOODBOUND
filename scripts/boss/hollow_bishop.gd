@@ -52,33 +52,33 @@ const PHASE_TITLES: Dictionary = {
 
 ## Optimal held-combo spam deals ~9 per weak-point window, so 90 HP is at least ten windows of
 ## pure melee across four phases; spears, Epitaph and Husk blood shorten it for good play.
-@export var max_health: int = 90
-@export var collapse_at: int = 65
-@export var covenant_at: int = 35
-@export var unmaking_at: int = 12
-@export var max_minions: int = 2
+@export var max_health: int = 120
+@export var collapse_at: int = 88
+@export var covenant_at: int = 50
+@export var unmaking_at: int = 18
+@export var max_minions: int = 3
 @export var depth: float = -22.0
 @export var min_x: float = 22.0
 @export var max_x: float = 42.0
 @export var engage_min_x: float = 18.6
 @export var ai_enabled: bool = true
 @export_group("Timing")
-@export var intro_time: float = 1.5
-@export var aim_time: float = 0.4
-@export var slam_telegraph: float = 1.0
-@export var sunder_telegraph: float = 1.3
+@export var intro_time: float = 1.1
+@export var aim_time: float = 0.3
+@export var slam_telegraph: float = 0.75
+@export var sunder_telegraph: float = 1.0
 @export var descent_time: float = 0.15
 @export var impact_time: float = 0.12
-@export var weak_window: float = 2.5
+@export var weak_window: float = 2.2
 @export var covenant_weak_window: float = 4.0
 @export var unmaking_weak_window: float = 5.0
-@export var roar_time: float = 1.8
-@export var summon_time: float = 1.2
-@export var retract_time: float = 0.6
-@export var lance_speed: float = 16.0
+@export var roar_time: float = 1.3
+@export var summon_time: float = 0.9
+@export var retract_time: float = 0.45
+@export var lance_speed: float = 21.0
 @export var lance_spacing: float = 0.5
 @export var chain_pull_time: float = 0.3
-@export var pursuit_interval: float = 3.2
+@export var pursuit_interval: float = 2.6
 
 var phase: Phase = Phase.DORMANT
 var health: Health
@@ -371,15 +371,15 @@ func _finish_attack() -> void:
     _actor = null
     match phase:
         Phase.UNMAKING:
-            _cooldown = 0.7
+            _cooldown = 0.45
         Phase.COVENANT:
-            _cooldown = 1.0
+            _cooldown = 0.7
         Phase.COLLAPSE:
-            _cooldown = 1.5
+            _cooldown = 1.0
         _:
-            _cooldown = 1.8
+            _cooldown = 1.25
     if phase == Phase.PURSUIT:
-        _cooldown = pursuit_interval - 1.9  # a lance attack itself lasts ~1.9 s
+        _cooldown = maxf(0.5, pursuit_interval - 1.6)  # a lance attack itself lasts ~1.6 s
 
 
 func _cancel_attack() -> void:

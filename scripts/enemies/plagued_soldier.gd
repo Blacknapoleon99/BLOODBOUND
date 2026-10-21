@@ -23,9 +23,9 @@ enum State { IDLE, PATROL, CHASE, ATTACK, HITSTUN, DEAD }
 
 @export var patrol_min_x: float = 1.5
 @export var patrol_max_x: float = 8.0
-@export var patrol_speed: float = 1.6
-@export var chase_speed: float = 3.2
-@export var aggro_range: float = 6.5
+@export var patrol_speed: float = 2.2
+@export var chase_speed: float = 4.4
+@export var aggro_range: float = 8.0
 @export var aggro_height: float = 2.5
 @export var attack_range: float = 1.7
 @export var attack_cooldown: float = 0.5

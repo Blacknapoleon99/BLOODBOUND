@@ -38,8 +38,11 @@ func _run() -> void:
 
     # The soldier patrols on its own from boot; park it for deterministic movement tests.
     var ex0: float = _enemy.global_position.x
-    await _seconds(1.0)
-    _check(_enemy.state_name() == "PATROL" and absf(_enemy.global_position.x - ex0) > 0.8, "soldier patrols on its own (state=%s, dx=%.2f)" % [_enemy.state_name(), _enemy.global_position.x - ex0])
+    var max_dx: float = 0.0
+    for i in int(1.0 * PHYSICS_HZ):  # it may turn at a patrol bound, so track the furthest point
+        await physics_frame
+        max_dx = maxf(max_dx, absf(_enemy.global_position.x - ex0))
+    _check(_enemy.state_name() == "PATROL" and max_dx > 0.8, "soldier patrols on its own (state=%s, max dx=%.2f)" % [_enemy.state_name(), max_dx])
     _enemy.set_ai_enabled(false)
     _enemy.teleport_to(Vector3(9.0, 1.0, 0.0))
 
@@ -268,7 +271,7 @@ func _m1_dodge_checks() -> void:
     _check(not bool(_player.call("is_invulnerable")), "invulnerability ends after ~0.28 s")
     var total: float = _player.global_position.x - x0
     _check(total < 4.8, "dodge ends at run speed instead of sliding on (total dx=%.2f)" % total)
-    # Pressed inside cooldown (0.45 s from dodge start): must be ignored.
+    # Pressed inside cooldown (0.4 s from dodge start): must be ignored.
     _tap(KEY_K)
     await physics_frame
     await physics_frame
@@ -1533,7 +1536,10 @@ func _m8_new_attack_checks(boss: HollowBishop) -> void:
     var on_plane: bool = husks.all(func(h: Node) -> bool: return absf((h as Node3D).global_position.z) < 0.01 and (h as Node3D).global_position.y > 0.0)
     _check(husks.size() == 2 and on_plane, "two Husks rise onto the causeway (%d)" % husks.size())
     await _shot("13_husks")
-    _check(not boss.debug_attack(&"summon", _bx(30.2)), "no more than two Husks at a time")
+    if boss.debug_attack(&"summon", _bx(30.2)):
+        await _boss_idle(boss)
+    _check(boss.minions().size() <= boss.max_minions, "never more than %d Husks at a time (%d)" % [boss.max_minions, boss.minions().size()])
+    _check(not boss.debug_attack(&"summon", _bx(30.2)) or boss.minions().size() < boss.max_minions, "a full graveyard refuses another summon")
     energy.regen_per_second = 0.0
     energy.set_amount(0.0)
     for i in int(10.0 * PHYSICS_HZ):
@@ -1570,7 +1576,7 @@ func _m9_archer_and_ambush_checks() -> void:
     var hp0: int = _player_hp()
     var close: bool = await _wait_until(func() -> bool:
         for n: Node in root.get_tree().get_nodes_in_group(&"bone_arrow"):
-            if absf((n as Node3D).global_position.x - _player.global_position.x) < 3.2:
+            if absf((n as Node3D).global_position.x - _player.global_position.x) < 4.2:
                 return true
         return false, 3.0)
     _key(KEY_SPACE, true)
@@ -1744,7 +1750,7 @@ func _m11_relic_checks() -> void:
     _main.call("_on_offer_resolved", RelicPool.by_id(&"vessel_of_plenty"))
     _check(is_equal_approx(energy.maximum, 8.0) and is_equal_approx(energy.current, 3.0), "Vessel of Plenty: max blood 8 and 2 blood now (%.1f/%.1f)" % [energy.current, energy.maximum])
     _main.call("_on_offer_resolved", RelicPool.by_id(&"wraith_step"))
-    _check(is_equal_approx(float(_player.get("dodge_invulnerable_time")), 0.40) and is_equal_approx(float(_player.get("dodge_cooldown")), 0.30), "Wraith Step: dodge i-frames 0.40 s, cooldown 0.30 s")
+    _check(is_equal_approx(float(_player.get("dodge_invulnerable_time")), 0.40) and is_equal_approx(float(_player.get("dodge_cooldown")), 0.25), "Wraith Step: dodge i-frames 0.40 s, cooldown 0.25 s")
     _main.call("_on_offer_resolved", RelicPool.by_id(&"executioners_seal"))
     var heavy: AttackData = _player.get("heavy_attack")
     melee.start(heavy, Vector3.RIGHT)
@@ -1849,7 +1855,7 @@ func _m3_boss_checks() -> void:
                 plate_x = boss.hand.marker.global_position.x
             if boss.hand.hitbox.is_active():
                 impact_z = boss.hand.global_position.z
-    _check(marker_lead >= 80, "slam telegraph plate shows %d frames before impact (>= 80)" % marker_lead)
+    _check(marker_lead >= 60, "slam telegraph plate shows %d frames before impact (>= 60, fairness floor)" % marker_lead)
     _check(absf(plate_x - _bx(24.2)) < 0.01, "telegraph plate marks the strike x (%.2f)" % plate_x)
     _check(min_hand_z < -7.5 and absf(impact_z) < 0.05, "hand travels from depth (z=%.1f) to the play plane (z=%.2f)" % [min_hand_z, impact_z])
     _check(_player_hp() == hp0 - 2, "slam deals 2 damage to a player who stays (%d → %d)" % [hp0, _player_hp()])
@@ -2036,8 +2042,13 @@ func _m3_boss_checks() -> void:
     _player.set("facing_direction", -1.0)
     _tap(KEY_L)
     await _seconds(0.9)
-    _tap(KEY_J)
-    await _seconds(0.5)
+    for i in 6:  # the faster Unmaking may crowd the window: keep jabbing while it is open
+        if boss.health.current == 0:
+            break
+        _player.set("facing_direction", -1.0)
+        _tap(KEY_J)
+        await _seconds(0.35)
+    await _seconds(0.2)
     _check(boss.health.current == 0 and boss.phase_name() == "DEFEATED", "final stigmata hits defeat the Bishop (hp=%d, phase=%s)" % [boss.health.current, boss.phase_name()])
     await _frames(3)
     _check(root.get_tree().get_nodes_in_group(&"bishop_minion").filter(func(m: Node) -> bool: return not m.is_queued_for_deletion()).is_empty(), "the Bishop's Husks crumble when it falls")

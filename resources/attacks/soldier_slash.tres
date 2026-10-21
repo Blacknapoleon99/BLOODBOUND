@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1_attack")
 id = &"soldier_slash"
-startup = 0.55
+startup = 0.52
 active = 0.12
-recovery = 0.6
+recovery = 0.45
 damage = 1
 category = &"melee"
 knockback = 6.0

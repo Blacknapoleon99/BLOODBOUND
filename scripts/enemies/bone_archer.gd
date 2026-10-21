@@ -11,8 +11,8 @@ signal state_changed(state_name: String)
 
 enum State { IDLE, AIM, RECOVER, HITSTUN, DEAD }
 
-@export var aim_time: float = 0.9
-@export var recover_time: float = 1.4
+@export var aim_time: float = 0.7
+@export var recover_time: float = 1.0
 @export var engage_range: float = 14.0
 @export var retreat_distance: float = 3.5
 @export var move_speed: float = 2.4

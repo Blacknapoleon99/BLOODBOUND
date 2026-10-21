@@ -4,7 +4,7 @@ extends Node3D
 ## category "projectile"). Jump it, dodge through it, or out-range it.
 
 var direction: Vector3 = Vector3.RIGHT
-var speed: float = 14.0
+var speed: float = 18.0
 var lifetime: float = 2.0
 var hitbox: Hitbox
 
