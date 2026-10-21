@@ -10,6 +10,8 @@ var shake_slider: HSlider
 var shake_value: Label
 var hitstop_toggle: CheckButton
 var auto_attack_toggle: CheckButton
+var music_slider: HSlider
+var sfx_slider: HSlider
 var back_button: Button
 var save_path: String = GameSettings.DEFAULT_PATH
 
@@ -73,6 +75,16 @@ func _build() -> void:
         _save())
     column.add_child(auto_attack_toggle)
 
+    music_slider = _volume_row(column, "Music", "MusicVolume", func(v: float) -> void:
+        GameSettings.music_volume = v
+        Audio.apply_volumes()
+        _save())
+    sfx_slider = _volume_row(column, "Sound effects", "SfxVolume", func(v: float) -> void:
+        GameSettings.sfx_volume = v
+        Audio.apply_volumes()
+        Audio.sfx(&"ui_click")
+        _save())
+
     back_button = MenuStyle.button("Back")
     back_button.name = "Back"
     back_button.pressed.connect(close)
@@ -85,6 +97,8 @@ func open() -> void:
     shake_value.text = "%d%%" % roundi(GameSettings.camera_shake * 100.0)
     hitstop_toggle.set_pressed_no_signal(GameSettings.hitstop_enabled)
     auto_attack_toggle.set_pressed_no_signal(GameSettings.auto_attack)
+    music_slider.set_value_no_signal(GameSettings.music_volume)
+    sfx_slider.set_value_no_signal(GameSettings.sfx_volume)
     visible = true
     gore_toggle.grab_focus()
 
@@ -102,6 +116,24 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _save() -> void:
     GameSettings.save_settings(save_path)
+
+
+func _volume_row(column: VBoxContainer, title: String, node_name: String, on_change: Callable) -> HSlider:
+    var row: HBoxContainer = HBoxContainer.new()
+    var label: Label = MenuStyle.label(title, 18)
+    label.custom_minimum_size = Vector2(170, 0)
+    label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    row.add_child(label)
+    var slider: HSlider = HSlider.new()
+    slider.name = node_name
+    slider.min_value = 0.0
+    slider.max_value = 1.0
+    slider.step = 0.1
+    slider.custom_minimum_size = Vector2(200, 24)
+    slider.value_changed.connect(on_change)
+    row.add_child(slider)
+    column.add_child(row)
+    return slider
 
 
 static func _toggle(text: String) -> CheckButton:

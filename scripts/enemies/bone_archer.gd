@@ -102,6 +102,7 @@ func _physics_process(delta: float) -> void:
                     velocity.x = -facing * move_speed
                 else:
                     _set_state(State.AIM)
+                    Audio.sfx(&"archer_draw")
         State.AIM:
             velocity.x = 0.0
             if target != null:
@@ -112,6 +113,7 @@ func _physics_process(delta: float) -> void:
             _aim_line.position = Vector3(facing * 4.0, 0.15, 0.0)
             if _t >= aim_time:
                 _aim_line.visible = false
+                Audio.sfx(&"arrow_release")
                 get_parent().add_child(BoneArrow.create(global_position + Vector3(facing * 0.6, 0.15, 0.0), Vector3(facing, 0.0, 0.0)))
                 arrows_fired += 1
                 _set_state(State.RECOVER)

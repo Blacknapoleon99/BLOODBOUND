@@ -68,6 +68,7 @@ func _ready() -> void:
     add_child(player)
     player.global_position = SPAWN_POSITION
     player.connect("died", _on_player_died)
+    _connect_audio()
 
     camera = Camera3D.new()
     camera.name = "SideViewOrArenaCamera"
@@ -149,6 +150,7 @@ func _process(delta: float) -> void:
         boss.min_x = boss_arena.left_x() + 4.0
         boss.max_x = boss_arena.right_x() - 4.0
         boss.begin_fight()
+        Audio.music(&"music_boss")
         _flash("The Bishop turns to face you. Strike the stigmata when its hand falls.", 3.5)
     _update_boss_bar()
     var ambush_now: Ambush = _active_ambush()
@@ -200,6 +202,7 @@ func _unhandled_input(event: InputEvent) -> void:
     for altar: BloodAltar in altars:
         if altar.player_in_reach(player):
             _pending_altar = altar
+            Audio.sfx(&"altar", 0.0)
             offer_overlay.open("BLOOD ALTAR — choose a card for your deck", _reward_offer())
             return
     if bool(player.get("in_3d_mode")):
@@ -230,6 +233,7 @@ func _active_ambush() -> Ambush:
 
 
 func _on_ambush_started(ambush: Ambush) -> void:
+    Audio.sfx(&"walls_rise")
     _flash("AMBUSH — bone walls rise! Slay them all.", 3.0)
 
 
@@ -349,7 +353,57 @@ func _on_boss_phase_changed(_phase_name: String) -> void:
     _banner_left = 2.4
 
 
+const CARD_SOUNDS: Dictionary = {
+    &"blood_spear": &"card_spear", &"grave_shield": &"card_shield", &"ritual_chains": &"card_chains",
+    &"bell_of_silence": &"card_bell", &"epitaph": &"card_epitaph", &"hemorrhage_pact": &"card_pact",
+    &"ashen_choir": &"card_choir", &"transfusion": &"card_transfusion",
+}
+
+
+## Sounds for gameplay events, driven by signals so gameplay scripts stay audio-free.
+func _connect_audio() -> void:
+    Audio.apply_volumes()
+    Audio.music(&"music_level")
+    player.connect("attack_started", _on_player_attack_audio)
+    player.connect("dodge_started", func(_d: Vector3) -> void: Audio.sfx(&"dodge"))
+    player.connect("jumped", func() -> void: Audio.sfx(&"jump", 0.1, -6.0))
+    player.connect("landed", func() -> void: Audio.sfx(&"land", 0.1, -8.0))
+    player.connect("hurt", func(_i: DamageInfo) -> void: Audio.sfx(&"player_hurt"))
+    player.connect("died", func() -> void: Audio.sfx(&"death"))
+    card_system.card_played.connect(func(card: CardData, _slot: int) -> void: Audio.sfx(CARD_SOUNDS.get(card.effect, &"card_spear")))
+    card_system.card_failed.connect(func(_c: CardData, _slot: int, _r: StringName) -> void: Audio.sfx(&"card_refused", 0.0))
+
+
+func _on_player_attack_audio(id: StringName) -> void:
+    match id:
+        &"player_light_finisher":
+            Audio.sfx(&"slash_finisher")
+        &"player_heavy":
+            Audio.sfx(&"heavy_swing")
+        _:
+            Audio.sfx(&"slash", 0.12)
+
+
+func _on_boss_audio_phase(phase_name: String) -> void:
+    if phase_name in ["INTRO", "COLLAPSE", "COVENANT", "UNMAKING"]:
+        Audio.sfx(&"bishop_roar", 0.03)
+
+
+func _on_boss_audio_attack(attack: StringName) -> void:
+    match attack:
+        &"lance", &"lance_volley":
+            Audio.sfx(&"lance_whistle")
+        &"censer":
+            Audio.sfx(&"censer_swing")
+        &"beam":
+            Audio.sfx(&"beam_charge", 0.0)
+        &"summon":
+            Audio.sfx(&"summon")
+
+
 func _on_boss_defeated() -> void:
+    Audio.stop_music()
+    Audio.sfx(&"victory", 0.0)
     game_won = true
     player.set("game_frozen", true)
     _flash("VICTORY — the Hollow Bishop is unmade. Press R to restart.", 999999.0)
@@ -555,6 +609,8 @@ func _build_greybox() -> void:
     boss.max_x = BOSS_ARENA_START_X - 2.0
     add_child(boss)
     boss.defeated.connect(_on_boss_defeated)
+    boss.phase_changed.connect(_on_boss_audio_phase)
+    boss.attack_started.connect(_on_boss_audio_attack)
     boss.sunder_impact.connect(_on_sunder_impact)
 
     # Reality Fracture: the optional free-movement chapel, off the main play plane.

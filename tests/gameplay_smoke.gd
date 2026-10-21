@@ -136,6 +136,7 @@ func _run() -> void:
     # --- M3 Hollow Bishop → victory / restart ----------------------------------
     await _m3_boss_checks()
     _check(bool(_main.get("game_won")), "defeating the Bishop wins the run")
+    _check(Audio.current_music == &"" and int(Audio.played.get(&"victory", 0)) > 0, "victory stops the music and plays the victory chord")
     _check(bool(_player.get("game_frozen")), "player is frozen on victory")
     await _shot("08_victory")
     _tap(KEY_R)
@@ -154,6 +155,7 @@ func _run() -> void:
     _check(current_scene.scene_file_path == "res://scenes/main_menu.tscn" and not paused, "pause → Main menu returns to the title screen, unpaused")
     await _m7_altar_and_new_card_checks()
     await _m9_archer_and_ambush_checks()
+    await _m10_audio_checks()
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -1049,10 +1051,15 @@ func _m6_menu_checks() -> void:
     panel.gore_toggle.button_pressed = true
     panel.shake_slider.value = 0.5
     panel.hitstop_toggle.button_pressed = false
+    panel.music_slider.value = 0.3
+    panel.sfx_slider.value = 0.5
+    var music_db: float = AudioServer.get_bus_volume_db(AudioServer.get_bus_index(&"Music"))
+    _check(is_equal_approx(GameSettings.music_volume, 0.3) and absf(music_db - linear_to_db(0.3)) < 0.01, "the Music slider sets the Music bus volume (%.1f dB)" % music_db)
     _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled, "settings controls change gore / shake / hit-stop immediately")
     _test_defaults()
     GameSettings.load_settings("user://test_settings.cfg")
-    _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled, "settings persist through save and reload")
+    _check(GameSettings.reduced_gore and is_equal_approx(GameSettings.camera_shake, 0.5) and not GameSettings.hitstop_enabled
+        and is_equal_approx(GameSettings.music_volume, 0.3) and is_equal_approx(GameSettings.sfx_volume, 0.5), "settings (incl. volumes) persist through save and reload")
     DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_settings.cfg"))
     _test_defaults()
     _tap(KEY_ESCAPE)
@@ -1651,6 +1658,38 @@ func _chase_nearest(ambush: Ambush) -> void:
     _key(KEY_A, dx < -1.2)
 
 
+const SOUND_IDS: Array[StringName] = [
+    &"slash", &"slash_finisher", &"heavy_swing", &"hit_flesh", &"hit_weak", &"player_hurt", &"dodge",
+    &"jump", &"land", &"death", &"card_spear", &"card_shield", &"card_chains", &"card_bell", &"card_epitaph",
+    &"card_pact", &"card_choir", &"card_transfusion", &"card_refused", &"bishop_roar", &"bishop_slam",
+    &"lance_whistle", &"censer_swing", &"beam_charge", &"beam_fire", &"summon", &"archer_draw",
+    &"arrow_release", &"walls_rise", &"altar", &"ui_click", &"victory",
+]
+
+
+## Sound & music: every generated file loads, the level plays its drone, and every sound id
+## was actually triggered by gameplay at some point during this run of the suite.
+func _m10_audio_checks() -> void:
+    var empty: Array[StringName] = []
+    for id: StringName in SOUND_IDS + [&"music_level", &"music_boss"]:
+        var stream: AudioStream = load("res://assets/audio/%s.wav" % id) if ResourceLoader.exists("res://assets/audio/%s.wav" % id) else null
+        if stream == null or stream.get_length() <= 0.0:
+            empty.append(id)
+    _check(empty.is_empty(), "all %d generated sounds and both music loops load (missing: %s)" % [SOUND_IDS.size(), empty])
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    _check(Audio.current_music == &"music_level", "the level plays its ambient drone (%s)" % Audio.current_music)
+    var music: AudioStreamWAV = load("res://assets/audio/music_level.wav")
+    _check(music.loop_mode == AudioStreamWAV.LOOP_FORWARD and music.loop_end > music.mix_rate * 10, "level music loops (%d frames)" % music.loop_end)
+    var silent: Array[StringName] = []
+    for id: StringName in SOUND_IDS:
+        if int(Audio.played.get(id, 0)) == 0:
+            silent.append(id)
+    _check(silent.is_empty(), "every sound was triggered by gameplay during this run (never played: %s)" % [silent])
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
@@ -1661,6 +1700,7 @@ func _m3_boss_checks() -> void:
     _check(reached, "the approach leads into the Bishop's arena (x=%.2f)" % _player.global_position.x)
     _check(bool((_main.get("boss_checkpoint") as Checkpoint).is_active), "arena checkpoint activates")
     _check(boss.fight_started and boss.phase_name() == "PROCESSION", "reaching the arena turns the pursuit into the fight (phase=%s)" % boss.phase_name())
+    _check(Audio.current_music == &"music_boss", "the boss track starts with the fight (%s)" % Audio.current_music)
     boss.set_ai_enabled(false)
     await _seconds(1.8)
     _check(boss.phase_name() == "PROCESSION", "Bishop rises into phase I (phase=%s)" % boss.phase_name())

@@ -238,3 +238,11 @@
   - Landing ambush springs with 3 foes. Dying mid-fight clears it and re-arms it (0 leftover).
 - Fixed during testing: `Ambush.alive_count()` touched freed Husks (script errors). It now prunes freed references; archers also free themselves after death.
 - Screenshot: `docs/screenshots/14_ambush.png`.
+
+## Sound & music run (2026-10-21)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 276/276 checks passed**.
+- The first run failed one new check: `land` was never triggered. This exposed the `landed` signal bug (DEC-027). After the fix it passes.
+- New checks: all 32 sounds and both music loops load with non-zero length. The level plays `music_level`, which loops (LOOP_FORWARD). The boss track starts with the fight. Victory stops the music and plays `victory`. The Music slider sets the Music bus dB. Volumes persist through save/reload. Every one of the 32 sound ids was triggered by real gameplay during the suite.
+- `--export-release "Windows Desktop" build/windows-run3/Bloodbound.exe` → exit 0. Audio is in the pack. The release export probe exits 0.
+- Not verified: how the sounds feel when heard by a person (no one has listened to the mix yet).

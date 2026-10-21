@@ -70,7 +70,7 @@ var _facing_3d: Vector3 = Vector3.RIGHT
 var _coyote_left: float = 0.0
 var _buffer_left: float = 0.0
 var _jump_rising: bool = false
-var _was_on_floor: bool = false
+var _was_on_floor: bool = true  # no landing thud on spawn
 var _dodge_left: float = 0.0
 var _invulnerable_left: float = 0.0
 var _dodge_cooldown_left: float = 0.0
@@ -222,7 +222,7 @@ func _physics_process(delta: float) -> void:
     move_and_slide()
     if not in_3d_mode:
         position.z = 0.0
-    _was_on_floor = is_on_floor()
+    _was_on_floor = on_floor  # pre-move state, so next frame sees the touchdown
     _update_reaction_visuals(delta)
 
 

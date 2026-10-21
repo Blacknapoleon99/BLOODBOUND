@@ -21,6 +21,7 @@ static func button(text: String) -> Button:
     b.add_theme_stylebox_override("hover", focus)
     b.add_theme_stylebox_override("focus", focus)
     b.add_theme_stylebox_override("pressed", focus)
+    b.pressed.connect(func() -> void: Audio.sfx(&"ui_click", 0.02))
     return b
 
 

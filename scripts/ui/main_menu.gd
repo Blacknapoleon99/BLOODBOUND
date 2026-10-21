@@ -15,6 +15,8 @@ var _menu: Control
 func _ready() -> void:
     InputBindings.ensure_defaults()
     GameSettings.load_settings()
+    Audio.apply_volumes()
+    Audio.music(&"music_level")
     set_anchors_preset(Control.PRESET_FULL_RECT)
 
     var background: ColorRect = ColorRect.new()

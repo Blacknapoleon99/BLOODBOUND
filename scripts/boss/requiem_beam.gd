@@ -97,6 +97,7 @@ func _physics_process(delta: float) -> void:
         return
     if not hitbox.is_active():
         hitbox.activate()
+        Audio.sfx(&"beam_fire", 0.02)
         _line.visible = false
         _ray.visible = true
         _glow.albedo_color = Color(1.0, 0.2, 0.25, 0.85)

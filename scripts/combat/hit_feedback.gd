@@ -20,7 +20,9 @@ static func play(at_node: Node3D, info: DamageInfo) -> void:
     _spawn_spray(tree, info, strength)
     var hurtbox: Hurtbox = at_node as Hurtbox
     if hurtbox != null and hurtbox.team != &"player":
-        _spawn_damage_number(tree, info, hurtbox.is_in_group(&"weak_point"))
+        var weak: bool = hurtbox.is_in_group(&"weak_point")
+        _spawn_damage_number(tree, info, weak)
+        Audio.sfx(&"hit_weak" if weak else &"hit_flesh")
     if GameSettings.hitstop_enabled:
         _hitstop(tree)
     tree.call_group(&"camera_shaker", &"add_trauma", 0.3 * strength)

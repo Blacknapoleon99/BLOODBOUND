@@ -99,3 +99,12 @@ Step 3: bigger Bishop (more attacks, abilities and phases). Step 4: more mid-run
 
 ### Next action
 Playtest the full run (draft → ambushes → fracture → pursuit → four-phase Bishop) and retune from the report: Bishop HP, card costs, ambush density.
+
+## 2026-10-21 — Sound & music
+
+- Added synthesized SFX and music (`tools/generate_audio.gd`, `assets/audio/`), the `Audio` service, Music/SFX volume sliders, and hooks for combat, cards, the Bishop, archers, ambushes, altars and UI.
+- Fixed: the player's `landed` signal never fired.
+- Evidence: 276/276 smoke checks; build `build/windows-run3/Bloodbound.exe`.
+
+### Next action
+Relics & card upgrades (passive run modifiers offered at altars and the fracture reward).

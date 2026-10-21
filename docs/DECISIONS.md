@@ -155,3 +155,12 @@ Playtester: more mechanics and things to do between the start and the Bishop.
   - **E2, Landing** (x 37.8–43.8, mid-pursuit): a Husk + 2 archers. Its altar (x 40.7) is the reward, and the ferry waits behind the wall.
 - `EnemyFactory` builds Husks and archers for both the ambushes and the Bishop's Grasping Dead. Dead foes free themselves after 1.5 s; `Ambush` prunes freed references before touching them (found by test: script errors on freed Husks).
 - `Ambush.enabled` (static) is off in scripted tests and on in the game.
+
+## DEC-027 — Sound & music: synthesized in-repo, routed through one service (2026-10-21)
+
+- No third-party audio: `tools/generate_audio.gd` synthesizes 32 effects and two music loops (level drone, 120 bpm boss track) into `assets/audio/` (22050 Hz 16-bit mono WAV, ~3 MB). Rerun it to retune any sound.
+- `Audio` (static service, lazily added under root) owns a 14-voice SFX pool on bus `SFX` and a looping music player on bus `Music`. Gameplay scripts stay mostly audio-free: `main.gd` maps player, card, Bishop and ambush/altar signals to sounds. Only the archer, beam, slam and hit feedback call `Audio.sfx` directly, at the exact frame they act.
+- Music: the level drone plays from the menu; the boss track starts at `begin_fight`; victory stops music and plays a chord.
+- Settings: Music and Sound-effects sliders (0–1, saved under `[audio]`) set the bus volumes.
+- Found by the new "every sound is triggered" test: the player's `landed` signal never fired, because `_was_on_floor` was sampled after `move_and_slide()`. It now stores the pre-move floor state.
+- Known quirk: under the headless dummy audio driver Godot reports leaked AudioStreamWAV playbacks at exit. The real WASAPI driver reports none.

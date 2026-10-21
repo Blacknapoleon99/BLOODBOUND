@@ -433,6 +433,7 @@ func _tick_slam(delta: float) -> void:
         if not _impact_done:
             _impact_done = true
             hand.hitbox.activate()
+            Audio.sfx(&"bishop_slam", 0.04)
             get_tree().call_group(&"camera_shaker", &"add_trauma", 0.6)
             if _attack == &"sunder":
                 sunder_impact.emit(_target_x)
