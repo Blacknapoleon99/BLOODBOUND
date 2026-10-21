@@ -36,6 +36,8 @@ var altars: Array[BloodAltar] = []
 var offer_overlay: CardOfferOverlay
 var card_system: CardSystem
 var _pending_altar: BloodAltar
+var loot_chest: LootChest
+var _loot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var ambushes: Array[Ambush] = []
 var traps: Array[Node3D] = []  # SpikeTrap and PendulumBlade hazards
@@ -202,6 +204,9 @@ func _unhandled_input(event: InputEvent) -> void:
         RunState.end_run()
         get_tree().change_scene_to_file("res://scenes/armory.tscn")  # spoils + gear, then a new draft
         return
+    if event.is_action_pressed(&"interact") and game_won and loot_chest != null and loot_chest.player_in_reach(player):
+        _open_loot()
+        return
     if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
         return
     if fracture.is_transitioning():
@@ -314,7 +319,31 @@ func _fracture_offer() -> Array:
     return choices
 
 
+## The Bishop's reliquary: pick 1 of 3 unowned items; it goes straight into the stash.
+func _open_loot() -> void:
+    _loot_rng.randomize()
+    var items: Array = Array(ItemPool.offer(_loot_rng, 3, Profile.stash), TYPE_NIL, &"", null)
+    if items.is_empty():
+        loot_chest.consume()
+        _flash("The reliquary is empty: you already own every item.", 3.0)
+        return
+    Audio.sfx(&"altar", 0.0)
+    offer_overlay.open("THE BISHOP'S RELIQUARY: claim one item", items)
+
+
 func _on_offer_resolved(choice: Resource) -> void:
+    if choice is ItemData:
+        var item: ItemData = choice
+        Profile.add_item(item.id)
+        Profile.pending_spoils = maxi(0, Profile.pending_spoils - 1)  # this was the victory's spoil
+        Profile.save()
+        loot_chest.consume()
+        Audio.sfx(&"equip", 0.0)
+        _flash("%s claimed! Equip it in the Armory (R). %s" % [item.display_name, item.stat_line()], 999999.0)
+        return
+    if loot_chest != null and game_won and choice == null:
+        _flash("You leave the reliquary sealed. Its spoil still waits in the Armory (R).", 999999.0)
+        return
     if _pending_altar:
         _pending_altar.consume()
         _pending_altar = null
@@ -457,6 +486,8 @@ const CARD_SOUNDS: Dictionary = {
     &"blood_spear": &"card_spear", &"grave_shield": &"card_shield", &"ritual_chains": &"card_chains",
     &"bell_of_silence": &"card_bell", &"epitaph": &"card_epitaph", &"hemorrhage_pact": &"card_pact",
     &"ashen_choir": &"card_choir", &"transfusion": &"card_transfusion",
+    &"shadow_step": &"card_step", &"grave_hook": &"card_hook", &"ossuary_bridge": &"card_bridge",
+    &"blood_nova": &"card_nova", &"haste_sigil": &"card_haste",
 }
 
 
@@ -512,7 +543,11 @@ func _on_boss_defeated() -> void:
     player.set("game_frozen", true)
     Profile.pending_spoils += 1
     Profile.save()
-    _flash("VICTORY — the Hollow Bishop is unmade. Spoils await in the Armory: press R.", 999999.0)
+    # The reliquary rises right beside the (frozen) player so it can be opened at once.
+    loot_chest = LootChest.create(Vector3(player.global_position.x + float(player.get("facing_direction")) * 1.2, player.global_position.y - 0.85, 0.0))
+    add_child(loot_chest)
+    Audio.sfx(&"loot_drop", 0.0)
+    _flash("VICTORY! The Bishop drops a reliquary: press E to claim an item. R: Armory and a new run.", 999999.0)
 
 
 func _on_sunder_impact(x: float) -> void:

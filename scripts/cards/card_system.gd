@@ -272,6 +272,40 @@ func _apply(card: CardData, target: Variant) -> void:
             get_tree().current_scene.add_child(spike)
         &"ashen_choir":
             get_tree().current_scene.add_child(AshenPhantom.create(self, player, card))
+        &"shadow_step":
+            player.call("blink", card.amount, card.duration)
+        &"grave_hook":
+            var hook: Hurtbox = target as Hurtbox
+            var to: Vector3 = _aim_point(hook) - player.global_position
+            to.y = 0.0
+            if not bool(player.get("in_3d_mode")):
+                to.z = 0.0
+            var lift: float = clampf(_aim_point(hook).y - 0.3 - player.global_position.y, 0.0, 2.5)
+            player.call("blink", maxf(0.0, to.length() - 1.1), card.duration, to, lift)
+            if to.length() > 0.01 and not bool(player.get("in_3d_mode")):
+                player.set("facing_direction", signf(to.x))
+            var info: DamageInfo = DamageInfo.new()
+            info.amount = card.damage
+            info.category = &"spell"
+            info.poise_damage = 2
+            info.hitstun = 0.4
+            info.attack_id = &"grave_hook"
+            info.source = player
+            info.hit_position = _aim_point(hook)
+            hook.receive(info)
+        &"ossuary_bridge":
+            var ahead: Vector3 = player.call("get_facing_vector")
+            var feet: Vector3 = player.global_position + Vector3(0.0, -0.85, 0.0)
+            get_tree().current_scene.add_child(BoneBridge.create(feet + ahead * (card.amount * 0.5 + 0.4), ahead, card.amount, card.duration))
+        &"blood_nova":
+            var nova: StrikeZone = StrikeZone.create(player.global_position + Vector3(0.0, -0.85, 0.0), card.amount, 0.5, 0.05, card.damage + spell_damage_bonus, &"blood_nova", &"burst")
+            nova.hitbox.team = &"player"
+            nova.hitbox.knockback = 7.0
+            nova.hitbox.poise_damage = 3
+            get_tree().current_scene.add_child(nova)
+            get_tree().call_group(&"camera_shaker", &"add_trauma", 0.3)
+        &"haste_sigil":
+            player.call("haste", card.duration, card.amount)
         &"bell_of_silence":
             for node: Node in get_tree().get_nodes_in_group(&"silenceable"):
                 var foe: Node3D = node as Node3D

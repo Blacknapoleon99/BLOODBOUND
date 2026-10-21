@@ -11,16 +11,23 @@ const OUT_DIR: String = "res://assets/audio/"
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
+## Pass ids after `--` to (re)generate only those, e.g. `-s res://tools/generate_audio.gd -- card_step`.
+## With no ids it regenerates EVERYTHING, which overwrites the ElevenLabs sounds (see
+## tools/elevenlabs_sfx.py), so prefer naming the ids you need.
 func _initialize() -> void:
     _rng.seed = 1666
     DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
+    var only: PackedStringArray = OS.get_cmdline_user_args()
     var count: int = 0
     for id: String in SFX:
-        _save(id, call(SFX[id]) as PackedFloat32Array, false)
-        count += 1
-    _save("music_level", _music_level(), true)
-    _save("music_boss", _music_boss(), true)
-    print("generated %d sfx + 2 music loops into %s" % [count, OUT_DIR])
+        if only.is_empty() or only.has(id):
+            _save(id, call(SFX[id]) as PackedFloat32Array, false)
+            count += 1
+    if only.is_empty() or only.has("music_level"):
+        _save("music_level", _music_level(), true)
+    if only.is_empty() or only.has("music_boss"):
+        _save("music_boss", _music_boss(), true)
+    print("generated %d sfx into %s" % [count, OUT_DIR])
     quit()
 
 
@@ -37,6 +44,8 @@ const SFX: Dictionary = {
     "walls_rise": "_walls_rise", "altar": "_altar", "ui_click": "_ui_click", "victory": "_victory",
     "bone_rain": "_bone_rain", "geyser": "_geyser", "hound_pounce": "_hound_pounce",
     "husk_burst": "_husk_burst", "soldier_lunge": "_soldier_lunge", "equip": "_equip",
+    "card_step": "_card_step", "card_hook": "_card_hook", "card_bridge": "_card_bridge",
+    "card_nova": "_card_nova", "card_haste": "_card_haste", "loot_drop": "_loot_drop",
 }
 
 
@@ -375,6 +384,51 @@ func _equip() -> PackedFloat32Array:
     var b: PackedFloat32Array = _buf(0.5)
     _tone(b, 0.0, 0.35, 0.3, 1200.0, 1150.0, 0.001, 0.25, 4)
     _noise(b, 0.0, 0.1, 0.3, 3000.0, 2000.0, 0.001, 0.05)
+    return b
+
+
+func _card_step() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.5)
+    _noise(b, 0.0, 0.3, 0.5, 6000.0, 400.0, 0.005, 0.2)
+    _tone(b, 0.0, 0.3, 0.25, 900.0, 200.0, 0.005, 0.2)
+    return b
+
+
+func _card_hook() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.6)
+    _noise(b, 0.0, 0.3, 0.4, 1500.0, 4000.0, 0.01, 0.2)
+    _tone(b, 0.3, 0.2, 0.4, 300.0, 120.0, 0.002, 0.15, 3)
+    return b
+
+
+func _card_bridge() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.9)
+    for k in 5:
+        _noise(b, k * 0.1, 0.15, 0.45, 2000.0, 700.0, 0.002, 0.1)
+    _tone(b, 0.0, 0.6, 0.2, 90.0, 110.0, 0.05, 0.4)
+    return b
+
+
+func _card_nova() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(1.0)
+    _noise(b, 0.0, 0.8, 0.8, 300.0, 2500.0, 0.003, 0.6)
+    _tone(b, 0.0, 0.6, 0.5, 70.0, 40.0, 0.003, 0.5)
+    _echo(b, 0.1, 0.3)
+    return b
+
+
+func _card_haste() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.8)
+    _tone(b, 0.0, 0.6, 0.3, 400.0, 1600.0, 0.02, 0.4, 2)
+    _noise(b, 0.0, 0.6, 0.2, 2000.0, 6000.0, 0.05, 0.4)
+    return b
+
+
+func _loot_drop() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(1.6)
+    for k in 4:
+        _tone(b, k * 0.12, 1.0, 0.18, [523.0, 659.0, 784.0, 1046.0][k], [523.0, 659.0, 784.0, 1046.0][k], 0.005, 0.8, 3)
+    _noise(b, 0.0, 0.5, 0.2, 4000.0, 8000.0, 0.01, 0.4)
     return b
 
 

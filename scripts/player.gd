@@ -20,6 +20,7 @@ extends CharacterBody3D
 ##   then `hurt_invulnerable_time` of invulnerability (from the moment of the hit).
 
 signal jumped
+signal blinked(from: Vector3, to: Vector3)
 signal landed
 signal dodge_started(direction: Vector3)
 signal attack_started(attack_id: StringName)
@@ -71,6 +72,8 @@ var _jump_rising: bool = false
 var _was_on_floor: bool = true  # no landing thud on spawn
 var _dodge_left: float = 0.0
 var _attack_held: bool = false
+var _haste_left: float = 0.0
+var _haste_mult: float = 1.0
 var _invulnerable_left: float = 0.0
 var _dodge_cooldown_left: float = 0.0
 var _air_dodge_used: bool = false
@@ -142,6 +145,62 @@ func get_facing_vector() -> Vector3:
     return _facing_3d if in_3d_mode else Vector3(facing_direction, 0.0, 0.0)
 
 
+## Shadow Step / Grave Hook: teleport up to `distance` along `direction` (default: facing),
+## passing through enemies but stopping short of walls. Grants `iframes` s of invulnerability.
+## Unlike teleport_to it keeps the current attack/dodge cooldowns. Returns the distance moved.
+## `rise` lifts the path first (Grave Hook pulls you up out of a pit onto a foe's ledge).
+func blink(distance: float, iframes: float, direction: Vector3 = Vector3.ZERO, rise: float = 0.0) -> float:
+    var dir: Vector3 = direction if direction.length_squared() > 0.0001 else get_facing_vector()
+    dir.y = 0.0
+    if not in_3d_mode:
+        dir.z = 0.0
+    if dir.length_squared() < 0.0001:
+        return 0.0
+    dir = dir.normalized()
+    var start: Vector3 = global_position
+    var from: Vector3 = start + Vector3(0.0, maxf(0.0, rise), 0.0)
+    var allowed: float = distance
+    var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+    for height: float in [-0.5, 0.0, 0.6]:  # knee, chest and head rays
+        var origin: Vector3 = from + Vector3(0.0, height, 0.0)
+        var exclude: Array[RID] = [get_rid()]
+        for attempt in 6:
+            var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, origin + dir * (distance + 0.4))
+            query.exclude = exclude
+            query.collide_with_areas = false
+            var hit: Dictionary = space.intersect_ray(query)
+            if hit.is_empty():
+                break
+            var collider: Object = hit["collider"]
+            if collider is Node and ((collider as Node).is_in_group(&"enemy") or (collider as Node).is_in_group(&"player")):
+                exclude.append(hit["rid"])  # pass through bodies, not walls
+                continue
+            allowed = minf(allowed, maxf(0.0, origin.distance_to(hit["position"]) - 0.45))
+            break
+    global_position = from + dir * allowed
+    if not in_3d_mode:
+        position.z = 0.0
+    velocity.x = 0.0
+    velocity.z = 0.0
+    velocity.y = maxf(velocity.y, 0.0)
+    _invulnerable_left = maxf(_invulnerable_left, iframes)
+    melee.cancel()
+    _queued_attack = null
+    blinked.emit(start, global_position)
+    return allowed
+
+
+## Sigil of Haste: run and attack `mult` times faster for `seconds`.
+func haste(seconds: float, mult: float) -> void:
+    _haste_left = seconds
+    _haste_mult = mult
+    melee.haste_scale = mult
+
+
+func is_hasted() -> bool:
+    return _haste_left > 0.0
+
+
 ## Moves the player instantly and clears all transient motion/combat state (respawn, mode switch).
 func teleport_to(target: Vector3) -> void:
     global_position = target
@@ -168,6 +227,10 @@ func _physics_process(delta: float) -> void:
         return
 
     _tick_timers(delta)
+    if _haste_left > 0.0:
+        _haste_left -= delta
+        if _haste_left <= 0.0:
+            melee.haste_scale = 1.0
     var on_floor: bool = is_on_floor()
     if on_floor:
         _coyote_left = coyote_time
@@ -304,7 +367,7 @@ func _update_facing(input_x: float, input_z: float) -> void:
 
 
 func _apply_run(input_x: float, input_z: float, on_floor: bool, delta: float) -> void:
-    var target: Vector2 = Vector2(input_x, input_z).limit_length(1.0) * move_speed
+    var target: Vector2 = Vector2(input_x, input_z).limit_length(1.0) * move_speed * (_haste_mult if _haste_left > 0.0 else 1.0)
     var rate: float = air_acceleration
     if on_floor:
         rate = ground_acceleration if target.length() > 0.01 else ground_deceleration

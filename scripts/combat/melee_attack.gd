@@ -33,6 +33,8 @@ func can_cancel_into_dodge() -> bool:
 var bonus_damage: Dictionary = {}
 ## Weapon attack speed: every phase lasts duration / speed_scale.
 var speed_scale: float = 1.0
+## Temporary multiplier on top (Sigil of Haste).
+var haste_scale: float = 1.0
 
 
 func start(data: AttackData, attack_facing: Vector3) -> bool:
@@ -80,7 +82,7 @@ func _physics_process(delta: float) -> void:
 
 func _enter(next: Phase, duration: float) -> void:
     phase = next
-    _phase_left = duration / maxf(0.1, speed_scale)
+    _phase_left = duration / maxf(0.1, speed_scale * haste_scale)
     phase_changed.emit(next)
 
 

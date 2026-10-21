@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"ossuary_bridge"
+display_name = "Ossuary Bridge"
+description = "Grow a 3 m slab of bone ahead of you at your feet for 5 s. Bridge gaps or catch a fall."
+cost = 2
+cooldown = 8.0
+targeting = 0
+effect = &"ossuary_bridge"
+tags = PackedStringArray("utility", "movement")
+damage = 0
+duration = 5.0
+card_range = 0.0
+amount = 3.0
+offer_weight = 0.9
+ui_color = Color(0.85, 0.8, 0.68, 1)

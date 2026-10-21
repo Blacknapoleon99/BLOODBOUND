@@ -221,3 +221,24 @@ Playtester: more mechanics and things to do between the start and the Bishop.
 - **Cache:** raw responses are cached in `tools/.elevenlabs_cache/` (git-ignored), so reruns only pay for missing sounds. The key is read from `ELEVENLABS_API_KEY` and never printed.
 - **Fallback:** `tools/generate_audio.gd` (the synthesized set) writes the same files. Rerunning it replaces the ElevenLabs audio.
 - **Open question:** ElevenLabs' free plan may not grant commercial rights to generated audio. Check their current terms before any commercial release (or regenerate on a paid plan).
+
+## DEC-035 — Faster Bishop with overlapping attacks; reliquary drop; utility cards (2026-10-21)
+
+- **Pacing.** Playtester: the fight is still too slow, but the telegraph timing feels right. Telegraphs are unchanged. What changed:
+  - downtime between attacks is 0.9/0.75/0.55/0.35 s by phase (was 1.25/1.0/0.7/0.45);
+  - the Bishop tracks you at 4.5 m/s (was 2.5) and roars for 1.0 s;
+  - the patterns contain more slams, so there are more stigmata windows per minute.
+- **Second channel.** From phase III the Bishop runs a second ability alongside its main one (`start_secondary`):
+  - Bone Rain or Marrow Geyser, every 3.0 s in phase III and every 2.0 s in phase IV;
+  - phase IV can also add a censer, but never on top of the beam (jumping and dodging at the same instant would be unfair).
+  - It is never the same attack twice at once. Silence cancels it while it is still being marked; roars, respawn and defeat clear it.
+- **Reliquary drop.** Playtester: nothing to pick up from the boss. The spoils existed, but only in the Armory. Now a glowing reliquary (`LootChest`) rises beside you when the Bishop dies. E opens a pick of 1 of 3 unowned items, which go straight into the stash (that spends the victory's spoil). Ignoring it leaves the spoil waiting in the Armory.
+- **Five new cards** (13 in total):
+  - **Shadow Step** (teleport dash 4.5 m, through enemies, never through walls, 0.3 s i-frames);
+  - **Grave Hook** (pull yourself to an enemy within 10 m and strike for 1; it lifts you out of pits onto a foe's ledge);
+  - **Ossuary Bridge** (a 3 m bone slab at your feet for 5 s);
+  - **Blood Nova** (2 damage to every enemy within 3 m, breaks poise);
+  - **Sigil of Haste** (×1.3 run and attack speed for 5 s).
+- `Player.blink` raycasts at knee, chest and head height. It skips bodies in the enemy group and stops 0.45 m short of anything else.
+- Found by test: the first Grave Hook test stood in a gap, and the ledge wall correctly blocked the pull. That led to the hook's lift.
+- `tools/generate_audio.gd` now takes ids after `--`, so placeholder sounds for new content never overwrite the ElevenLabs set.

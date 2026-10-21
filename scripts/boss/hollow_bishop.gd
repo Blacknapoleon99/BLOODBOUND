@@ -11,6 +11,10 @@ extends Node3D
 ##   → COVENANT (HP <= covenant_at): + Requiem Beam; faster, longer weak-point windows
 ##   → UNMAKING (HP <= unmaking_at): desperation — relentless, but the stigmata stays open longest
 ##   → DEFEATED (HP 0).
+## From COVENANT on, a SECOND ability runs alongside the main one (`start_secondary`): Bone Rain
+## or Marrow Geyser every `covenant_secondary_interval` s, and in UNMAKING also the Censer Sweep,
+## every `unmaking_secondary_interval` s. Never the same attack twice at once, and never a censer
+## together with the beam (jump + dodge at the same instant would be unfair).
 ## Entering a new fight phase triggers a ROAR (`roar_time` s): the current attack is dropped, the
 ## Bishop shudders and starts nothing, and the level shows the phase title.
 ##
@@ -74,13 +78,16 @@ const PHASE_TITLES: Dictionary = {
 @export var weak_window: float = 2.2
 @export var covenant_weak_window: float = 4.0
 @export var unmaking_weak_window: float = 5.0
-@export var roar_time: float = 1.3
+@export var roar_time: float = 1.0
 @export var summon_time: float = 0.9
 @export var retract_time: float = 0.45
 @export var lance_speed: float = 21.0
 @export var lance_spacing: float = 0.5
 @export var chain_pull_time: float = 0.3
 @export var pursuit_interval: float = 2.6
+@export var covenant_secondary_interval: float = 3.0
+@export var unmaking_secondary_interval: float = 2.0
+@export var track_speed: float = 4.5
 
 var phase: Phase = Phase.DORMANT
 var health: Health
@@ -106,6 +113,10 @@ var _rest_y: float = 0.0
 var _chain_from: Vector3
 var _chain_window: float = 3.0
 var _actor: Node3D
+var _secondary: Node3D
+var _secondary_cooldown: float = 1.5
+var _secondary_index: int = 0
+var secondary_attacks_started: int = 0
 var _roar_left: float = 0.0
 var _heart: MeshInstance3D
 var _summon_spots: Array[float] = []
@@ -203,6 +214,8 @@ func silence(seconds: float) -> void:
     cancellable = cancellable or (_attack == &"summon" and _t < summon_time)
     if cancellable:
         _cancel_attack()
+    elif secondary_actor() != null and bool(_secondary.call("is_telegraphing")):
+        _cancel_secondary()
     _cooldown = maxf(_cooldown, seconds)
 
 
@@ -267,7 +280,7 @@ func _physics_process(delta: float) -> void:
 
     var player: Node3D = _engaged_player()
     if player != null and not is_attacking():
-        position.x = move_toward(position.x, clampf(player.global_position.x, min_x, max_x), 2.5 * delta)
+        position.x = move_toward(position.x, clampf(player.global_position.x, min_x, max_x), track_speed * delta)
 
     if is_attacking():
         if _attack == &"slam" or _attack == &"sunder":
@@ -282,6 +295,9 @@ func _physics_process(delta: float) -> void:
             _tick_lances(delta)
     else:
         hand.global_position = hand.global_position.move_toward(_hand_rest(), 10.0 * delta)
+    if ai_enabled and player != null:
+        _tick_secondary(delta, player.global_position.x)
+    if not is_attacking():
         if ai_enabled and is_active() and player != null:
             _cooldown -= delta
             if _cooldown <= 0.0:
@@ -305,14 +321,16 @@ func _engaged_player() -> Node3D:
 
 
 func _next_pattern_attack() -> StringName:
-    var pattern: Array = [&"slam", &"lance_volley", &"marrow_geyser"]
+    # More slams = more stigmata windows = a faster fight. From phase III the barrages run on the
+    # second channel instead (see start_secondary).
+    var pattern: Array = [&"slam", &"lance_volley", &"slam", &"marrow_geyser"]
     match phase:
         Phase.COLLAPSE:
-            pattern = [&"summon", &"sunder", &"bone_rain", &"censer", &"lance_volley", &"slam", &"marrow_geyser"]
+            pattern = [&"summon", &"sunder", &"bone_rain", &"slam", &"censer", &"lance_volley", &"slam", &"marrow_geyser"]
         Phase.COVENANT:
-            pattern = [&"summon", &"beam", &"slam", &"bone_rain", &"censer", &"marrow_geyser", &"lance_volley", &"sunder"]
+            pattern = [&"summon", &"beam", &"slam", &"censer", &"slam", &"lance_volley", &"sunder", &"slam"]
         Phase.UNMAKING:
-            pattern = [&"beam", &"slam", &"marrow_geyser", &"censer", &"bone_rain", &"lance_volley", &"slam"]
+            pattern = [&"beam", &"slam", &"censer", &"slam", &"lance_volley", &"slam"]
     var attack: StringName = pattern[_pattern_index % pattern.size()]
     _pattern_index += 1
     if attack == &"summon" and minions().size() >= max_minions:
@@ -340,16 +358,8 @@ func _start_attack(attack: StringName, x: float) -> bool:
     elif attack == &"lance_volley":
         _lance_plan = [x, x - 3.5, x + 3.5]
     _lance_index = 0
-    if attack == &"bone_rain" or attack == &"marrow_geyser":
-        _actor = BishopBarrage.create(attack, x, min_x - 3.5, max_x + 3.5)
-        add_child(_actor)
-    elif attack in ACTOR_ATTACKS:
-        # Sweep from the far end toward (and past) the player.
-        var left: float = min_x - 3.5
-        var right: float = max_x + 3.5
-        var start_x: float = right if x - left < right - x else left
-        var end_x: float = left if start_x == right else right
-        _actor = CenserSweep.create(self, start_x, end_x) if attack == &"censer" else RequiemBeam.create(_heart, start_x, end_x)
+    if attack in ACTOR_ATTACKS:
+        _actor = _make_actor(attack, x)
         add_child(_actor)
     elif attack == &"summon":
         _summon_spots = []
@@ -371,18 +381,74 @@ func _start_attack(attack: StringName, x: float) -> bool:
     return true
 
 
+## Builds the node for an actor attack aimed at `x` (sweeps start at the far end).
+func _make_actor(attack: StringName, x: float) -> Node3D:
+    if attack == &"bone_rain" or attack == &"marrow_geyser":
+        return BishopBarrage.create(attack, x, min_x - 3.5, max_x + 3.5)
+    var left: float = min_x - 3.5
+    var right: float = max_x + 3.5
+    var start_x: float = right if x - left < right - x else left
+    var end_x: float = left if start_x == right else right
+    return CenserSweep.create(self, start_x, end_x) if attack == &"censer" else RequiemBeam.create(_heart, start_x, end_x)
+
+
+func secondary_actor() -> Node3D:
+    return _secondary if is_instance_valid(_secondary) and not bool(_secondary.get("done")) else null
+
+
+## Phase III+ only: starts `attack` (bone_rain, marrow_geyser or censer) on the second channel.
+func start_secondary(attack: StringName, x: float) -> bool:
+    if not (phase == Phase.COVENANT or phase == Phase.UNMAKING) or _roar_left > 0.0:
+        return false
+    if secondary_actor() != null or attack == _attack:
+        return false
+    if attack == &"censer" and (_attack == &"beam" or _attack == &"censer"):
+        return false
+    if attack not in [&"bone_rain", &"marrow_geyser", &"censer"]:
+        return false
+    _secondary = _make_actor(attack, x)
+    add_child(_secondary)
+    secondary_attacks_started += 1
+    attack_started.emit(attack)
+    return true
+
+
+func _tick_secondary(delta: float, x: float) -> void:
+    if not (phase == Phase.COVENANT or phase == Phase.UNMAKING) or secondary_actor() != null:
+        return
+    _secondary_cooldown -= delta
+    if _secondary_cooldown > 0.0:
+        return
+    var options: Array[StringName] = [&"bone_rain", &"marrow_geyser"]
+    if phase == Phase.UNMAKING:
+        options.append(&"censer")
+    for i in options.size():
+        var attack: StringName = options[(_secondary_index + i) % options.size()]
+        if start_secondary(attack, x):
+            _secondary_index += i + 1
+            break
+    _secondary_cooldown = unmaking_secondary_interval if phase == Phase.UNMAKING else covenant_secondary_interval
+
+
+func _cancel_secondary() -> void:
+    if is_instance_valid(_secondary):
+        _secondary.call("cancel")
+    _secondary = null
+    _secondary_cooldown = 1.5
+
+
 func _finish_attack() -> void:
     _attack = &""
     _actor = null
     match phase:
         Phase.UNMAKING:
-            _cooldown = 0.45
+            _cooldown = 0.35
         Phase.COVENANT:
-            _cooldown = 0.7
+            _cooldown = 0.55
         Phase.COLLAPSE:
-            _cooldown = 1.0
+            _cooldown = 0.75
         _:
-            _cooldown = 1.25
+            _cooldown = 0.9
     if phase == Phase.PURSUIT:
         _cooldown = maxf(0.5, pursuit_interval - 1.6)  # a lance attack itself lasts ~1.6 s
 
@@ -398,6 +464,7 @@ func _cancel_attack() -> void:
     if attack_actor() != null:
         _actor.call("cancel")
     _actor = null
+    _cancel_secondary()
     _clear_summon_markers()
     _attack = &""
 

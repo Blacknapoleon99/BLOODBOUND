@@ -142,6 +142,18 @@ func _run() -> void:
     _check(bool(_main.get("game_won")), "defeating the Bishop wins the run")
     _check(Audio.current_music == &"" and int(Audio.played.get(&"victory", 0)) > 0, "victory stops the music and plays the victory chord")
     _check(bool(_player.get("game_frozen")), "player is frozen on victory")
+    var chest: LootChest = _main.get("loot_chest")
+    _check(chest != null and chest.player_in_reach(_player), "the Bishop drops a reliquary within reach")
+    var stash_before: int = Profile.stash.size()
+    _tap(KEY_E)
+    await _frames(4)
+    var loot_overlay: CardOfferOverlay = _main.get("offer_overlay")
+    _check(loot_overlay.is_open() and loot_overlay.offer_view.offers.size() == 3 and loot_overlay.offer_view.offers.all(func(c: Resource) -> bool: return c is ItemData), "E opens the reliquary: pick 1 of 3 items")
+    var looted: ItemData = loot_overlay.offer_view.offers[0]
+    _tap(KEY_1)
+    await _frames(4)
+    _check(Profile.stash.size() == stash_before + 1 and Profile.stash.has(looted.id) and chest.used, "the picked item (%s) goes into the stash" % looted.display_name)
+    Profile.pending_spoils += 1  # keep the spoils check below meaningful (the chest spent the victory spoil)
     await _shot("08_victory")
     _check(Profile.pending_spoils == spoils_before + 1, "victory earns spoils for the Armory (%d -> %d)" % [spoils_before, Profile.pending_spoils])
     _tap(KEY_R)
@@ -167,6 +179,7 @@ func _run() -> void:
     await _m12_enemy_ability_checks()
     await _m13_hazard_checks()
     await _m14_equipment_checks()
+    await _m15_new_card_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -1694,6 +1707,7 @@ const SOUND_IDS: Array[StringName] = [
     &"lance_whistle", &"censer_swing", &"beam_charge", &"beam_fire", &"summon", &"archer_draw",
     &"arrow_release", &"walls_rise", &"altar", &"ui_click", &"victory",
     &"bone_rain", &"geyser", &"hound_pounce", &"husk_burst", &"soldier_lunge", &"equip",
+    &"card_step", &"card_hook", &"card_bridge", &"card_nova", &"card_haste", &"loot_drop",
 ]
 
 
@@ -2108,6 +2122,104 @@ func _m14_equipment_checks() -> void:
     _bind()
 
 
+## Utility and ability cards: Shadow Step (teleport dash), Grave Hook, Ossuary Bridge,
+## Blood Nova, Sigil of Haste.
+func _m15_new_card_checks() -> void:
+    _check(CardPool.ALL.size() == 13, "13 cards in the pool (%d)" % CardPool.ALL.size())
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    await _seconds(0.4)
+    var cards: CardSystem = _cards()
+    var energy: BloodEnergy = _energy()
+    energy.regen_per_second = 0.0
+    var melee: MeleeAttack = _melee()
+
+    # Shadow Step: 4.5 m along facing, through an enemy, invulnerable.
+    await _place(-1.0, 1.5, false)
+    energy.set_amount(6.0)
+    var x0: float = _player.global_position.x
+    _check(cards.play_slot(_deal(&"shadow_step")) == &"ok", "Shadow Step plays")
+    var moved: float = _player.global_position.x - x0
+    _check(absf(moved - 4.5) < 0.2 and bool(_player.call("is_invulnerable")), "it teleports 4.5 m ahead through the soldier, untouchable (dx=%.2f)" % moved)
+    await _seconds(3.0)
+    # ...but never through a wall: the sealed portcullis stops it.
+    _player.call("teleport_to", Vector3(16.6, 1.0, 0.0))
+    _player.set("facing_direction", 1.0)
+    await _seconds(0.3)
+    energy.set_amount(6.0)
+    cards.play_slot(_deal(&"shadow_step"))
+    _check(_player.global_position.x < 18.4 and _player.global_position.x > 16.6, "Shadow Step stops at walls (x=%.2f, portcullis at 18.6)" % _player.global_position.x)
+    await _seconds(3.0)
+
+    # Grave Hook: yank to an enemy 7 m away and strike it.
+    await _place(-1.0, 6.0, false)
+    energy.set_amount(6.0)
+    var hp0: int = _enemy.health.current
+    var hook_x0: float = _player.global_position.x
+    _check(cards.play_slot(_deal(&"grave_hook")) == &"ok", "Grave Hook plays on an enemy 7 m away")
+    var gap: float = absf(_enemy.global_position.x - _player.global_position.x)
+    _check(gap < 1.6 and _enemy.health.current == hp0 - 1, "it pulls you to the soldier and strikes it (gap %.2f, hp %d -> %d)" % [gap, hp0, _enemy.health.current])
+    await _seconds(1.0)
+    # From down in the gap (x -3..-1.5), the hook hauls you up onto the soldier's ledge.
+    await _seconds(3.2)  # Grave Hook cooldown (4 s)
+    _enemy.revive_at_home()
+    _enemy.set_ai_enabled(false)
+    _enemy.teleport_to(Vector3(2.5, 1.0, 0.0))
+    _player.call("teleport_to", Vector3(-2.25, -1.2, 0.0))
+    await _frames(2)
+    energy.set_amount(6.0)
+    _check(cards.play_slot(_deal(&"grave_hook")) == &"ok", "Grave Hook plays from inside a pit")
+    await _seconds(0.4)
+    _check(_player.global_position.y > 0.5 and _player.global_position.x > -1.0, "it pulls you up out of the pit onto the ledge (%.2f, %.2f)" % [_player.global_position.x, _player.global_position.y])
+    await _seconds(1.0)
+
+    # Blood Nova: area damage around you.
+    _enemy.revive_at_home()
+    await _place(3.0, 4.6, false)
+    energy.set_amount(6.0)
+    hp0 = _enemy.health.current
+    _check(cards.play_slot(_deal(&"blood_nova")) == &"ok", "Blood Nova plays")
+    await _seconds(0.3)
+    _check(_enemy.health.current == hp0 - 2, "it hits an enemy within 3 m for 2 (hp %d -> %d)" % [hp0, _enemy.health.current])
+    await _seconds(1.0)
+
+    # Ossuary Bridge: a temporary platform ahead at foot level, then it crumbles.
+    _enemy.revive_at_home()
+    _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    _player.set("facing_direction", 1.0)
+    await _seconds(0.4)
+    energy.set_amount(6.0)
+    _check(cards.play_slot(_deal(&"ossuary_bridge")) == &"ok", "Ossuary Bridge plays")
+    await _frames(3)
+    var bridges: Array[Node] = root.get_tree().get_nodes_in_group(&"bone_bridge")
+    var bridge: Node3D = bridges[0] as Node3D if not bridges.is_empty() else null
+    _check(bridge != null and bridge.global_position.x > _player.global_position.x and absf(bridge.global_position.y + 0.2) < 0.15, "a bone slab grows ahead at foot level")
+    # Stand on it in mid-air: lift it above the floor and drop the player onto it.
+    if bridge != null:
+        bridge.global_position.y = 2.0
+        _player.call("teleport_to", Vector3(bridge.global_position.x, 3.5, 0.0))
+        await _seconds(0.6)
+        _check(_player.is_on_floor() and _player.global_position.y > 2.5, "the slab is solid ground (y=%.2f)" % _player.global_position.y)
+    await _seconds(5.0)
+    _check(root.get_tree().get_nodes_in_group(&"bone_bridge").is_empty(), "the slab crumbles after 5 s")
+
+    # Sigil of Haste: faster run and swings for 5 s.
+    energy.set_amount(6.0)
+    _check(cards.play_slot(_deal(&"haste_sigil")) == &"ok" and bool(_player.call("is_hasted")) and is_equal_approx(melee.haste_scale, 1.3), "Sigil of Haste speeds you up")
+    var hx0: float = _player.global_position.x
+    await _hold(KEY_D, 0.5)
+    var hasted_dx: float = _player.global_position.x - hx0
+    await _seconds(5.0)
+    _check(not bool(_player.call("is_hasted")) and is_equal_approx(melee.haste_scale, 1.0), "haste wears off after 5 s")
+    hx0 = _player.global_position.x
+    await _hold(KEY_D, 0.5)
+    var normal_dx: float = _player.global_position.x - hx0
+    _check(hasted_dx > normal_dx * 1.15, "hasted you cover more ground (%.2f vs %.2f m)" % [hasted_dx, normal_dx])
+    energy.regen_per_second = 0.25
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
@@ -2301,15 +2413,20 @@ func _m3_boss_checks() -> void:
     var record3: Callable = func(attack: StringName) -> void: seen3[attack] = true
     boss.attack_started.connect(record3)
     boss.set_ai_enabled(true)
-    for i in int(12.0 * PHYSICS_HZ):
+    var overlapped: bool = false
+    var secondaries0: int = boss.secondary_attacks_started
+    for i in int(14.0 * PHYSICS_HZ):
         await physics_frame
         if _player_hp() < 3:
             _heal()
-        if seen3.has(&"beam") and seen3.has(&"summon"):
+        overlapped = overlapped or (boss.is_attacking() and boss.secondary_actor() != null)
+        if seen3.has(&"beam") and seen3.has(&"summon") and overlapped:
             break
     boss.set_ai_enabled(false)
     boss.attack_started.disconnect(record3)
     _check(seen3.has(&"summon") and seen3.has(&"beam"), "phase III AI raises the dead and fires the Requiem Beam (%s)" % [seen3.keys()])
+    _check(overlapped and boss.secondary_attacks_started > secondaries0, "from phase III the Bishop runs a second ability alongside its main attack (%d)" % (boss.secondary_attacks_started - secondaries0))
+    _check(not boss.start_secondary(&"censer", _bx(30.0)) or boss.attack_actor() == null or boss.attack_actor() is not RequiemBeam, "never a censer on top of the beam")
     await _boss_idle(boss)
     boss.clear_minions()
     await _seconds(0.3)

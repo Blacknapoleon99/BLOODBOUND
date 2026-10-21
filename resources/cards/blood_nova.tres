@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/cards/card_data.gd" id="1_card"]
+
+[resource]
+script = ExtResource("1_card")
+id = &"blood_nova"
+display_name = "Blood Nova"
+description = "Burst in a ring of blood: 2 damage to every enemy within 3 m, hurling them back and breaking poise."
+cost = 3
+cooldown = 7.0
+targeting = 0
+effect = &"blood_nova"
+tags = PackedStringArray("attack", "area")
+damage = 2
+duration = 0.0
+card_range = 0.0
+amount = 3.0
+offer_weight = 1.0
+ui_color = Color(0.8, 0.05, 0.1, 1)

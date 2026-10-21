@@ -55,6 +55,9 @@ func _pick(index: int) -> void:
 
 
 static func describe(choice: Resource) -> String:
+    if choice is ItemData:
+        var item: ItemData = choice
+        return "%s: %s\n\n%s\n\n%s" % [ItemData.slot_name(item.slot), item.display_name.to_upper(), item.stat_line(), item.description]
     if choice is RelicData:
         var relic: RelicData = choice
         return "RELIC: %s\n\nPassive, lasts the run\n\n%s" % [relic.display_name.to_upper(), relic.description]

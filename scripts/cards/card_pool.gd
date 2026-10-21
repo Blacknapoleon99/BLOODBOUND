@@ -11,6 +11,11 @@ const ALL: Array[CardData] = [
     preload("res://resources/cards/ashen_choir.tres"),
     preload("res://resources/cards/bell_of_silence.tres"),
     preload("res://resources/cards/transfusion.tres"),
+    preload("res://resources/cards/shadow_step.tres"),
+    preload("res://resources/cards/grave_hook.tres"),
+    preload("res://resources/cards/ossuary_bridge.tres"),
+    preload("res://resources/cards/blood_nova.tres"),
+    preload("res://resources/cards/haste_sigil.tres"),
 ]
 
 

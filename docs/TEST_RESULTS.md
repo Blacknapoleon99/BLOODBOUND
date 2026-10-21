@@ -303,3 +303,22 @@
 - `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 347/347** (every sound loads and is triggered by gameplay; music loops).
 - `build/windows-run6/Bloodbound.exe` exported; the release export probe exits 0.
 - Not verified: how the sounds actually sound. No human has listened yet, and the loop seams are only as clean as the model's `loop` output.
+
+## Faster Bishop, reliquary, utility cards (2026-10-21)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 369/369**.
+- New checks:
+  - **Bishop:**
+    - in a phase III AI window the Bishop has a main attack and a second ability active on the same frame;
+    - the second-ability counter rises;
+    - it never adds a censer on top of the beam.
+  - **Reliquary:** it is in reach after victory; E opens 3 items; the pick lands in the stash and the chest is spent.
+  - **Cards:**
+    - 13 in the pool;
+    - Shadow Step moves 4.5 m through the soldier and is invulnerable, but stops at the sealed portcullis;
+    - Grave Hook pulls you to within 1.6 m and deals 1, and from inside the pit it hauls you onto the ledge;
+    - Blood Nova deals 2 in range;
+    - Ossuary Bridge spawns at foot level, is solid enough to stand on, and crumbles after 5 s;
+    - Haste applies ×1.3, covers more ground than normal running, and wears off.
+- `build/windows-run7/Bloodbound.exe` exported; the release export probe exits 0.
+- Six new sounds are placeholders (synth) until the next ElevenLabs batch: card_step, card_hook, card_bridge, card_nova, card_haste, loot_drop.

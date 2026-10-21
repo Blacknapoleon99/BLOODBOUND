@@ -142,3 +142,11 @@ User playtest of `build/windows-run4` (draft → altars → fracture → Bishop)
 
 ### Next action
 User playtest of windows-run6: listen pass on the new audio, plus feel of the new pace, abilities, hazards and the Armory.
+
+## 2026-10-21 — Faster Bishop, overlapping attacks, reliquary, 5 utility cards
+
+- Evidence: 369/369; build `build/windows-run7/Bloodbound.exe`.
+
+### Next action
+- ElevenLabs regeneration with the user's new key (needs cost approval).
+- Start the art/asset phase (see the plan in chat).
