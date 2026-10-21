@@ -103,47 +103,37 @@ the mesh to Adobe, which counts as a third-party upload and needs the user's OK.
 Telegraph plates and lines (`SlamTelegraph`, lane, band and ring markers) **stay code-driven
 unshaded red**. They are never replaced by art.
 
-## Tripo3D cost plan (checked 2026-10-21)
+## Tripo3D cost plan (checked 2026-10-21): use the web Studio, not the API
 
-**Account:** `tripo whoami` shows the overseas region with a **balance of 0 credits**. Credits cost $0.01 each and are bought in units of 100 (`tripo topup`). Failed tasks refund automatically.
+**Use the Tripo Studio web app** (studio.tripo3d.ai in Chrome), at the user's request.
 
-**Prices** (from the [Tripo pricing page](https://developers.tripo3d.com/en/pricing) and the CLI docs):
+**Account:** ravenisafk, **Max** plan, **2,435 credits**. **2,135 of them expire on 2026-10-30**, together with the plan, so they should be spent first. A separate API key account (`tripo-cli`) holds 0 credits and is not used.
 
-| Task | Credits |
+**Studio prices** (seen in the UI and in the account's usage history):
+
+| Action | Credits |
 |---|---|
-| Image or multiview to 3D, standard texture | 30 |
-| HD texture | +10 |
-| HD geometry | +20 |
-| Smart low-poly | +10 |
-| Rig check | 0 |
-| Auto rig | 25 |
-| Retarget | 10 per animation |
-| Decimate | 10–40 |
-| Convert | 5–10 |
+| HD Model (H3.1 Best Quality), image or multiview, private | 30 |
+| Text to Model | 30 |
+| Text to Motion (animation) | 20 |
+| Smart Mesh P2.0 | 100, and "Sharing Only" (public), so **don't use it** |
+| Auto rig | Shown once a model is selected; the API charges 25 |
 
-**Cheapest route that still looks good:**
+**Plan:**
 
-- **Generation:** multiview to 3D from the concept sheets (front, side and back crops made locally for free) with HD texture, 40 credits. Multiview keeps the design closer to the concept than a single image.
-- **Cleanup:** decimate, pivot and scale in Blender, which is free. This replaces Tripo decimate and smart low-poly.
-- **Rigging:** Tripo auto rig with `--spec mixamo`, 25 credits. Mixamo bone names map onto Godot's built-in humanoid retargeting (BoneMap and `SkeletonProfileHumanoid`). No mesh goes to Adobe.
-- **Animation:** use Tripo presets only for the core set: idle, run, jump, fall, slash and hurt, 60 credits for the player. Fill the rest (death, dodge, heavy attack, combo, downed) from CC0 humanoid animation packs, retargeted in Godot for free. Check the pack contents before relying on them.
-- **The Bishop:** one HD-geometry generation of the body (60 credits) and one of the hand (40), split into the code's parts in Blender. No rig is needed, because `hollow_bishop.gd` animates the parts.
+- HD Model from multiview crops of the concept sheets (30 credits each).
+- Decimate, pivot and scale in Blender (free).
+- Rig in Studio.
+- Generate Motion only for moves the CC0 humanoid packs lack. Everything else is retargeted in Godot for free.
 
 | Asset | Credits |
 |---|---|
-| Player knight | 40 + 25 + 60 = 125 |
-| Plagued Soldier (the Husk reuses it) | 65 + 30 for 3 presets = 95 |
-| Bone Archer | 95 |
-| Crypt Hound (quadruped rig) | 65 + 10 for walk = 75 |
-| Shielded Knight | 95 |
-| Gravewarden | 95 |
-| Flying Wraith (no rig; code moves it) | 40 |
-| Bishop body and hand | 100 |
-| **Subtotal** | **720** |
-| Retry buffer (about 1 retry for half the generations) | about 200 |
-| **Total** | **about 900–1,000 credits, roughly $9–10** |
-
-Start smaller with a **first batch of the knight and the Bishop**: about 225 credits plus retries, so a 300-credit top-up (about $3).
+| Player knight | about 30 + rig + 4 motions ≈ 135 |
+| 6 rigged enemies (about 30 + rig + 2–3 motions each) | ≈ 600 |
+| Flying Wraith (no rig) | 30 |
+| Bishop body and hand (no rig) | 60 |
+| Retries (one each) | ≈ 300 |
+| **Total** | **about 1,100**, which fits inside the expiring 2,135. No purchase needed. |
 
 ## Needs from the user (paid or third-party)
 
