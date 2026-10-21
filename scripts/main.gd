@@ -38,6 +38,7 @@ var card_system: CardSystem
 var _pending_altar: BloodAltar
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var ambushes: Array[Ambush] = []
+var traps: Array[Node3D] = []  # SpikeTrap and PendulumBlade hazards
 var respawn_point: Vector3 = SPAWN_POSITION
 var hud: Label
 var enemy_alive: bool = true
@@ -523,6 +524,8 @@ func _reset_hazards() -> void:
     for slab: CollapsingSlab in collapsing_slabs:
         slab.restore()
     boss.on_player_respawn()
+    for trap: Node3D in traps:
+        trap.call("reset")
 
 
 func _open_portcullis() -> void:
@@ -648,6 +651,7 @@ func _build_greybox() -> void:
     _make_solid("Battle causeway", Vector3(4.0, -0.5, 0.0), Vector3(11.0, 1.0, 4.0), Color(0.17, 0.18, 0.21))
     _make_solid("Gate causeway", Vector3(13.7, -0.5, 0.0), Vector3(9.0, 1.0, 4.0), Color(0.20, 0.19, 0.23))
     _make_solid("Raised step", Vector3(0.0, 1.15, -0.2), Vector3(2.0, 0.3, 2.6), Color(0.31, 0.27, 0.29))
+    _add_trap(SpikeTrap.create("Spike trap: causeway", -10.5, 0.0, 2.0, 0.0))
 
     # Far background silhouette: visual decoration only, NOT implemented boss AI.
     _make_visual("Distant Gothic silhouette (decorative only)", Vector3(5.0, 6.0, -22.0), Vector3(3.0, 12.0, 2.8), Color(0.10, 0.065, 0.09))
@@ -732,12 +736,25 @@ func _build_approach() -> void:
     add_child(approach_checkpoint)
     for i in 3:
         var slab: CollapsingSlab = CollapsingSlab.create("Collapsing slab %d" % i, Vector3(28.45 + 3.5 * i, -0.5, 0.0), Vector3(2.5, 1.0, 4.0))
+        slab.collapse_delay = 0.5  # keep moving
         add_child(slab)
         collapsing_slabs.append(slab)
     _make_solid("Approach landing", Vector3(40.7, -0.5, 0.0), Vector3(6.0, 1.0, 4.0), Color(0.18, 0.17, 0.21))
     ferry = MovingPlatform.create("Bone ferry", Vector3(45.25, -0.3, 0.0), Vector3(52.15, -0.3, 0.0), Vector3(3.0, 0.6, 4.0))
+    ferry.travel_time = 2.1
+    ferry.pause_time = 0.6
     add_child(ferry)
     _make_solid("Arena threshold", Vector3(55.95, -0.5, 0.0), Vector3(4.5, 1.0, 4.0), Color(0.19, 0.17, 0.2))
+    # Hazards on the run to the cathedral: spikes and a swinging blade on the approach causeway,
+    # spikes on the threshold right off the ferry.
+    _add_trap(SpikeTrap.create("Spike trap: approach", 22.8, 0.0, 2.0, 0.9))
+    _add_trap(PendulumBlade.create("Pendulum blade", Vector3(25.3, 5.9, 0.0), 5.0, 0.0))
+    _add_trap(SpikeTrap.create("Spike trap: threshold", 55.6, 0.0, 1.6, 1.3))
+
+
+func _add_trap(trap: Node3D) -> void:
+    add_child(trap)
+    traps.append(trap)
 
 
 func _make_solid(label: String, center: Vector3, size: Vector3, color: Color) -> void:

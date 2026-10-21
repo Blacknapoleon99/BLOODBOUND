@@ -161,6 +161,7 @@ func _run() -> void:
     await _m10_audio_checks()
     await _m11_relic_checks()
     await _m12_enemy_ability_checks()
+    await _m13_hazard_checks()
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -289,6 +290,8 @@ func _m1_dodge_checks() -> void:
 func _test_defaults() -> void:
     GameSettings.reset_defaults()
     Ambush.enabled = false  # scripted checks walk the level freely; ambushes have their own checks
+    SpikeTrap.enabled = false  # likewise for the traps (see _m13_hazard_checks)
+    PendulumBlade.enabled = false
 
 
 func _bind() -> void:
@@ -1940,6 +1943,62 @@ func _m12_enemy_ability_checks() -> void:
     _check(hound.is_dead(), "the hound dies to the combo during its recovery")
     _check(_main.get("ambushes")[0].spawns.any(func(d: Dictionary) -> bool: return d["type"] == &"hound"), "Crypt Hounds join the ambushes")
     await _seconds(0.5)
+
+
+## Level hazards: cycling spike traps and the pendulum blade hurt a player who ignores them,
+## and can be passed by timing; respawning resets them.
+func _m13_hazard_checks() -> void:
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    _enemy.set_ai_enabled(false)
+    var traps: Array = _main.get("traps")
+    var spikes: Array = traps.filter(func(t: Node) -> bool: return t is SpikeTrap)
+    var blades: Array = traps.filter(func(t: Node) -> bool: return t is PendulumBlade)
+    _check(spikes.size() == 3 and blades.size() == 1, "the level has 3 spike traps and a pendulum blade")
+    var trap: SpikeTrap = spikes[0]
+    _check(trap.state == SpikeTrap.State.DOWN, "disabled traps stay down")
+    SpikeTrap.enabled = true
+    PendulumBlade.enabled = true
+    trap.reset()
+    var seen: Dictionary = {}
+    for i in int(trap.cycle_time() * PHYSICS_HZ) + 5:
+        await physics_frame
+        seen[trap.state] = true
+    _check(seen.size() == 3, "a spike trap cycles down -> warning -> up")
+    _heal()
+    _player.call("teleport_to", Vector3(trap.global_position.x, 1.0, 0.0))
+    var hp0: int = _player_hp()
+    await _wait_until(func() -> bool: return _player_hp() < hp0, trap.cycle_time() + 0.5)
+    _check(_player_hp() < hp0, "standing on the strip, the spikes hurt (hp %d -> %d)" % [hp0, _player_hp()])
+    # Timed crossing: wait for the spikes to drop, then run across.
+    _heal()
+    _player.call("teleport_to", Vector3(trap.global_position.x - 2.5, 1.0, 0.0))
+    await _seconds(1.0)
+    await _wait_until(func() -> bool: return trap.state == SpikeTrap.State.UP, trap.cycle_time())
+    await _wait_until(func() -> bool: return trap.state == SpikeTrap.State.DOWN, trap.cycle_time())
+    hp0 = _player_hp()
+    await _hold(KEY_D, 0.7)
+    _check(_player_hp() == hp0 and _player.global_position.x > trap.global_position.x + 1.0, "running across while the spikes are down is safe")
+
+    var blade: PendulumBlade = blades[0]
+    _heal()
+    _player.call("teleport_to", Vector3(blade.global_position.x, 1.0, 0.0))
+    hp0 = _player_hp()
+    await _wait_until(func() -> bool: return _player_hp() < hp0, blade.period + 0.3)
+    _check(_player_hp() < hp0, "the pendulum blade cuts a player standing in its path (hp %d -> %d)" % [hp0, _player_hp()])
+    var low_y: float = 99.0
+    for i in int(blade.period * PHYSICS_HZ):
+        await physics_frame
+        low_y = minf(low_y, blade.blade_position().y)
+    _check(low_y > 0.4 and low_y < 1.4, "the blade sweeps at waist height (lowest y=%.2f), so it can be jumped" % low_y)
+    _player.call("revive_at", _player.global_position)
+    _main.call("_reset_hazards")
+    _check(trap.state == SpikeTrap.State.DOWN, "respawning resets the traps")
+    SpikeTrap.enabled = false
+    PendulumBlade.enabled = false
+    await _seconds(0.3)
 
 
 func _m3_boss_checks() -> void:
