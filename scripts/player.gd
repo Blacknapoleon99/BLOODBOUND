@@ -11,8 +11,7 @@ extends CharacterBody3D
 ##   from the start of the dodge; usable again after `dodge_cooldown`; one dodge per airtime.
 ## - Light attack is a 3-step combo (AttackData.next_combo): pressing again — or simply holding
 ##   the button — within `combo_window` of the previous step continues the chain.
-## - Auto-attack (GameSettings.auto_attack): with no attack pressed, the player swings at the
-##   nearest enemy within `auto_attack_reach`, turning to face it, unless moving away from it.
+## - Melee is manual: left click / J for the light combo (hold to chain), right click / L heavy.
 ## - Attacks (see AttackData): no jumping, turning or new attacks until the attack ends.
 ##   An attack pressed while busy is buffered for `attack_buffer_time` and starts on the
 ##   first free frame (only the latest press is kept).
@@ -55,7 +54,6 @@ signal died
 @export var hurt_invulnerable_time: float = 0.8
 @export var attack_buffer_time: float = 0.15
 @export var combo_window: float = 0.35
-@export var auto_attack_reach: float = 1.8
 ## 3D only: attacking with no movement input turns toward the nearest enemy within this range.
 @export var soft_lock_range: float = 3.5
 @export var health: Health
@@ -72,6 +70,7 @@ var _buffer_left: float = 0.0
 var _jump_rising: bool = false
 var _was_on_floor: bool = true  # no landing thud on spawn
 var _dodge_left: float = 0.0
+var _attack_held: bool = false
 var _invulnerable_left: float = 0.0
 var _dodge_cooldown_left: float = 0.0
 var _air_dodge_used: bool = false
@@ -195,10 +194,10 @@ func _physics_process(delta: float) -> void:
         if _queued_left > 0.0:
             _try_attack(queued)
     if controllable and not melee.is_busy() and _queued_attack == null and not is_dodging():
-        if Input.is_action_pressed(&"attack"):
-            _try_attack(light_attack)  # holding J keeps the combo going
-        elif GameSettings.auto_attack:
-            _try_auto_attack(input_x, input_z)
+        if _attack_held and Input.is_action_pressed(&"attack"):
+            _try_attack(light_attack)  # holding left click / J keeps the combo going
+        else:
+            _attack_held = false
 
     if is_dodging():
         velocity.x = _dodge_direction.x * dodge_speed
@@ -230,36 +229,6 @@ func is_hurt_flashing() -> bool:
     return _hurt_flash_left > 0.0
 
 
-## Nearest hittable enemy hurtbox within auto-attack reach (and roughly level with the player).
-func _auto_attack_target() -> Hurtbox:
-    var best: Hurtbox = null
-    var best_distance: float = auto_attack_reach
-    for node: Node in get_tree().get_nodes_in_group(&"hurtboxes"):
-        var hurtbox: Hurtbox = node as Hurtbox
-        if hurtbox == null or hurtbox.team == &"player" or not hurtbox.monitorable:
-            continue
-        if hurtbox.health == null or hurtbox.health.is_dead():
-            continue
-        var owner_node: Node = hurtbox.get_parent()
-        if owner_node.has_method("is_invulnerable") and owner_node.call("is_invulnerable"):
-            continue
-        var shape: CollisionShape3D = hurtbox.get_child(0) as CollisionShape3D
-        var offset: Vector3 = (shape.global_position if shape else hurtbox.global_position) - global_position
-        if absf(offset.y) > 1.7:
-            continue
-        var distance: float
-        if in_3d_mode:
-            distance = Vector2(offset.x, offset.z).length()
-        else:
-            if absf(offset.z) > 1.5:
-                continue
-            distance = absf(offset.x)
-        if distance < best_distance:
-            best = hurtbox
-            best_distance = distance
-    return best
-
-
 func _enemy_body_ahead(distance: float) -> bool:
     var ahead: Vector3 = melee.facing
     for node: Node in get_tree().get_nodes_in_group(&"enemy"):
@@ -271,28 +240,6 @@ func _enemy_body_ahead(distance: float) -> bool:
         if offset.length() < distance and offset.dot(ahead) > 0.0:
             return true
     return false
-
-
-func _try_auto_attack(input_x: float, input_z: float) -> void:
-    var target: Hurtbox = _auto_attack_target()
-    if target == null:
-        return
-    var shape: CollisionShape3D = target.get_child(0) as CollisionShape3D
-    var to_target: Vector3 = (shape.global_position if shape else target.global_position) - global_position
-    to_target.y = 0.0
-    if not in_3d_mode:
-        to_target.z = 0.0
-    if to_target.length_squared() < 0.0001:
-        to_target = get_facing_vector()
-    # Retreating takes priority: never auto-swing at something the player is moving away from.
-    var move: Vector3 = Vector3(input_x, 0.0, input_z)
-    if move.length_squared() > 0.01 and move.dot(to_target) < 0.0:
-        return
-    var dir: Vector3 = to_target.normalized()
-    if absf(dir.x) > 0.01:
-        facing_direction = signf(dir.x)
-    _facing_3d = dir if in_3d_mode else Vector3(facing_direction, 0.0, 0.0)
-    _try_attack(light_attack)
 
 
 func _on_attack_finished(data: AttackData) -> void:
@@ -522,6 +469,9 @@ func _unhandled_input(event: InputEvent) -> void:
     if game_frozen or event.is_echo():
         return
     if event.is_action_pressed(&"attack"):
+        # Only a press that reached the player counts as holding: clicks eaten by the HUD or
+        # by card targeting must not start a combo through Input.is_action_pressed.
+        _attack_held = true
         _try_attack(light_attack)
     elif event.is_action_pressed(&"heavy_attack"):
         _try_attack(heavy_attack)

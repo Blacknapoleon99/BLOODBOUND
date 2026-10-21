@@ -169,7 +169,7 @@ func _process(delta: float) -> void:
         if _message_until <= 0.0:
             _message = ""
 
-    var state: String = "REALITY FRACTURE — WASD move / SPACE jump / J light / L heavy / K dodge / cards: 1-3 or click" if in_arena else "2.5D — A/D move / SPACE jump / J light / L heavy / K dodge / cards: 1-3 or click / E amber gate"
+    var state: String = "REALITY FRACTURE — WASD move / SPACE jump / LEFT CLICK light / RIGHT CLICK heavy / SHIFT dodge / cards: 1-3 or click" if in_arena else "2.5D — A/D move / SPACE jump / LEFT CLICK light / RIGHT CLICK heavy / SHIFT dodge / cards: 1-3 or click / E amber gate"
     var player_health: Health = player.get("health")
     # ASCII only: the web build ships just Godot's default font (no box-drawing glyphs).
     var hp: String = "HP %d/%d" % [player_health.current, player_health.max_health]

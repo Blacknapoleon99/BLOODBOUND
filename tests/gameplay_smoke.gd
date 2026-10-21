@@ -281,11 +281,9 @@ func _m1_dodge_checks() -> void:
     await _seconds(0.6)
 
 
-## Settings for scripted checks: game defaults, but auto-attack off (the checks press keys
-## themselves; auto-attack has its own checks that switch it on).
+## Settings for scripted checks: game defaults.
 func _test_defaults() -> void:
     GameSettings.reset_defaults()
-    GameSettings.auto_attack = false
     Ambush.enabled = false  # scripted checks walk the level freely; ambushes have their own checks
 
 
@@ -575,27 +573,21 @@ func _fix_combat_feel_checks() -> void:
     _check(ids.is_empty() and not melee.is_busy(), "releasing J stops the combo")
     _player.disconnect("attack_started", on_start)
 
-    # Auto-attack: turns to and hits an enemy in reach with no keys pressed.
-    _enemy.revive_at_home()
-    await _place(3.2, 1.9, false)  # soldier behind the player
-    _player.set("facing_direction", 1.0)
-    GameSettings.auto_attack = true
-    hp0 = _enemy.health.current
-    await _seconds(1.0)
-    GameSettings.auto_attack = false
-    _check(_enemy.health.current < hp0 and float(_player.get("facing_direction")) < 0.0, "auto-attack turns and hits an enemy in reach (%d → %d)" % [hp0, _enemy.health.current])
+    # Melee is manual: left click swings, nothing swings on its own.
     _enemy.revive_at_home()
     await _place(3.2, 1.9, false)
+    _check(InputMap.action_get_events(&"attack").any(func(e: InputEvent) -> bool: return e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT), "left click is bound to the light attack")
+    _check(InputMap.action_get_events(&"heavy_attack").any(func(e: InputEvent) -> bool: return e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_RIGHT), "right click is bound to the heavy attack")
+    hp0 = _enemy.health.current
     await _seconds(1.0)
-    _check(_enemy.health.current == _enemy.health.max_health, "with auto-attack off nothing swings on its own")
-    GameSettings.auto_attack = true
-    _player.call("teleport_to", Vector3(-16.0, 2.0, 0.0))
-    var swung: bool = false
-    for i in 60:
-        await physics_frame
-        swung = swung or melee.is_busy()
-    GameSettings.auto_attack = false
-    _check(not swung, "auto-attack does not swing at empty air")
+    _check(_enemy.health.current == hp0 and not melee.is_busy(), "no auto-attack: an enemy in reach is not hit without input")
+    var click: InputEventMouseButton = InputEventMouseButton.new()
+    click.button_index = MOUSE_BUTTON_LEFT
+    click.pressed = true
+    _player.call("_unhandled_input", click)  # headless drops OS mouse input; deliver it directly
+    await physics_frame
+    _check(melee.is_busy() and melee.current == _player.get("light_attack"), "a left click starts the light attack")
+    await _seconds(0.8)
 
     # Poise vs telegraph, then hit reactions on the player.
     _enemy.revive_at_home()
@@ -1544,14 +1536,14 @@ func _m8_new_attack_checks(boss: HollowBishop) -> void:
     _check(not boss.debug_attack(&"summon", _bx(30.2)), "no more than two Husks at a time")
     energy.regen_per_second = 0.0
     energy.set_amount(0.0)
-    GameSettings.auto_attack = true
     for i in int(10.0 * PHYSICS_HZ):
         await physics_frame
         if _player_hp() < 3:
             _heal()
         if boss.minions().is_empty():
             break
-    GameSettings.auto_attack = false
+        _swing_if_near(boss.minions())
+    _key(KEY_J, false)
     _check(boss.minions().is_empty() and energy.current >= 1.0, "the Husks fall to the combo and feed blood (%.1f blood)" % energy.current)
     energy.regen_per_second = 0.25
     boss.clear_minions()
@@ -1615,7 +1607,6 @@ func _m9_archer_and_ambush_checks() -> void:
     _player.call("teleport_to", Vector3(10.0, 1.0, 0.0))
     await _hold(KEY_A, 1.2)
     _check(_player.global_position.x > 9.3, "the bone wall keeps the player in (x=%.2f)" % _player.global_position.x)
-    GameSettings.auto_attack = true
     for i in int(25.0 * PHYSICS_HZ):
         await physics_frame
         if _player_hp() < 3:
@@ -1623,9 +1614,10 @@ func _m9_archer_and_ambush_checks() -> void:
         if e1.alive_count() == 0:
             break
         _chase_nearest(e1)
+        _swing_if_near(e1.enemies)
     _key(KEY_A, false)
     _key(KEY_D, false)
-    GameSettings.auto_attack = false
+    _key(KEY_J, false)
     await _frames(5)
     _check(e1.state == Ambush.State.CLEARED and not e1.wall_collision_enabled(), "slaying every foe drops the walls (state=%s)" % Ambush.State.keys()[e1.state])
 
@@ -1644,7 +1636,23 @@ func _m9_archer_and_ambush_checks() -> void:
     Ambush.enabled = false
 
 
-## Walk toward the nearest living foe of an ambush; auto-attack does the swinging.
+## Bot melee for scripted fights: face the nearest living foe and hold J while one is in reach.
+func _swing_if_near(foes: Array) -> void:
+    var best: Node3D = null
+    for f: Variant in foes:
+        var e: Node3D = f as Node3D
+        if e == null or not is_instance_valid(e) or bool(e.call("is_dead")):
+            continue
+        if best == null or absf(e.global_position.x - _player.global_position.x) < absf(best.global_position.x - _player.global_position.x):
+            best = e
+    var near: bool = best != null and absf(best.global_position.x - _player.global_position.x) < 1.9 and absf(best.global_position.y - _player.global_position.y) < 1.8
+    if near and not (_player.get("melee") as MeleeAttack).is_busy():
+        _player.set("facing_direction", signf(best.global_position.x - _player.global_position.x))
+    if near != Input.is_action_pressed(&"attack"):
+        _key(KEY_J, near)
+
+
+## Walk toward the nearest living foe of an ambush (the caller does the swinging).
 func _chase_nearest(ambush: Ambush) -> void:
     var best: Node3D = null
     ambush.alive_count()  # prunes freed corpses

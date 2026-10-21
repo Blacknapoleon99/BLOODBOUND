@@ -34,6 +34,13 @@ const PAD_BUTTONS: Dictionary = {
     &"card_3": [JOY_BUTTON_DPAD_RIGHT],
 }
 
+## Mouse: left click = light attack, right click = heavy. While a card is armed for targeting,
+## CardTargeting consumes clicks first (left picks the target, right cancels).
+const MOUSE_BUTTONS: Dictionary = {
+    &"attack": [MOUSE_BUTTON_LEFT],
+    &"heavy_attack": [MOUSE_BUTTON_RIGHT],
+}
+
 ## [action, axis, direction]
 const PAD_AXES: Array = [
     [&"move_left", JOY_AXIS_LEFT_X, -1.0],
@@ -56,6 +63,10 @@ static func ensure_defaults() -> void:
             var pad_event: InputEventJoypadButton = InputEventJoypadButton.new()
             pad_event.button_index = button
             InputMap.action_add_event(action, pad_event)
+        for mouse_button: MouseButton in MOUSE_BUTTONS.get(action, []):
+            var mouse_event: InputEventMouseButton = InputEventMouseButton.new()
+            mouse_event.button_index = mouse_button
+            InputMap.action_add_event(action, mouse_event)
         for entry: Array in PAD_AXES:
             if entry[0] == action:
                 var axis_event: InputEventJoypadMotion = InputEventJoypadMotion.new()

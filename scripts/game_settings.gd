@@ -16,7 +16,6 @@ static var camera_shake: float = 1.0
 ## Brief global slow-down on hit. Disable for testing or comfort.
 static var hitstop_enabled: bool = true
 ## The player swings automatically at enemies in reach (holding J still chains the combo).
-static var auto_attack: bool = true
 ## 0..1 linear volumes for the Music and SFX buses (see Audio).
 static var music_volume: float = 0.7
 static var sfx_volume: float = 0.9
@@ -31,7 +30,6 @@ static func load_settings(path: String = DEFAULT_PATH) -> void:
     reduced_gore = bool(config.get_value("presentation", "reduced_gore", reduced_gore))
     camera_shake = clampf(float(config.get_value("presentation", "camera_shake", camera_shake)), 0.0, 1.0)
     hitstop_enabled = bool(config.get_value("presentation", "hitstop", hitstop_enabled))
-    auto_attack = bool(config.get_value("gameplay", "auto_attack", auto_attack))
     music_volume = clampf(float(config.get_value("audio", "music", music_volume)), 0.0, 1.0)
     sfx_volume = clampf(float(config.get_value("audio", "sfx", sfx_volume)), 0.0, 1.0)
 
@@ -43,7 +41,6 @@ static func save_settings(path: String = DEFAULT_PATH) -> Error:
     config.set_value("presentation", "reduced_gore", reduced_gore)
     config.set_value("presentation", "camera_shake", camera_shake)
     config.set_value("presentation", "hitstop", hitstop_enabled)
-    config.set_value("gameplay", "auto_attack", auto_attack)
     config.set_value("audio", "music", music_volume)
     config.set_value("audio", "sfx", sfx_volume)
     return config.save(path)
@@ -53,6 +50,5 @@ static func reset_defaults() -> void:
     reduced_gore = false
     camera_shake = 1.0
     hitstop_enabled = true
-    auto_attack = true
     music_volume = 0.7
     sfx_volume = 0.9

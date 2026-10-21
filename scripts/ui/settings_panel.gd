@@ -9,7 +9,6 @@ var gore_toggle: CheckButton
 var shake_slider: HSlider
 var shake_value: Label
 var hitstop_toggle: CheckButton
-var auto_attack_toggle: CheckButton
 var music_slider: HSlider
 var sfx_slider: HSlider
 var back_button: Button
@@ -68,12 +67,6 @@ func _build() -> void:
         _save())
     column.add_child(hitstop_toggle)
 
-    auto_attack_toggle = _toggle("Auto-attack enemies in reach")
-    auto_attack_toggle.name = "AutoAttack"
-    auto_attack_toggle.toggled.connect(func(on: bool) -> void:
-        GameSettings.auto_attack = on
-        _save())
-    column.add_child(auto_attack_toggle)
 
     music_slider = _volume_row(column, "Music", "MusicVolume", func(v: float) -> void:
         GameSettings.music_volume = v
@@ -96,7 +89,6 @@ func open() -> void:
     shake_slider.set_value_no_signal(GameSettings.camera_shake)
     shake_value.text = "%d%%" % roundi(GameSettings.camera_shake * 100.0)
     hitstop_toggle.set_pressed_no_signal(GameSettings.hitstop_enabled)
-    auto_attack_toggle.set_pressed_no_signal(GameSettings.auto_attack)
     music_slider.set_value_no_signal(GameSettings.music_volume)
     sfx_slider.set_value_no_signal(GameSettings.sfx_volume)
     visible = true
