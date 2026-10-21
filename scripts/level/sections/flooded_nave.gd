@@ -15,7 +15,9 @@ func _init() -> void:
 
 
 func _design() -> void:
-    ground(0.0, 56.0)
+    ground(0.0, 52.0)
+    secret_cellar(52.0, &"card")
+    ground(54.0, 56.0)
     spikes(10.0, 2.4, 0.0)
     spikes(16.0, 2.4, 0.7)
     spikes(22.0, 2.4, 1.4)

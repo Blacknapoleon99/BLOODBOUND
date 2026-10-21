@@ -24,6 +24,7 @@ func _design() -> void:
     ledge(34.0, 37.0, 3.0)
     ledge(39.0, 42.0, 1.5)
     ground(44.0, 50.0)
+    shortcut(45.0, 0.0, 6.0, 44.0, 0.0)  # at the far side: a bridge straight back over the belfry
     enemy(&"wraith", 15.0, 2.0, 48.0, 3.0)
     enemy(&"wraith", 27.0, 2.0, 48.0, 3.0)
     enemy(&"wraith", 38.0, 2.0, 48.0, 1.5)

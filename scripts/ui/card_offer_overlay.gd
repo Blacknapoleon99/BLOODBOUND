@@ -51,8 +51,9 @@ func _build() -> void:
     column.add_child(skip_button)
 
 
-func open(title: String, cards: Array) -> void:
+func open(title: String, cards: Array, skip_text: String = "Take nothing") -> void:
     title_label.text = title
+    skip_button.text = skip_text
     _root.visible = true
     get_tree().paused = true
     offer_view.show_offers(cards)

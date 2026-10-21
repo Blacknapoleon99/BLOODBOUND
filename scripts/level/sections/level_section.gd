@@ -27,6 +27,9 @@ var ambushes: Array[Ambush] = []
 var traps: Array[Node3D] = []
 var slabs: Array[CollapsingSlab] = []
 var enemies: Array[Node3D] = []
+var secrets: Array[BreakableFloor] = []
+var caches: Array[LootChest] = []
+var shortcuts: Array[LeverShortcut] = []
 var _palette: Color = Color(0.18, 0.18, 0.22)
 
 
@@ -125,6 +128,34 @@ func ambush(label: String, trigger: float, left: float, right: float, spawns: Ar
     add_child(a)
     ambushes.append(a)
     return a
+
+
+## A secret under the floor: a 2 m cracked slab at local [hole_x, hole_x + 2] (top 0; leave that
+## span out of your ground() calls), a step below it (top -1.5) and a cellar (floor -3, local
+## hole_x - 4 .. hole_x) holding a reliquary of `kind` (&"shards", &"card", &"relics").
+func secret_cellar(hole_x: float, kind: StringName, shards: int = 25) -> LootChest:
+    var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(hole_x + 1.0), -0.5, 0.0), Vector3(2.0, 1.0, 4.0))
+    add_child(crack)
+    secrets.append(crack)
+    platforms.append(Rect2(hole_x, 0.0, 2.0, 0.0))
+    ground(hole_x, hole_x + 2.0, -1.5, -3.0, "Cellar step")
+    ground(hole_x - 4.0, hole_x, -3.0, -4.0, "Secret cellar")
+    block(hole_x - 4.6, hole_x - 4.0, -3.0, -1.0, "Cellar wall")
+    var chest: LootChest = LootChest.create(Vector3(gx(hole_x - 2.6), -3.0, 0.0))
+    chest.kind = kind
+    chest.shards = shards
+    add_child(chest)
+    caches.append(chest)
+    return chest
+
+
+## A lever at local `lever_x` (standing height `lever_top`) that, once pulled, makes a bone
+## bridge solid over local [x0, x1] at height `top`.
+func shortcut(lever_x: float, lever_top: float, x0: float, x1: float, top: float = 0.0) -> LeverShortcut:
+    var s: LeverShortcut = LeverShortcut.create(Vector3(gx(lever_x), lever_top, 0.0), gx(x0), gx(x1), top)
+    add_child(s)
+    shortcuts.append(s)
+    return s
 
 
 func altar(x: float, floor_top: float = 0.0) -> BloodAltar:

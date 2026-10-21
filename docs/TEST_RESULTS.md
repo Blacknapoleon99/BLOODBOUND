@@ -333,3 +333,30 @@
   - the knight has 4 hurt takes.
 - `build/windows-run8/Bloodbound.exe`; the release export probe exits 0.
 - Not verified: listening. The demonize settings are a first guess, and the knight's short cries depend on how TTS reads interjections.
+
+## First map run (2026-10-21)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 424/424** (51 new).
+- **Map:**
+  - seed determinism and variety; layout rules over 40 seeds;
+  - the validator rejects a 9 m gap and a 2.2 m step, and accepts 3 m and 1.4 m;
+  - all 12 rooms are provably completable;
+  - the full map builds 8 rooms end to end, with the arena shifted after them;
+  - every room's checkpoint stands on solid ground; the HUD names the room; entering a room sets its checkpoint.
+- **Enemies:**
+  - **Shielded Knight:** frontal block, heavy guard break, hit from behind, shield bash, shard drop.
+  - **Flying Wraith:** hovers, then dives and hits.
+  - **Bone Crawler:** fuses and bursts; killed early, it still bursts.
+  - **Ambush waves:** two waves, then cleared.
+- **Gravewarden:**
+  - the charge lane telegraph, the charge hitting you, and the wall daze;
+  - quake waves hurt; two summons; enrage and the double charge; 40 shards;
+  - the hall seals, the HP bar names it, and the relic reliquary works.
+- **Merchant:** wares; refusal with no shards; relic purchase and restock; heal refused at full HP, then bought; leaving keeps the stock.
+- **Secrets and shortcuts:**
+  - the cracked floor holds you, and heavy strikes break it so you drop into the cellar;
+  - the cache gives shards; the room stays completable; cards don't target the floor;
+  - the shortcut starts closed, the lever opens it, and the bridge is solid.
+- Screenshots: `docs/screenshots/12_map_*.png` (visible run of `tests/shot_map.gd`, seed 77).
+- `build/windows-run9/Bloodbound.exe`; the release export probe exits 0.
+- **Not verified:** time to reach the Bishop (needs a human run), difficulty balance across rooms, and how the new enemies feel.

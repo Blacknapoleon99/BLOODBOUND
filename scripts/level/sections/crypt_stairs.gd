@@ -25,5 +25,7 @@ func _design() -> void:
     ledge(27.0, 30.0, 4.0)
     ledge(32.0, 34.5, 2.4)
     ledge(36.5, 39.0, 1.0)
-    ground(41.0, 50.0)
+    ground(41.0, 46.0)
+    secret_cellar(46.0, &"relics")
+    ground(48.0, 50.0)
     enemy(&"crawler", 46.0, 41.0, 50.0)

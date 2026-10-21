@@ -254,3 +254,33 @@ Playtester: more mechanics and things to do between the start and the Bishop.
   - **The knight** (Harry, "fierce warrior"): 4 hurt cries picked at random, a falling scream ("Aaaah!", played when you drop into the abyss), a death line and 2 effort shouts on finishers and heavy swings.
 - `Audio.sfx` now plays a random take when `<id>_2..6` exist; `Audio.voice` is a single voice channel (urgent lines interrupt).
 - **Credits:** the new key's meter showed 506 used right after the batches (it lags). Expected total ≈ 1,100 (SFX) + ≈ 450 (TTS characters).
+
+## DEC-037 — The first map: shuffled rooms, elite, merchant, secrets, new enemies (2026-10-21)
+
+Built from docs/superpowers/specs/2026-10-21-first-map-design.md (approved by the user).
+
+- **Map shape:** opening (unchanged) → 3 Act I rooms → The Gravewarden's Hall → 3 Act II rooms → The Pale Merchant → pursuit approach + Bishop.
+  - `LevelLayout.plan(seed)` deals the rooms from the run seed.
+  - Act I/II rooms are drawn 3 of 5 and run easiest → hardest, with one random neighbour swap.
+  - No room repeats. Checked over 40 seeds.
+- **Rooms:** each is a `LevelSection` script, built in world coordinates from local-x helpers (ground, ledge, slab, mover, spikes, pendulum, enemy, ambush, altar, secret_cellar, shortcut).
+  - Every room has an entry checkpoint, and entry and exit floors at y = 0, so rooms join in any order.
+  - **Reachability:** every walkable surface is recorded, and `is_completable()` proves the exit is reachable. Its jump model comes from the player's real numbers (run 8.5, jump 9.5, gravity 22/30), counting on 75% of the theoretical reach. It caught a 2 m wall in the Sunken Reliquary before it shipped.
+- **`main.gd`:** the rooms are inserted at x = 18.2. Everything after them (approach, landing ambush and altar, traps, arena, Bishop, checkpoints, the pursuit/fight triggers and the camera's arena framing) shifts by `map_offset`. `LevelLayout.classic = true` inserts no rooms, so all earlier checks still run on the original short layout.
+- **New enemies** (`CodeEnemy` base):
+  - **Shielded Knight:** frontal hits are blocked while guarding. A heavy strike, Grave Hook or poise-3 hit breaks the guard. It shield-bashes.
+  - **Flying Wraith:** no gravity, ghosts through walls, dives along a red line.
+  - **Bone Crawler:** fuses and bursts. Killed early, it still bursts after 0.45 s.
+- **The Gravewarden (elite):**
+  - **Crypt Charge** passes through the player and dazes it against walls only, not bodies (both found by tests).
+  - **Grave Quake** sends low "wave" spikes you can jump. **Raise Guard** summons crawlers.
+  - Enrages at 50% (faster, double charge). Drops 40 shards.
+  - Its hall seals like an ambush; afterwards a relic reliquary rises. The HP bar shows its name.
+- **Bone Shards:** a run currency from every kill (`shard_value`: husk 1, archer/hound 2, knight 4, Gravewarden 40), shown in the HUD with a floating "+N".
+- **The Pale Merchant:** a card (30), relic (60), full heal (25) and card upgrade (40), rolled once per visit. Several purchases per visit; unaffordable wares and a heal at full HP are refused at no cost.
+- **Secrets:** cracked floors (4 HP, never targeted by cards) over cellars with a shards cache, a card shrine or a relic, in 4 rooms, each with a step back up. Rooms stay completable with the floor broken.
+- **Shortcuts:** `LeverShortcut` (Godot already has a `Shortcut` class) in the Collapsing Gallery and the Wraith Belfry. Pulling the lever turns a ghost bone bridge solid back over the room's hard stretch.
+- **Ambushes:** they now support waves (Charnel Arena has two) and raised floors.
+- **Known gaps:**
+  - The 10-minute length is estimated, not measured. The full route is ~430 m (about 8 rooms of 45–65 m plus the opening and approach), and the hazards and fights set the pace.
+  - No bot plays the whole map end to end. Reachability plus "every checkpoint stands on ground" are the automated guarantees.

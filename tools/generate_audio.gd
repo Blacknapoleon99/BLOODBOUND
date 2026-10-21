@@ -46,6 +46,7 @@ const SFX: Dictionary = {
     "husk_burst": "_husk_burst", "soldier_lunge": "_soldier_lunge", "equip": "_equip",
     "card_step": "_card_step", "card_hook": "_card_hook", "card_bridge": "_card_bridge",
     "card_nova": "_card_nova", "card_haste": "_card_haste", "loot_drop": "_loot_drop",
+    "shield_block": "_shield_block",
 }
 
 
@@ -429,6 +430,13 @@ func _loot_drop() -> PackedFloat32Array:
     for k in 4:
         _tone(b, k * 0.12, 1.0, 0.18, [523.0, 659.0, 784.0, 1046.0][k], [523.0, 659.0, 784.0, 1046.0][k], 0.005, 0.8, 3)
     _noise(b, 0.0, 0.5, 0.2, 4000.0, 8000.0, 0.01, 0.4)
+    return b
+
+
+func _shield_block() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.6)
+    _tone(b, 0.0, 0.5, 0.4, 820.0, 790.0, 0.001, 0.35, 5)
+    _noise(b, 0.0, 0.08, 0.5, 5000.0, 2500.0, 0.001, 0.05)
     return b
 
 

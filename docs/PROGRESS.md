@@ -154,3 +154,12 @@ User playtest of windows-run6: listen pass on the new audio, plus feel of the ne
 ## 2026-10-21 — Sound v2 + Bishop and knight voices
 
 - 46 regenerated sounds and 20 voice lines (Bishop demon-robot, knight cries/scream). Build `build/windows-run8/Bloodbound.exe`.
+
+## 2026-10-21 — The first map
+
+- Shuffled room run (10 handmade rooms, 3 + 3 per run), the Gravewarden elite, the Pale Merchant, Bone Shards, 3 new enemies, 4 secret cellars, 2 lever shortcuts. 424/424; build `build/windows-run9/Bloodbound.exe`.
+
+### Next action
+- User playtest: time a full run (target ~10 min), and note rooms that are too hard, too easy or confusing.
+- Then the art/asset phase can start from a settled map.
+- New placeholder sounds still to give the ElevenLabs treatment: shield_block (knight), plus any new voice lines (Gravewarden, merchant).

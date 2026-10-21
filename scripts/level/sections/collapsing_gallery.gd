@@ -20,6 +20,7 @@ func _design() -> void:
         slab(x)
     ground(25.5, 30.0, 1.0, -3.0, "Gallery pillar")
     enemy(&"archer", 28.5, 26.0, 29.5, 1.0)
+    shortcut(27.0, 1.0, 6.0, 25.5, 0.0)  # pull it at the pillar: a bridge over the first slabs
     for x: float in [32.3, 36.1, 39.9, 43.7, 47.5]:
         slab(x)
     ground(49.8, 60.0)

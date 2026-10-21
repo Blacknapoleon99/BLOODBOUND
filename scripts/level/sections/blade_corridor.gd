@@ -15,7 +15,9 @@ func _init() -> void:
 
 
 func _design() -> void:
-    ground(0.0, 56.0)
+    ground(0.0, 33.0)
+    secret_cellar(33.0, &"shards", 20)
+    ground(35.0, 56.0)
     pendulum(12.0, 0.0, 0.0)
     spikes(16.0, 2.0, 0.5)
     pendulum(20.0, 0.0, 1.1)

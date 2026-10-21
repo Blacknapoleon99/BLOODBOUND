@@ -183,6 +183,7 @@ func _run() -> void:
     await _m16_map_checks()
     await _m17_new_enemy_checks()
     await _m18_gravewarden_checks()
+    await _m19_merchant_secret_shortcut_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -1712,7 +1713,7 @@ const SOUND_IDS: Array[StringName] = [
     &"arrow_release", &"walls_rise", &"altar", &"ui_click", &"victory",
     &"bone_rain", &"geyser", &"hound_pounce", &"husk_burst", &"soldier_lunge", &"equip",
     &"card_step", &"card_hook", &"card_bridge", &"card_nova", &"card_haste", &"loot_drop",
-    &"player_fall", &"player_death", &"player_effort",
+    &"player_fall", &"player_death", &"player_effort", &"shield_block",
 ]
 const VOICE_LINES: Array[StringName] = [
     &"vo_awaken", &"vo_fight", &"vo_phase2", &"vo_phase3", &"vo_phase4", &"vo_slam", &"vo_beam",
@@ -2505,6 +2506,103 @@ func _m18_gravewarden_checks() -> void:
     hall.queue_free()
     _heal()
     await _seconds(0.3)
+
+
+func _room(path: String, at_x: float) -> LevelSection:
+    var room: LevelSection = (load(path) as Script).new() as LevelSection
+    _main.add_child(room)
+    room.build(at_x)
+    return room
+
+
+## The Pale Merchant (buying, refusals, restock), secret cellars (break the floor, claim the
+## cache), and lever shortcuts (the bridge turns solid).
+func _m19_merchant_secret_shortcut_checks() -> void:
+    _enemy.set_ai_enabled(false)
+    var cards: CardSystem = _cards()
+    var health: Health = _player.get("health")
+    var overlay: CardOfferOverlay = _main.get("offer_overlay")
+
+    # --- Merchant ---
+    var shop_room: LevelSection = _room("res://scripts/level/sections/pale_merchant.gd", 400.0)
+    var stall: MerchantStall = shop_room.get("stall")
+    _player.call("teleport_to", stall.global_position + Vector3(-0.8, 1.0, 0.0))
+    await _seconds(0.4)
+    RunState.shards = 0
+    _tap(KEY_E)
+    await _frames(4)
+    var wares: Array = overlay.offer_view.offers
+    var kinds: Array = wares.map(func(w: ShopItem) -> StringName: return w.kind)
+    _check(overlay.is_open() and kinds == [&"card", &"relic", &"heal", &"upgrade"], "the merchant sells a card, a relic, a heal and an upgrade (%s)" % [kinds])
+    var deck0: int = cards.deck.total_cards()
+    overlay.offer_view.buttons[0].pressed.emit()
+    await _frames(4)
+    _check(cards.deck.total_cards() == deck0 and RunState.shards == 0 and overlay.is_open(), "with no shards the purchase is refused and the shop stays open")
+    RunState.shards = 200
+    var relics0: int = RunState.relics.size()
+    overlay.offer_view.buttons[1].pressed.emit()
+    await _frames(4)
+    _check(RunState.relics.size() == relics0 + 1 and RunState.shards == 140 and overlay.offer_view.offers.size() == 3, "buying the relic costs 60 and it leaves the table (%d shards left)" % RunState.shards)
+    var full_try: int = RunState.shards
+    overlay.offer_view.buttons[1].pressed.emit()  # the heal, now 2nd
+    await _frames(4)
+    _check(RunState.shards == full_try, "the heal is refused at full health (no charge)")
+    health.apply_damage(3)
+    overlay.offer_view.buttons[1].pressed.emit()
+    await _frames(4)
+    _check(health.current == health.max_health and RunState.shards == full_try - 25, "the heal restores you for 25 shards")
+    overlay.skip_button.pressed.emit()
+    await _frames(3)
+    _check(not overlay.is_open() and stall.stock.size() == 2, "leaving keeps the rest of the stock for later")
+    RunState.relics.clear()
+    shop_room.queue_free()
+
+    # --- Secret cellar: break the cracked floor, drop in, claim the cache ---
+    var crawl: LevelSection = _room("res://scripts/level/sections/catacomb_crawl.gd", 500.0)
+    for e: Node3D in crawl.enemies:
+        e.queue_free()
+    var crack: BreakableFloor = crawl.secrets[0]
+    var cache: LootChest = crawl.caches[0]
+    _player.call("teleport_to", Vector3(crack.global_position.x - 0.3, 1.0, 0.0))
+    await _seconds(0.5)
+    _check(_player.is_on_floor(), "the cracked floor holds you")
+    for i in 4:
+        if crack.is_broken:
+            break
+        _tap(KEY_L)
+        await _seconds(0.9)
+    await _seconds(0.6)
+    _check(crack.is_broken and _player.global_position.y < -0.5, "heavy strikes break it and you drop into the cellar (y=%.1f)" % _player.global_position.y)
+    _player.call("teleport_to", cache.global_position + Vector3(0.8, 1.0, 0.0))
+    await _seconds(0.5)
+    var shards0: int = RunState.shards
+    _tap(KEY_E)
+    await _frames(4)
+    _check(cache.used and RunState.shards == shards0 + cache.shards, "the hidden cache gives %d Bone Shards" % cache.shards)
+    _check(crawl.is_completable(), "the room stays completable with the floor broken")
+    var no_target: bool = cards.find_enemy_target(50.0, crack.global_position).get("target") == null
+    _check(no_target, "cards never target a cracked floor")
+    crawl.queue_free()
+
+    # --- Shortcut: the lever turns the ghost bridge solid ---
+    var gallery: LevelSection = _room("res://scripts/level/sections/collapsing_gallery.gd", 600.0)
+    for e: Node3D in gallery.enemies:
+        e.queue_free()
+    var cut: LeverShortcut = gallery.shortcuts[0]
+    var bridge_x: float = cut.bridge.global_position.x
+    _check(not cut.is_open, "the shortcut starts closed (a faint outline)")
+    _player.call("teleport_to", cut.lever.global_position + Vector3(-0.6, 1.0, 0.0))
+    await _seconds(0.5)
+    _tap(KEY_E)
+    await _frames(4)
+    _check(cut.is_open, "E at the lever opens the shortcut")
+    _player.call("teleport_to", Vector3(bridge_x, 1.5, 0.0))
+    await _seconds(0.6)
+    _check(_player.is_on_floor() and _player.global_position.y > 0.5, "the bone bridge is solid ground over the pit (y=%.2f)" % _player.global_position.y)
+    gallery.queue_free()
+    _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    _heal()
+    await _seconds(0.5)
 
 
 func _m3_boss_checks() -> void:

@@ -25,7 +25,10 @@ func show_offers(cards: Array) -> void:
         b.add_theme_font_size_override("font_size", 17)
         b.text = "[%d]  %s" % [i + 1, describe(choice)]
         var border: StyleBoxFlat = (b.get_theme_stylebox("normal") as StyleBoxFlat).duplicate()
-        border.border_color = choice.get("ui_color")
+        var tint: Variant = choice.get("ui_color")
+        if choice is ShopItem:
+            tint = (choice as ShopItem).payload.get("ui_color") if (choice as ShopItem).payload != null else Color(0.4, 0.8, 0.5)
+        border.border_color = tint
         border.set_border_width_all(3)
         b.add_theme_stylebox_override("normal", border)
         var index: int = i
@@ -55,6 +58,12 @@ func _pick(index: int) -> void:
 
 
 static func describe(choice: Resource) -> String:
+    if choice is ShopItem:
+        var ware: ShopItem = choice
+        var price: String = "%d SHARDS%s" % [ware.price, "" if RunState.shards >= ware.price else "  (can't afford)"]
+        if ware.kind == &"heal":
+            return "%s\n\nFULL HEAL\n\nThe merchant's tonic restores all your health." % price
+        return "%s\n\n%s" % [price, describe(ware.payload)]
     if choice is ItemData:
         var item: ItemData = choice
         return "%s: %s\n\n%s\n\n%s" % [ItemData.slot_name(item.slot), item.display_name.to_upper(), item.stat_line(), item.description]

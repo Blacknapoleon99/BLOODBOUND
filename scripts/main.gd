@@ -41,6 +41,8 @@ var _fall_screamed: bool = false
 var _callout_cooldown: float = 0.0
 var loot_chest: LootChest
 var _pending_chest: LootChest
+var _shop: MerchantStall
+const PRICES: Dictionary = {&"card": 30, &"relic": 60, &"heal": 25, &"upgrade": 40}
 var _loot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var ambushes: Array[Ambush] = []
@@ -165,7 +167,7 @@ func _process(delta: float) -> void:
     if player.global_position.y < -9.0:
         _respawn()
 
-    if not in_arena and enemy_alive and player.global_position.x > PORTCULLIS_X - 1.6:
+    if not in_arena and enemy_alive and absf(player.global_position.x - (PORTCULLIS_X - 0.8)) < 1.0:
         _flash("The portcullis is sealed while the plagued soldier stands.", 1.0)
     if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > PURSUIT_START_X + map_offset:
         boss.awaken()
@@ -233,6 +235,16 @@ func _unhandled_input(event: InputEvent) -> void:
         return
     if _active_ambush() != null:
         _flash("The bone walls hold until every foe is slain.", 2.0)
+        return
+    for node: Node in get_tree().get_nodes_in_group(&"shortcut"):
+        var cut: LeverShortcut = node as LeverShortcut
+        if cut.lever_in_reach(player):
+            cut.pull()
+            _flash("A bridge of bone knits across behind you: a shortcut back.", 3.0)
+            return
+    var stall: MerchantStall = get_tree().get_first_node_in_group(&"merchant") as MerchantStall
+    if stall != null and stall.player_in_reach(player):
+        _open_shop(stall)
         return
     for node: Node in get_tree().get_nodes_in_group(&"loot_chest"):
         var chest: LootChest = node as LootChest
@@ -344,6 +356,67 @@ func _fracture_offer() -> Array:
     return choices
 
 
+## The Pale Merchant: a card, a relic, a full heal and a card upgrade, rolled once per visit.
+func _open_shop(stall: MerchantStall) -> void:
+    if not stall.stocked:
+        stall.stocked = true
+        var card: Array = _card_offer(1)
+        if not card.is_empty():
+            stall.stock.append(ShopItem.make(&"card", card[0], PRICES[&"card"]))
+        var relic: Array = _relic_offer(1)
+        if not relic.is_empty():
+            stall.stock.append(ShopItem.make(&"relic", relic[0], PRICES[&"relic"]))
+        stall.stock.append(ShopItem.make(&"heal", null, PRICES[&"heal"]))
+        var upgradable: Array = card_system.deck.all_cards().filter(func(c: CardData) -> bool: return not c.upgraded)
+        if not upgradable.is_empty():
+            var base: CardData = upgradable[_offer_rng().randi_range(0, upgradable.size() - 1)]
+            stall.stock.append(ShopItem.make(&"upgrade", base.upgraded_copy(), PRICES[&"upgrade"]))
+    _shop = stall
+    _pending_altar = null
+    _pending_chest = null
+    if stall.stock.is_empty():
+        _shop = null
+        _flash("\"Sold out, little lamb.\"", 2.0)
+        return
+    offer_overlay.open("THE PALE MERCHANT: you hold %d Bone Shards" % RunState.shards, stall.stock, "Leave the merchant")
+
+
+## Tries to buy `ware`; reopens the shop while anything is left.
+func _buy(ware: ShopItem) -> void:
+    var stall: MerchantStall = _shop
+    _shop = null
+    if RunState.shards < ware.price:
+        Audio.sfx(&"card_refused", 0.0)
+        _flash("Not enough Bone Shards: %d needed, you have %d." % [ware.price, RunState.shards], 2.5)
+    elif ware.kind == &"heal" and (player.get("health") as Health).current >= (player.get("health") as Health).max_health:
+        Audio.sfx(&"card_refused", 0.0)
+        _flash("You are already whole.", 2.0)
+    else:
+        RunState.shards -= ware.price
+        stall.stock.erase(ware)
+        Audio.sfx(&"equip", 0.0)
+        match ware.kind:
+            &"heal":
+                (player.get("health") as Health).restore_full()
+                _flash("The tonic burns going down. Fully healed.", 2.5)
+            &"relic":
+                RunState.relics.append(ware.payload as RelicData)
+                _apply_relic(ware.payload as RelicData, true)
+                _flash("Bought %s." % (ware.payload as RelicData).display_name, 2.5)
+            &"upgrade":
+                var upgraded: CardData = ware.payload
+                card_system.upgrade_card(upgraded.upgrade_source, upgraded)
+                RunState.replace_card(upgraded.upgrade_source, upgraded)
+                _flash("%s is tempered." % upgraded.display_name, 2.5)
+            _:
+                card_system.add_card(ware.payload as CardData)
+                if RunState.active:
+                    RunState.deck.append(ware.payload as CardData)
+                _flash("Bought %s." % (ware.payload as CardData).display_name, 2.5)
+    if not stall.stock.is_empty():
+        _open_shop.call_deferred(stall)
+
+
 ## Elite and secret reliquaries (the Bishop's uses _open_loot).
 func _open_chest(chest: LootChest) -> void:
     _pending_chest = chest
@@ -384,6 +457,13 @@ func _open_loot() -> void:
 
 
 func _on_offer_resolved(choice: Resource) -> void:
+    if _shop != null:
+        if choice is ShopItem:
+            _buy(choice)
+        else:
+            _shop = null
+            _flash("\"Come back with more bones.\"", 2.0)
+        return
     if choice is ItemData:
         var item: ItemData = choice
         Profile.add_item(item.id)

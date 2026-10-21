@@ -201,7 +201,7 @@ func _find_enemy_target(card_range: float, from: Vector3 = Vector3.INF) -> Dicti
     var any_out_of_range: bool = false
     for node: Node in get_tree().get_nodes_in_group(&"hurtboxes"):
         var hurtbox: Hurtbox = node as Hurtbox
-        if hurtbox == null or hurtbox.team == &"player" or not hurtbox.monitorable:
+        if hurtbox == null or hurtbox.team == &"player" or not hurtbox.monitorable or hurtbox.is_in_group(&"no_card_target"):
             continue
         if hurtbox.health == null or hurtbox.health.is_dead():
             continue

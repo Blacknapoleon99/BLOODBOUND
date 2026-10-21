@@ -99,7 +99,7 @@ func pick_hurtbox(screen_pos: Vector2) -> Hurtbox:
     var best_px: float = PICK_RADIUS_PX
     for node: Node in get_tree().get_nodes_in_group(&"hurtboxes"):
         var hurtbox: Hurtbox = node as Hurtbox
-        if hurtbox == null or hurtbox.team == &"player" or hurtbox.health == null or hurtbox.health.is_dead():
+        if hurtbox == null or hurtbox.team == &"player" or hurtbox.is_in_group(&"no_card_target") or hurtbox.health == null or hurtbox.health.is_dead():
             continue
         var shape: CollisionShape3D = hurtbox.get_child(0) as CollisionShape3D
         var aim: Vector3 = shape.global_position if shape else hurtbox.global_position

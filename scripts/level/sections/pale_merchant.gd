@@ -13,6 +13,11 @@ func _init() -> void:
     _palette = Color(0.2, 0.2, 0.17)
 
 
+var stall: MerchantStall
+
+
 func _design() -> void:
     ground(0.0, 26.0)
+    stall = MerchantStall.create(Vector3(gx(12.0), 0.0, 0.0))
+    add_child(stall)
     altar(19.0)
