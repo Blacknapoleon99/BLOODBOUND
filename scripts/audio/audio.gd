@@ -70,13 +70,14 @@ static func music(id: StringName) -> void:
     var audio: Audio = instance()
     if audio == null or current_music == id:
         return
-    current_music = id
     if id == &"":
+        current_music = id
         audio._music_player.stop()
         return
     var stream: AudioStreamWAV = _stream(id) as AudioStreamWAV
     if stream == null:
         return
+    current_music = id
     # Loop the whole file (the generator crossfades the seam).
     stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
     stream.loop_begin = 0
@@ -101,6 +102,11 @@ static func voice(id: StringName, urgent: bool = false) -> bool:
     audio._voice_player.play()
     voiced[id] = int(voiced.get(id, 0)) + 1
     return true
+
+
+static func stop_voice() -> void:
+    if is_instance_valid(_instance):
+        _instance._voice_player.stop()
 
 
 static func is_voice_playing() -> bool:

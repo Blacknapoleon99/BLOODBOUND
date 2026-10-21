@@ -96,7 +96,12 @@ func _tick(delta: float, target: Node3D) -> void:
         &"charging":
             velocity.x = facing * charge_speed * speed_scale
             var blocked: bool = _hit_static_wall() or (global_position.x <= min_x + 0.4 and facing < 0.0) or (global_position.x >= max_x - 0.4 and facing > 0.0)
-            if blocked and _t > 0.1:
+            if blocked and _t > 0.1 and _charges_left > 0:
+                _charges_left -= 1
+                charge_hitbox.deactivate()
+                facing = -facing
+                set_state(&"charge_windup")  # enraged: wheel round and charge again
+            elif blocked and _t > 0.1:
                 charge_hitbox.deactivate()
                 velocity.x = -facing * 3.0
                 Audio.sfx(&"bishop_slam", 0.05, -6.0)
@@ -123,13 +128,11 @@ func _tick(delta: float, target: Node3D) -> void:
 
 
 func _ghost_player(on: bool) -> void:
-    var player: PhysicsBody3D = get_tree().get_first_node_in_group(&"player") as PhysicsBody3D
-    if player == null:
-        return
-    if on:
-        add_collision_exception_with(player)
-    else:
-        remove_collision_exception_with(player)
+    for player: Node3D in Players.all():
+        if on:
+            add_collision_exception_with(player as PhysicsBody3D)
+        else:
+            remove_collision_exception_with(player as PhysicsBody3D)
 
 
 func set_state(next: StringName) -> void:
@@ -189,7 +192,11 @@ func _summon() -> void:
     for side: float in [-1.0, 1.0]:
         if alive >= 2:
             break
-        var crawler: Node3D = EnemyFactory.spawn(&"crawler", get_parent(), global_position.x + side * 2.5, min_x, max_x, global_position.y)
+        var x: float = global_position.x + side * 2.5
+        if x < min_x + 0.5 or x > max_x - 0.5:
+            continue  # no room on that side: never spawn behind the hall's walls
+        var crawler: Node3D = EnemyFactory.spawn(&"crawler", get_parent(), x, min_x, max_x, global_position.y)
+        crawler.set("shard_value", 0)  # summons are not a shard farm
         crawler.add_to_group(&"warden_minion")
         alive += 1
     Audio.sfx(&"summon", 0.05)
@@ -223,8 +230,8 @@ func _on_died() -> void:
     charge_hitbox.deactivate()
     _lane.visible = false
     for minion: Node in get_tree().get_nodes_in_group(&"warden_minion"):
-        if not bool(minion.call("is_dead")):
-            (minion.get("health") as Health).apply_damage(99)
+        minion.set("burst_spawned", true)
+        minion.queue_free()
     super._on_died()
 
 

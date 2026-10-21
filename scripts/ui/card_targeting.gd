@@ -122,3 +122,7 @@ func _over_boss_body(screen_pos: Vector2) -> bool:
     var left: Vector2 = camera.unproject_position(base + Vector3(-5.0, 6.0, 0.0))
     var right: Vector2 = camera.unproject_position(base + Vector3(5.0, 6.0, 0.0))
     return screen_pos.x >= left.x and screen_pos.x <= right.x and screen_pos.y >= top.y and screen_pos.y <= bottom.y
+
+
+func _exit_tree() -> void:
+    Input.set_default_cursor_shape(Input.CURSOR_ARROW)  # never leave the crosshair behind

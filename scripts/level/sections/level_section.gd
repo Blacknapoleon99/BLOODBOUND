@@ -131,17 +131,17 @@ func ambush(label: String, trigger: float, left: float, right: float, spawns: Ar
 
 
 ## A secret under the floor: a 2 m cracked slab at local [hole_x, hole_x + 2] (top 0; leave that
-## span out of your ground() calls), a step below it (top -1.5) and a cellar (floor -3, local
-## hole_x - 4 .. hole_x) holding a reliquary of `kind` (&"shards", &"card", &"relics").
+## span out of your ground() calls) over a niche 1.5 m down holding a reliquary of `kind`
+## (&"shards", &"card", &"relics"). Break it, drop in, claim it, hop back out (1.5 m).
 func secret_cellar(hole_x: float, kind: StringName, shards: int = 25) -> LootChest:
     var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(hole_x + 1.0), -0.5, 0.0), Vector3(2.0, 1.0, 4.0))
     add_child(crack)
     secrets.append(crack)
     platforms.append(Rect2(hole_x, 0.0, 2.0, 0.0))
-    ground(hole_x, hole_x + 2.0, -1.5, -3.0, "Cellar step")
-    ground(hole_x - 4.0, hole_x, -3.0, -4.0, "Secret cellar")
-    block(hole_x - 4.6, hole_x - 4.0, -3.0, -1.0, "Cellar wall")
-    var chest: LootChest = LootChest.create(Vector3(gx(hole_x - 2.6), -3.0, 0.0))
+    ground(hole_x, hole_x + 2.0, -1.5, -3.0, "Secret niche")
+    block(hole_x - 1.0, hole_x, -3.0, -1.0, "Niche wall")  # sealed sides: no slipping under the floor
+    block(hole_x + 2.0, hole_x + 3.0, -3.0, -1.0, "Niche wall")
+    var chest: LootChest = LootChest.create(Vector3(gx(hole_x + 1.0), -1.5, -1.0))
     chest.kind = kind
     chest.shards = shards
     add_child(chest)

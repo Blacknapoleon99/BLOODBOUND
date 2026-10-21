@@ -114,6 +114,8 @@ func equip(id: StringName) -> void:
         Audio.sfx(&"equip", 0.03)
         Profile.save()
         refresh()
+        if item_buttons.has(id):
+            (item_buttons[id] as Button).grab_focus()
 
 
 ## Takes spoil `index` into the stash, equips it, and rolls the next offer if more are pending.
@@ -128,6 +130,7 @@ func claim_spoil(index: int) -> void:
     Profile.save()
     _roll_spoils()
     refresh()
+    continue_button.grab_focus()
 
 
 func _roll_spoils() -> void:

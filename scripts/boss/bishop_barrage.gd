@@ -65,7 +65,7 @@ func _physics_process(delta: float) -> void:
             _finish()
     else:
         if _spawned < GEYSER_COUNT and _t >= _spawned * GEYSER_GAP:
-            var player: Node3D = get_tree().get_first_node_in_group(&"player") as Node3D
+            var player: Node3D = Players.nearest(global_position) as Node3D
             var x: float = player.global_position.x if player != null else center_x
             _add_zone(x, 0.75, 2.6, &"spike", &"bishop_geyser")
             _spawned += 1

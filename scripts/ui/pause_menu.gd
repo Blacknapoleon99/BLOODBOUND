@@ -17,6 +17,7 @@ var _menu: Control
 static func create() -> PauseMenu:
     var pause: PauseMenu = PauseMenu.new()
     pause.name = "PauseMenu"
+    pause.add_to_group(&"pause_menu")
     pause.layer = 20
     pause.process_mode = Node.PROCESS_MODE_ALWAYS
     pause._build()
@@ -77,7 +78,15 @@ func open() -> void:
 
 func close() -> void:
     _root.visible = false
-    get_tree().paused = false
+    # Stay paused if a reward/shop overlay is still waiting underneath.
+    get_tree().paused = _modal_open()
+
+
+func _modal_open() -> bool:
+    for node: Node in get_tree().get_nodes_in_group(&"modal_overlay"):
+        if node.has_method("is_open") and node.call("is_open"):
+            return true
+    return false
 
 
 func _on_settings() -> void:

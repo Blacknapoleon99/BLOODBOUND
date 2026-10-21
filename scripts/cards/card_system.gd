@@ -66,10 +66,20 @@ func _physics_process(delta: float) -> void:
             _queued_slot = -1
         elif not bool(player.call("is_stunned")):
             var slot: int = _queued_slot
+            var had_target: bool = _queued_target != null
             var target: Hurtbox = _queued_target if is_instance_valid(_queued_target) else null
             _queued_slot = -1
             _queued_target = null
-            play_slot(slot, target)
+            if had_target and target == null:
+                card_failed.emit(deck.card_in_slot(slot), slot, &"no_target")  # your target is gone
+            else:
+                play_slot(slot, target)
+
+
+## This hand's input action for slot `i` (player 2's are prefixed "p2_").
+func slot_action(i: int) -> StringName:
+    var prefix: String = String(player.get("input_prefix")) if player != null else ""
+    return StringName(prefix + String(SLOT_ACTIONS[i]))
 
 
 func cooldown_left(card: CardData) -> float:
@@ -134,7 +144,22 @@ func _validate(card: CardData) -> StringName:
         return &"too_weak"
     if card.effect == &"transfusion" and health.current >= health.max_health:
         return &"full_health"
+    if card.effect == &"bell_of_silence" and not _anyone_to_silence(card.card_range):
+        return &"no_target"
     return &"ok"
+
+
+func _anyone_to_silence(reach: float) -> bool:
+    for node: Node in get_tree().get_nodes_in_group(&"silenceable"):
+        var foe: Node3D = node as Node3D
+        if foe == null or (foe.has_method("is_dead") and foe.call("is_dead")):
+            continue
+        if foe is HollowBishop:
+            if (foe as HollowBishop).is_active() or (foe as HollowBishop).phase == HollowBishop.Phase.PURSUIT:
+                return true
+        elif foe.global_position.distance_to(player.global_position) <= reach:
+            return true
+    return false
 
 
 ## Adds a card to the deck mid-run (Blood Altar reward).
@@ -322,6 +347,6 @@ func _unhandled_input(event: InputEvent) -> void:
     if event.is_echo():
         return
     for i in SLOT_ACTIONS.size():
-        if event.is_action_pressed(SLOT_ACTIONS[i]):
+        if event.is_action_pressed(slot_action(i)):
             play_slot(i)
             return

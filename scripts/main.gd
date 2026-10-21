@@ -36,6 +36,12 @@ var fracture: RealityFracture
 var altars: Array[BloodAltar] = []
 var offer_overlay: CardOfferOverlay
 var card_system: CardSystem
+## Co-op: both players (players[0] is `player`). `_actor` is whoever is interacting right now.
+var players: Array[CharacterBody3D] = []
+var _actor: CharacterBody3D
+var _revive_progress: Dictionary = {}  # downed player -> seconds of partner holding Interact
+const COOP_LEASH: float = 18.0
+const REVIVE_TIME: float = 1.2
 var _pending_altar: BloodAltar
 var _fall_screamed: bool = false
 var _callout_cooldown: float = 0.0
@@ -64,7 +70,8 @@ var _banner_left: float = 0.0
 
 
 func _ready() -> void:
-    InputBindings.ensure_defaults()
+    InputBindings.configure_players(RunState.coop)
+    process_physics_priority = 10  # after the players move (co-op leash)
     GameSettings.load_settings()
     add_to_group(&"camera_shaker")
     _build_greybox()
@@ -79,6 +86,22 @@ func _ready() -> void:
         _reward_rng.seed = 4242
     add_child(player)
     player.global_position = SPAWN_POSITION
+    players.append(player)
+    _actor = player
+    if RunState.coop:
+        var p2: CharacterBody3D = PLAYER_SCENE.instantiate() as CharacterBody3D
+        p2.name = "Player2"
+        p2.set("input_prefix", "p2_")
+        p2.set("player_index", 1)
+        p2.add_to_group(&"player")
+        var cards2: CardSystem = p2.get_node("Cards") as CardSystem
+        if RunState.active and not RunState.deck_p2.is_empty():
+            cards2.starter_cards = RunState.deck_p2.duplicate()
+        cards2.deck_seed = (RunState.seed_value if RunState.active else 4242) + 11
+        p2.set("body_color", Color(0.88, 0.45, 0.32))  # player 2 wears red
+        add_child(p2)
+        p2.global_position = SPAWN_POSITION + Vector3(1.4, 0.0, 0.0)
+        players.append(p2)
     add_to_group(&"death_listeners")
     if not RunState.active:
         RunState.relics.clear()  # a directly opened level starts bare
@@ -86,8 +109,9 @@ func _ready() -> void:
     for relic: RelicData in RunState.relics:
         _apply_relic(relic, false)
     Profile.ensure_loaded()
-    Equipment.apply(player, card_system, Profile.equipped_items())
-    player.connect("died", _on_player_died)
+    for p: CharacterBody3D in players:
+        Equipment.apply(p, cards_of(p), Profile.equipped_items())
+        p.connect("died", _on_player_died.bind(p), CONNECT_DEFERRED)  # after the killing hit resolves
     _connect_audio()
 
     camera = Camera3D.new()
@@ -122,7 +146,8 @@ func _ready() -> void:
     hurt_vignette.color = Color(0.7, 0.0, 0.02, 0.0)
     canvas.add_child(hurt_vignette)
     canvas.move_child(hurt_vignette, 0)
-    player.connect("hurt", func(_info: DamageInfo) -> void: hurt_vignette.color.a = 0.55)
+    for p: CharacterBody3D in players:
+        p.connect("hurt", func(_info: DamageInfo) -> void: hurt_vignette.color.a = 0.55)
     phase_banner = MenuStyle.label("", 46, Color(0.95, 0.85, 0.8))
     phase_banner.name = "PhaseBanner"
     phase_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -138,6 +163,17 @@ func _ready() -> void:
     add_child(targeting)
     card_system.card_played.connect(_on_card_played)
     card_system.card_failed.connect(_on_card_failed)
+    if players.size() > 1:
+        var cards2: CardSystem = cards_of(players[1])
+        var card_ui2: CardHandUI = CardHandUI.create(cards2)
+        card_ui2.name = "CardHandP2"
+        card_ui2.anchor_left = 1.0
+        card_ui2.anchor_right = 1.0
+        card_ui2.offset_left = -400.0
+        card_ui2.offset_right = -22.0
+        canvas.add_child(card_ui2)
+        cards2.card_played.connect(_on_card_played)
+        cards2.card_failed.connect(_on_card_failed)
     add_child(PauseMenu.create())
     offer_overlay = CardOfferOverlay.create()
     offer_overlay.resolved.connect(_on_offer_resolved)
@@ -164,16 +200,19 @@ func _process(delta: float) -> void:
     elif not _fall_screamed and player.global_position.y < -1.5 and player.velocity.y < -7.0:
         _fall_screamed = true
         Audio.sfx(&"player_fall", 0.03)  # falling into the abyss
-    if player.global_position.y < -9.0:
-        _respawn()
+    for p: CharacterBody3D in players.duplicate():
+        if p.global_position.y < -9.0:
+            _respawn(p)
+    _tick_revives(delta)
+    var lead: Node3D = Players.leader()
 
     if not in_arena and enemy_alive and absf(player.global_position.x - (PORTCULLIS_X - 0.8)) < 1.0:
         _flash("The portcullis is sealed while the plagued soldier stands.", 1.0)
-    if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > PURSUIT_START_X + map_offset:
+    if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and lead.global_position.x > PURSUIT_START_X + map_offset:
         boss.awaken()
         Audio.voice(&"vo_awaken", true)
         _flash("THE HOLLOW BISHOP rises from the abyss — run for the cathedral!", 3.5)
-    if not in_arena and not boss.fight_started and player.global_position.x > FIGHT_START_X + map_offset:
+    if not in_arena and not boss.fight_started and lead.global_position.x > FIGHT_START_X + map_offset:
         boss.min_x = boss_arena.left_x() + 4.0
         boss.max_x = boss_arena.right_x() - 4.0
         boss.begin_fight()
@@ -196,6 +235,10 @@ func _process(delta: float) -> void:
     var player_health: Health = player.get("health")
     # ASCII only: the web build ships just Godot's default font (no box-drawing glyphs).
     var hp: String = "HP %d/%d    SHARDS %d" % [player_health.current, player_health.max_health, RunState.shards]
+    if players.size() > 1:
+        var h2: Health = players[1].get("health")
+        hp = "P1 HP %d/%d%s    P2 HP %d/%d%s    SHARDS %d" % [player_health.current, player_health.max_health, " DOWN" if bool(player.get("is_downed")) else "",
+            h2.current, h2.max_health, " DOWN" if bool(players[1].get("is_downed")) else "", RunState.shards]
     var objective: String = "SOLDIER: DEFEATED" if not enemy_alive else "SOLDIER: %d HP" % enemy.health.current
     if not enemy_alive:
         objective = "BISHOP: SLAIN" if boss.phase == HollowBishop.Phase.DEFEATED else "GATE: OPEN"
@@ -219,18 +262,23 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-    if event.is_echo():
+    if event.is_echo() or offer_overlay.is_open():
         return
     if event.is_action_pressed(&"restart") and game_won:
         RunState.end_run()
         get_tree().change_scene_to_file("res://scenes/armory.tscn")  # spoils + gear, then a new draft
         return
-    if event.is_action_pressed(&"interact") and game_won and loot_chest != null and loot_chest.player_in_reach(player):
+    var actor: CharacterBody3D = _interactor(event)
+    if actor != null:
+        _actor = actor
+    if actor != null and game_won and loot_chest != null and loot_chest.player_in_reach(actor):
         _pending_chest = loot_chest
         _open_loot()
         return
-    if not event.is_action_pressed(&"interact") or game_won or not is_instance_valid(player):
+    if actor == null or game_won or bool(actor.get("is_downed")):
         return
+    if _downed_partner_near(actor) != null:
+        return  # holding Interact revives (see _tick_revives)
     if fracture.is_transitioning():
         return
     if _active_ambush() != null:
@@ -238,25 +286,28 @@ func _unhandled_input(event: InputEvent) -> void:
         return
     for node: Node in get_tree().get_nodes_in_group(&"shortcut"):
         var cut: LeverShortcut = node as LeverShortcut
-        if cut.lever_in_reach(player):
+        if cut.lever_in_reach(actor):
             cut.pull()
             _flash("A bridge of bone knits across behind you: a shortcut back.", 3.0)
             return
     var stall: MerchantStall = get_tree().get_first_node_in_group(&"merchant") as MerchantStall
-    if stall != null and stall.player_in_reach(player):
+    if stall != null and stall.player_in_reach(actor):
         _open_shop(stall)
         return
     for node: Node in get_tree().get_nodes_in_group(&"loot_chest"):
         var chest: LootChest = node as LootChest
-        if chest != loot_chest and chest.player_in_reach(player):
+        if chest != loot_chest and chest.player_in_reach(actor):
             _open_chest(chest)
             return
     for altar: BloodAltar in altars:
-        if altar.player_in_reach(player):
+        if altar.player_in_reach(actor):
             _pending_altar = altar
             Audio.sfx(&"altar", 0.0)
             offer_overlay.open("BLOOD ALTAR — a card for your deck, or a relic", _altar_offer())
             return
+    if RunState.coop and actor.global_position.distance_to(GATE_POSITION) < 2.7:
+        _flash("The fracture admits only a lone soul (solo only, for now).", 2.0)
+        return
     if bool(player.get("in_3d_mode")):
         if fracture.portal_open:
             _flash("Step into the burning portal to return.", 2.0)
@@ -293,16 +344,26 @@ func _on_ambush_cleared(_ambush: Ambush) -> void:
     _flash("The walls crumble. The way is open.", 3.0)
 
 
-func _on_player_died() -> void:
-    if bool(player.get("in_3d_mode")):
+func _on_player_died(who: CharacterBody3D = null) -> void:
+    if who == null:
+        who = player
+    if bool(who.get("in_3d_mode")):
         # Revived where you stand (no stray death state), then the fracture expels you.
-        player.call("revive_at", player.global_position)
+        who.call("revive_at", who.global_position)
         fracture.fail()
         _flash("The fracture rejects you. Its guardian waits to be challenged again.", 3.5)
         return
-    player.call("revive_at", respawn_point)
+    if players.size() > 1 and not Players.standing().is_empty():
+        who.call("set_downed", true)
+        _revive_progress[who] = 0.0
+        _flash("PLAYER %d IS DOWN: partner, hold Interact beside them to revive!" % (int(who.get("player_index")) + 1), 3.5)
+        return
+    for p: CharacterBody3D in players:
+        p.call("set_downed", false)
+        p.call("revive_at", respawn_point + Vector3(1.4 * int(p.get("player_index")), 0.0, 0.0))
+    _revive_progress.clear()
     _reset_hazards()
-    _flash("You were slain — restored at the last checkpoint.", 3.5)
+    _flash("You were slain — restored at the last checkpoint." if players.size() == 1 else "Both fell — restored at the last checkpoint.", 3.5)
 
 
 func _on_fracture_entered() -> void:
@@ -324,7 +385,7 @@ func _offer_rng() -> RandomNumberGenerator:
 
 ## Offers are mixed lists, so both helpers return plain (untyped) arrays.
 func _card_offer(count: int) -> Array:
-    var owned: Array = card_system.deck.all_cards().map(func(c: CardData) -> StringName: return c.id)
+    var owned: Array = cards_of(_actor).deck.all_cards().map(func(c: CardData) -> StringName: return c.id)
     return Array(CardPool.offer(_offer_rng(), count, owned), TYPE_NIL, &"", null)
 
 
@@ -345,7 +406,7 @@ func _altar_offer() -> Array:
 func _fracture_offer() -> Array:
     var choices: Array = _relic_offer(2)
     var upgradable: Array[CardData] = []
-    for card: CardData in card_system.deck.all_cards():
+    for card: CardData in cards_of(_actor).deck.all_cards():
         if not card.upgraded and not upgradable.has(card):
             upgradable.append(card)
     if not upgradable.is_empty():
@@ -367,10 +428,12 @@ func _open_shop(stall: MerchantStall) -> void:
         if not relic.is_empty():
             stall.stock.append(ShopItem.make(&"relic", relic[0], PRICES[&"relic"]))
         stall.stock.append(ShopItem.make(&"heal", null, PRICES[&"heal"]))
-        var upgradable: Array = card_system.deck.all_cards().filter(func(c: CardData) -> bool: return not c.upgraded)
+        var upgradable: Array = cards_of(_actor).deck.all_cards().filter(func(c: CardData) -> bool: return not c.upgraded)
         if not upgradable.is_empty():
             var base: CardData = upgradable[_offer_rng().randi_range(0, upgradable.size() - 1)]
             stall.stock.append(ShopItem.make(&"upgrade", base.upgraded_copy(), PRICES[&"upgrade"]))
+    # Drop wares that went stale since the stock was rolled (relic owned, card already upgraded).
+    stall.stock = stall.stock.filter(func(w: ShopItem) -> bool: return _ware_valid(w))
     _shop = stall
     _pending_altar = null
     _pending_chest = null
@@ -381,14 +444,26 @@ func _open_shop(stall: MerchantStall) -> void:
     offer_overlay.open("THE PALE MERCHANT: you hold %d Bone Shards" % RunState.shards, stall.stock, "Leave the merchant")
 
 
+func _ware_valid(ware: ShopItem) -> bool:
+    match ware.kind:
+        &"relic":
+            return not RunState.has_relic((ware.payload as RelicData).id)
+        &"upgrade":
+            return cards_of(_actor).deck.all_cards().has((ware.payload as CardData).upgrade_source)
+    return true
+
+
 ## Tries to buy `ware`; reopens the shop while anything is left.
 func _buy(ware: ShopItem) -> void:
     var stall: MerchantStall = _shop
     _shop = null
-    if RunState.shards < ware.price:
+    if not _ware_valid(ware):
+        stall.stock.erase(ware)
+        _flash("\"That one is no longer for sale.\"", 2.0)
+    elif RunState.shards < ware.price:
         Audio.sfx(&"card_refused", 0.0)
         _flash("Not enough Bone Shards: %d needed, you have %d." % [ware.price, RunState.shards], 2.5)
-    elif ware.kind == &"heal" and (player.get("health") as Health).current >= (player.get("health") as Health).max_health:
+    elif ware.kind == &"heal" and (_actor.get("health") as Health).current >= (_actor.get("health") as Health).max_health:
         Audio.sfx(&"card_refused", 0.0)
         _flash("You are already whole.", 2.0)
     else:
@@ -397,7 +472,7 @@ func _buy(ware: ShopItem) -> void:
         Audio.sfx(&"equip", 0.0)
         match ware.kind:
             &"heal":
-                (player.get("health") as Health).restore_full()
+                (_actor.get("health") as Health).restore_full()
                 _flash("The tonic burns going down. Fully healed.", 2.5)
             &"relic":
                 RunState.relics.append(ware.payload as RelicData)
@@ -405,13 +480,13 @@ func _buy(ware: ShopItem) -> void:
                 _flash("Bought %s." % (ware.payload as RelicData).display_name, 2.5)
             &"upgrade":
                 var upgraded: CardData = ware.payload
-                card_system.upgrade_card(upgraded.upgrade_source, upgraded)
+                cards_of(_actor).upgrade_card(upgraded.upgrade_source, upgraded)
                 RunState.replace_card(upgraded.upgrade_source, upgraded)
                 _flash("%s is tempered." % upgraded.display_name, 2.5)
             _:
-                card_system.add_card(ware.payload as CardData)
+                cards_of(_actor).add_card(ware.payload as CardData)
                 if RunState.active:
-                    RunState.deck.append(ware.payload as CardData)
+                    deck_of(_actor).append(ware.payload as CardData)
                 _flash("Bought %s." % (ware.payload as CardData).display_name, 2.5)
     if not stall.stock.is_empty():
         _open_shop.call_deferred(stall)
@@ -429,7 +504,9 @@ func _open_chest(chest: LootChest) -> void:
             Audio.sfx(&"loot_drop", 0.0)
             _flash("A hidden cache: %d Bone Shards." % chest.shards, 3.0)
         &"relics":
-            var relics: Array = _relic_offer(3)
+            if chest.offer.is_empty():
+                chest.offer = _relic_offer(3)
+            var relics: Array = chest.offer.filter(func(r: RelicData) -> bool: return not RunState.has_relic(r.id))
             if relics.is_empty():
                 chest.consume()
                 add_shards(30, chest.global_position)
@@ -439,15 +516,20 @@ func _open_chest(chest: LootChest) -> void:
             offer_overlay.open("THE GRAVEWARDEN'S RELIQUARY: claim one relic", relics)
         &"card":
             Audio.sfx(&"altar", 0.0)
-            offer_overlay.open("A HIDDEN SHRINE: take a card", _card_offer(3))
+            if chest.offer.is_empty():
+                chest.offer = _card_offer(3)
+            offer_overlay.open("A HIDDEN SHRINE: take a card", chest.offer)
         _:
             _open_loot()
 
 
 ## The Bishop's reliquary: pick 1 of 3 unowned items; it goes straight into the stash.
 func _open_loot() -> void:
-    _loot_rng.randomize()
-    var items: Array = Array(ItemPool.offer(_loot_rng, 3, Profile.stash), TYPE_NIL, &"", null)
+    var chest: LootChest = _pending_chest if _pending_chest != null else loot_chest
+    if chest.offer.is_empty():
+        _loot_rng.randomize()
+        chest.offer = Array(ItemPool.offer(_loot_rng, 3, Profile.stash), TYPE_NIL, &"", null)
+    var items: Array = chest.offer
     if items.is_empty():
         loot_chest.consume()
         _flash("The reliquary is empty: you already own every item.", 3.0)
@@ -485,7 +567,7 @@ func _on_offer_resolved(choice: Resource) -> void:
             _pending_chest.consume()
         _pending_chest = null
     if choice == null:
-        _flash("You leave the offering untouched.", 2.0)
+        _flash("You walk away. The altar's blood runs dry.", 2.0)
         return
     if choice is RelicData:
         var relic: RelicData = choice
@@ -495,20 +577,25 @@ func _on_offer_resolved(choice: Resource) -> void:
         return
     var card: CardData = choice
     if card.upgrade_source != null:
-        card_system.upgrade_card(card.upgrade_source, card)
+        cards_of(_actor).upgrade_card(card.upgrade_source, card)
         RunState.replace_card(card.upgrade_source, card)
         _flash("%s is tempered: cost %d, cooldown %ss." % [card.display_name, card.cost, str(card.cooldown)], 3.5)
         return
-    card_system.add_card(card)
+    cards_of(_actor).add_card(card)
     if RunState.active:
-        RunState.deck.append(card)
-    _flash("%s joins your deck (%d cards)." % [card.display_name, card_system.deck.total_cards()], 3.0)
+        deck_of(_actor).append(card)
+    _flash("%s joins your deck (%d cards)." % [card.display_name, cards_of(_actor).deck.total_cards()], 3.0)
 
 
 ## Applies one relic's stat changes to this level's player. `fresh` = just picked (instant
 ## bonuses such as Vessel of Plenty's blood). Rule relics (Leech Fang, Gravebloom) are read
 ## when they trigger, in on_combatant_died.
 func _apply_relic(relic: RelicData, fresh: bool) -> void:
+    for p: CharacterBody3D in players:
+        _apply_relic_to(p, cards_of(p), relic, fresh)
+
+
+func _apply_relic_to(player: CharacterBody3D, card_system: CardSystem, relic: RelicData, fresh: bool) -> void:
     var energy: BloodEnergy = card_system.energy
     var health: Health = player.get("health")
     match relic.id:
@@ -543,10 +630,11 @@ func on_combatant_died(who: Node) -> void:
     kills += 1
     var value: int = int(who.get("shard_value")) if "shard_value" in who else (1 if who.name.begins_with("Husk") else 2)
     add_shards(value, (who as Node3D).global_position)
-    if RunState.has_relic(&"leech_fang"):
-        card_system.energy.add(1.0)
-    if RunState.has_relic(&"gravebloom") and kills % 4 == 0:
-        (player.get("health") as Health).heal(1)
+    for p: CharacterBody3D in players:
+        if RunState.has_relic(&"leech_fang"):
+            cards_of(p).energy.add(1.0)
+        if RunState.has_relic(&"gravebloom") and kills % 4 == 0:
+            (p.get("health") as Health).heal(1)
 
 
 ## Adds Bone Shards and floats a "+N" above `at`.
@@ -575,18 +663,108 @@ func relic_names() -> String:
     return ", ".join(names)
 
 
+func _exit_tree() -> void:
+    Audio.stop_voice()  # the Bishop does not follow you to the menu
+
+
+## Which player pressed Interact in this event (null if none).
+func _interactor(event: InputEvent) -> CharacterBody3D:
+    for p: CharacterBody3D in players:
+        if event.is_action_pressed(p.call("act", &"interact")):
+            return p
+    return null
+
+
+func _partner_of(who: CharacterBody3D) -> CharacterBody3D:
+    for p: CharacterBody3D in players:
+        if p != who:
+            return p
+    return null
+
+
+func cards_of(p: Node) -> CardSystem:
+    return p.get_node("Cards") as CardSystem
+
+
+## The run's deck list for this player (player 2 has its own).
+func deck_of(p: Node) -> Array[CardData]:
+    return RunState.deck_p2 if int(p.get("player_index")) == 1 else RunState.deck
+
+
+func _downed_partner_near(helper: CharacterBody3D) -> CharacterBody3D:
+    var partner: CharacterBody3D = _partner_of(helper)
+    if partner != null and bool(partner.get("is_downed")) and partner.global_position.distance_to(helper.global_position) < 1.8:
+        return partner
+    return null
+
+
+## Co-op revive: the standing partner holds Interact beside a downed player for REVIVE_TIME.
+func _tick_revives(delta: float) -> void:
+    for downed: CharacterBody3D in _revive_progress.keys():
+        var helper: CharacterBody3D = _partner_of(downed)
+        var holding: bool = helper != null and Players.is_standing(helper) and _downed_partner_near(helper) == downed \
+                and Input.is_action_pressed(helper.call("act", &"interact"))
+        _revive_progress[downed] = float(_revive_progress[downed]) + delta if holding else maxf(0.0, float(_revive_progress[downed]) - delta)
+        if float(_revive_progress[downed]) >= REVIVE_TIME:
+            revive(downed)
+
+
+func revive(downed: CharacterBody3D) -> void:
+    _revive_progress.erase(downed)
+    (downed.get("health") as Health).revive(2)
+    downed.call("set_downed", false)
+    downed.set("_invulnerable_left", 1.0)
+    Audio.sfx(&"card_transfusion", 0.0)
+    _flash("PLAYER %d is back on their feet!" % (int(downed.get("player_index")) + 1), 2.5)
+
+
+## Co-op leash: players stay within COOP_LEASH of each other (runs after they moved).
+func _physics_process(_delta: float) -> void:
+    if players.size() < 2:
+        return
+    var a: CharacterBody3D = players[0]
+    var b: CharacterBody3D = players[1]
+    if bool(a.get("in_3d_mode")) or bool(b.get("in_3d_mode")) or not Players.is_standing(a) or not Players.is_standing(b):
+        return
+    var spread: float = b.global_position.x - a.global_position.x
+    if absf(spread) > COOP_LEASH:
+        var lead: CharacterBody3D = b if spread > 0.0 else a
+        var trail: CharacterBody3D = a if lead == b else b
+        lead.global_position.x = trail.global_position.x + signf(spread) * COOP_LEASH
+        lead.velocity.x = 0.0
+
+
+## Midpoint of the standing players (the camera frames them all).
+func _focus() -> Vector3:
+    var standing: Array[Node3D] = Players.standing()
+    if standing.is_empty():
+        return player.global_position
+    var sum: Vector3 = Vector3.ZERO
+    for p: Node3D in standing:
+        sum += p.global_position
+    return sum / standing.size()
+
+
+func _spread() -> float:
+    var standing: Array[Node3D] = Players.standing()
+    if standing.size() < 2:
+        return 0.0
+    return absf(standing[0].global_position.x - standing[1].global_position.x)
+
+
 func _camera_goal() -> Vector3:
     var offset: Vector3 = Vector3(0.0, 4.8, 22.0)
     if bool(player.get("in_3d_mode")):
         offset = Vector3(0.0, 5.8, 11.5)
-    elif player.global_position.x > APPROACH_START_X + map_offset + 0.4:
+    elif _focus().x > APPROACH_START_X + map_offset + 0.4:
         offset = Vector3(0.0, 6.5, 24.0)  # pull back so the Bishop fits in frame
-    return player.global_position + offset
+    offset.z += clampf(_spread() - 6.0, 0.0, 12.0) * 0.9  # pull back as co-op players spread
+    return _focus() + offset
 
 
 func _camera_look_target() -> Vector3:
-    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and player.global_position.x > APPROACH_START_X + map_offset + 0.4
-    return player.global_position + Vector3(0.0, 4.0 if in_boss_arena else 1.2, 0.0)
+    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and _focus().x > APPROACH_START_X + map_offset + 0.4
+    return _focus() + Vector3(0.0, 4.0 if in_boss_arena else 1.2, 0.0)
 
 
 ## Called while the fracture fade is fully black: jump the camera to its new framing.
@@ -655,18 +833,20 @@ const CARD_SOUNDS: Dictionary = {
 func _connect_audio() -> void:
     Audio.apply_volumes()
     Audio.music(&"music_level")
-    player.connect("attack_started", _on_player_attack_audio)
-    player.connect("dodge_started", func(_d: Vector3) -> void: Audio.sfx(&"dodge"))
-    player.connect("jumped", func() -> void: Audio.sfx(&"jump", 0.1, -6.0))
-    player.connect("landed", func() -> void: Audio.sfx(&"land", 0.1, -8.0))
-    player.connect("hurt", func(_i: DamageInfo) -> void: Audio.sfx(&"player_hurt"))
-    player.connect("died", func() -> void:
-        Audio.sfx(&"death")
-        Audio.sfx(&"player_death", 0.0)
-        if boss.fight_started and boss.is_active():
-            get_tree().create_timer(1.2).timeout.connect(func() -> void: Audio.voice(&"vo_taunt", true)))
-    card_system.card_played.connect(func(card: CardData, _slot: int) -> void: Audio.sfx(CARD_SOUNDS.get(card.effect, &"card_spear")))
-    card_system.card_failed.connect(func(_c: CardData, _slot: int, _r: StringName) -> void: Audio.sfx(&"card_refused", 0.0))
+    for p: CharacterBody3D in players:
+        p.connect("attack_started", _on_player_attack_audio)
+        p.connect("dodge_started", func(_d: Vector3) -> void: Audio.sfx(&"dodge"))
+        p.connect("jumped", func() -> void: Audio.sfx(&"jump", 0.1, -6.0))
+        p.connect("landed", func() -> void: Audio.sfx(&"land", 0.1, -8.0))
+        p.connect("hurt", func(_i: DamageInfo) -> void: Audio.sfx(&"player_hurt"))
+        p.connect("died", func() -> void:
+            Audio.sfx(&"death")
+            Audio.sfx(&"player_death", 0.0)
+            if boss.fight_started and boss.is_active() and Players.standing().is_empty():
+                get_tree().create_timer(1.2).timeout.connect(func() -> void: Audio.voice(&"vo_taunt", true)))
+        var cards: CardSystem = cards_of(p)
+        cards.card_played.connect(func(card: CardData, _slot: int) -> void: Audio.sfx(CARD_SOUNDS.get(card.effect, &"card_spear")))
+        cards.card_failed.connect(func(_c: CardData, _slot: int, _r: StringName) -> void: Audio.sfx(&"card_refused", 0.0))
 
 
 func _on_player_attack_audio(id: StringName) -> void:
@@ -721,7 +901,8 @@ func _on_boss_defeated() -> void:
     Audio.voice(&"vo_death", true)
     Audio.sfx(&"victory", 0.0)
     game_won = true
-    player.set("game_frozen", true)
+    for p: CharacterBody3D in players:
+        p.set("game_frozen", true)
     Profile.pending_spoils += 1
     Profile.save()
     # The reliquary rises right beside the (frozen) player so it can be opened at once.
@@ -831,12 +1012,22 @@ func _apply_shake(delta: float) -> void:
     camera.v_offset = randf_range(-1.0, 1.0) * power
 
 
-func _respawn() -> void:
-    if bool(player.get("in_3d_mode")):
-        player.call("teleport_to", fracture.spawn_point)
+func _respawn(who: CharacterBody3D = null) -> void:
+    if who == null:
+        who = player
+    if bool(who.get("in_3d_mode")):
+        who.call("teleport_to", fracture.spawn_point)
         _flash("Fell from the arena — returned to its centre.", 3.5)
         return
-    player.call("teleport_to", respawn_point)
+    # Co-op: rejoin a partner who is safely on the ground, at the cost of 1 HP.
+    var partner: CharacterBody3D = _partner_of(who)
+    if partner != null and Players.is_standing(partner) and partner.is_on_floor() and partner.global_position.y > -2.0:
+        who.call("teleport_to", partner.global_position + Vector3(-0.8, 0.5, 0.0))
+        (who.get("health") as Health).apply_damage(1)
+        _flash("Pulled from the abyss beside your partner (-1 HP).", 2.5)
+        return
+    for p: CharacterBody3D in players:
+        p.call("teleport_to", respawn_point + Vector3(1.4 * int(p.get("player_index")), 0.0, 0.0))
     _reset_hazards()
     if checkpoint.is_active:
         _flash("Fell into the abyss — returned to the checkpoint.", 3.5)
@@ -939,6 +1130,7 @@ func _build_greybox() -> void:
     boss.name = "HollowBishop"
     boss.position = Vector3(32.0 + o, 0.0, -22.0)
     # While it stalks the approach it follows the player across this span.
+    boss.engage_min_x = APPROACH_START_X + o + 0.4  # never reaches back into the rooms
     boss.min_x = APPROACH_START_X + o + 6.0
     boss.max_x = BOSS_ARENA_START_X + o - 2.0
     add_child(boss)

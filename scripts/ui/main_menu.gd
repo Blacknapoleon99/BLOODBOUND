@@ -6,6 +6,7 @@ extends Control
 const GAME_SCENE: String = "res://scenes/armory.tscn"
 
 var start_button: Button
+var coop_button: Button
 var settings_button: Button
 var quit_button: Button
 var settings: SettingsPanel
@@ -45,13 +46,16 @@ func _ready() -> void:
 
     start_button = _add_button(column, "Start", "Start")
     start_button.pressed.connect(_on_start)
+    coop_button = _add_button(column, "Start Co-op (2 players)", "StartCoop")
+    coop_button.pressed.connect(_on_start_coop)
     settings_button = _add_button(column, "Settings", "Settings")
     settings_button.pressed.connect(_on_settings)
     quit_button = _add_button(column, "Quit", "Quit")
     quit_button.pressed.connect(func() -> void: get_tree().quit())
     quit_button.visible = not OS.has_feature("web")
 
-    column.add_child(MenuStyle.label("Greybox vertical slice — keyboard: A/D move · Space jump · J/L attack · K dodge · cards: 1-3 or click card, then click target · Esc pause", 14, Color(0.6, 0.56, 0.52)))
+    column.add_child(MenuStyle.label("A/D move · Space jump · left/right click attack · Shift dodge · 1-3 cards · E interact · Esc pause
+Co-op player 2: gamepad, or arrows + numpad (4 light, 5 heavy, 6 dodge, 1-3 cards, Enter interact)", 14, Color(0.6, 0.56, 0.52)))
 
     settings = SettingsPanel.create()
     settings.visible = false
@@ -71,6 +75,14 @@ func _add_button(parent: Control, text: String, node_name: String) -> Button:
 
 
 func _on_start() -> void:
+    RunState.coop = false
+    RunState.end_run()
+    get_tree().change_scene_to_file(GAME_SCENE)
+
+
+## Local co-op: P1 keyboard + mouse, P2 the first gamepad (or arrows + numpad).
+func _on_start_coop() -> void:
+    RunState.coop = true
     RunState.end_run()
     get_tree().change_scene_to_file(GAME_SCENE)
 

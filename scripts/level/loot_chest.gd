@@ -11,6 +11,8 @@ const REACH: float = 2.2
 var used: bool = false
 var kind: StringName = &"items"
 var shards: int = 0
+## Rolled on first open and kept, so skipping and reopening never rerolls.
+var offer: Array = []
 var _lid: MeshInstance3D
 var _glow: StandardMaterial3D
 var _light: OmniLight3D

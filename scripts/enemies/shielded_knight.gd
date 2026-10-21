@@ -91,6 +91,9 @@ func _tick(delta: float, target: Node3D) -> void:
 
 func _on_poise_break(info: DamageInfo) -> void:
     bash.deactivate()
+    if state == &"stagger":
+        _stun_left = maxf(_stun_left, info.hitstun)  # keep the shield down for the full stagger
+        return
     super._on_poise_break(info)
 
 

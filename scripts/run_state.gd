@@ -10,6 +10,10 @@ const OFFER_SIZE: int = 3
 static var active: bool = false
 static var seed_value: int = 0
 static var deck: Array[CardData] = []
+## Local co-op (set by the main menu; survives end_run so the Armory → draft flow keeps it).
+static var coop: bool = false
+## Player 2's drafted deck in co-op.
+static var deck_p2: Array[CardData] = []
 ## Passive relics taken this run (see RelicPool). Also used, and cleared per level load, when no
 ## run is active, so relics picked in a directly opened level still work.
 static var relics: Array[RelicData] = []
@@ -27,6 +31,7 @@ static func new_run(run_seed: int = -1) -> void:
     seed_value = run_seed
     rng.seed = run_seed
     deck.clear()
+    deck_p2.clear()
     relics.clear()
     shards = 0
     active = true
@@ -35,13 +40,14 @@ static func new_run(run_seed: int = -1) -> void:
 static func end_run() -> void:
     active = false
     deck.clear()
+    deck_p2.clear()
     relics.clear()
     shards = 0
 
 
 ## Next random offer for this run, never repeating cards already in the deck when avoidable.
-static func next_offer(count: int = OFFER_SIZE) -> Array[CardData]:
-    var owned: Array = deck.map(func(c: CardData) -> StringName: return c.id)
+static func next_offer(count: int = OFFER_SIZE, for_deck: Array[CardData] = deck) -> Array[CardData]:
+    var owned: Array = for_deck.map(func(c: CardData) -> StringName: return c.id)
     return CardPool.offer(rng, count, owned)
 
 
@@ -64,4 +70,9 @@ static func replace_card(old: CardData, new: CardData) -> void:
 
 
 static func draft_done() -> bool:
-    return deck.size() >= DRAFT_ROUNDS
+    return deck.size() >= DRAFT_ROUNDS and (not coop or deck_p2.size() >= DRAFT_ROUNDS)
+
+
+## Whose draft pick is next: 0 = player 1, 1 = player 2 (co-op, after player 1's three).
+static func drafting_player() -> int:
+    return 1 if coop and deck.size() >= DRAFT_ROUNDS else 0

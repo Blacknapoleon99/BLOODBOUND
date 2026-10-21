@@ -155,7 +155,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _target() -> Node3D:
-    var player: Node3D = get_tree().get_first_node_in_group(&"player") as Node3D
+    var player: Node3D = Players.nearest(global_position) as Node3D
     if player == null or bool(player.get("in_3d_mode")):
         return null
     var player_health: Health = player.get("health") as Health
@@ -168,7 +168,7 @@ func _target() -> Node3D:
 
 func _can_step(dir: float) -> bool:
     var next_x: float = global_position.x + dir * 0.6
-    return next_x > min_x and next_x < max_x
+    return (next_x > min_x or dir > 0.0) and (next_x < max_x or dir < 0.0)
 
 
 func _on_hit(info: DamageInfo) -> void:

@@ -16,6 +16,7 @@ static func create() -> CardOfferOverlay:
     overlay.name = "CardOfferOverlay"
     overlay.layer = 18
     overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+    overlay.add_to_group(&"modal_overlay")
     overlay._build()
     return overlay
 

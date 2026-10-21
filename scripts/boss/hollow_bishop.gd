@@ -311,7 +311,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _engaged_player() -> Node3D:
-    var player: Node3D = get_tree().get_first_node_in_group(&"player") as Node3D
+    var player: Node3D = Players.nearest(global_position) as Node3D
     if player == null or bool(player.get("in_3d_mode")) or player.global_position.x < engage_min_x:
         return null
     var player_health: Health = player.get("health") as Health

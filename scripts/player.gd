@@ -72,6 +72,12 @@ var _jump_rising: bool = false
 var _was_on_floor: bool = true  # no landing thud on spawn
 var _dodge_left: float = 0.0
 var _attack_held: bool = false
+## Local co-op: this player's action-name prefix ("" = player 1, "p2_" = player 2) and index.
+## Online play can drive a remote player's prefixed actions without touching this script.
+var input_prefix: String = ""
+var player_index: int = 0
+## Co-op: knocked down at 0 HP until the partner revives you (see main.gd).
+var is_downed: bool = false
 var _haste_left: float = 0.0
 var _haste_mult: float = 1.0
 var _invulnerable_left: float = 0.0
@@ -89,6 +95,8 @@ var _combo_left: float = 0.0
 var _hurt_flash_left: float = 0.0
 var _body_material: StandardMaterial3D
 const BODY_COLOR: Color = Color(0.55, 0.6, 0.85)
+## Set before adding to the tree (co-op player 2 is red).
+var body_color: Color = BODY_COLOR
 
 
 func _ready() -> void:
@@ -101,8 +109,25 @@ func _ready() -> void:
     var knight: MeshInstance3D = get_node_or_null("VisualRoot/PlaceholderKnight") as MeshInstance3D
     if knight:
         _body_material = StandardMaterial3D.new()
-        _body_material.albedo_color = BODY_COLOR
+        _body_material.albedo_color = body_color
         knight.material_override = _body_material
+
+
+## This player's name for an input action (see InputBindings.configure_players).
+func act(action: StringName) -> StringName:
+    return action if input_prefix == "" else StringName(input_prefix + String(action))
+
+
+## Co-op down state: no control, no hurtbox, lying on the ground.
+func set_downed(down: bool) -> void:
+    is_downed = down
+    game_frozen = down
+    hurtbox.set_enabled(not down)
+    velocity = Vector3.ZERO
+    var visual: Node3D = get_node_or_null("VisualRoot") as Node3D
+    if visual:
+        visual.rotation.z = PI * 0.5 if down else 0.0
+        visual.position.y = -0.55 if down else 0.0
 
 
 func is_invulnerable() -> bool:
@@ -219,6 +244,12 @@ func teleport_to(target: Vector3) -> void:
 func revive_at(target: Vector3) -> void:
     health.restore_full()
     teleport_to(target)
+    _combo_prev = null
+    _combo_left = 0.0
+    _haste_left = 0.0
+    melee.haste_scale = 1.0
+    _shield_left = 0.0
+    _shield_visual.visible = false
 
 
 func _physics_process(delta: float) -> void:
@@ -242,14 +273,14 @@ func _physics_process(delta: float) -> void:
     var input_x: float = 0.0
     var input_z: float = 0.0
     if controllable:
-        input_x = Input.get_axis(&"move_left", &"move_right")
-        input_z = Input.get_axis(&"move_forward", &"move_back") if in_3d_mode else 0.0
+        input_x = Input.get_axis(act(&"move_left"), act(&"move_right"))
+        input_z = Input.get_axis(act(&"move_forward"), act(&"move_back")) if in_3d_mode else 0.0
     if not melee.is_busy():
         _update_facing(input_x, input_z)
 
-    if controllable and Input.is_action_just_pressed(&"jump"):
+    if controllable and Input.is_action_just_pressed(act(&"jump")):
         _buffer_left = jump_buffer_time
-    if controllable and Input.is_action_just_pressed(&"dodge"):
+    if controllable and Input.is_action_just_pressed(act(&"dodge")):
         _try_start_dodge(input_x, input_z, on_floor)
     if _queued_attack != null and not melee.is_busy() and not is_stunned():
         var queued: AttackData = _queued_attack
@@ -257,7 +288,7 @@ func _physics_process(delta: float) -> void:
         if _queued_left > 0.0:
             _try_attack(queued)
     if controllable and not melee.is_busy() and _queued_attack == null and not is_dodging():
-        if _attack_held and Input.is_action_pressed(&"attack"):
+        if _attack_held and Input.is_action_pressed(act(&"attack")):
             _try_attack(light_attack)  # holding left click / J keeps the combo going
         else:
             _attack_held = false
@@ -336,7 +367,7 @@ func _update_reaction_visuals(delta: float) -> void:
     visual.rotation.z = lerpf(visual.rotation.z, lean, minf(1.0, 18.0 * delta))
     if _body_material:
         var t: float = _hurt_flash_left / 0.18
-        _body_material.albedo_color = BODY_COLOR.lerp(Color(1.0, 0.25, 0.2), t)
+        _body_material.albedo_color = body_color.lerp(Color(1.0, 0.25, 0.2), t)
         _body_material.emission_enabled = t > 0.0
         _body_material.emission = Color(1.0, 0.1, 0.05) * t
 
@@ -402,7 +433,7 @@ func _apply_jump_and_gravity(on_floor: bool, delta: float) -> void:
         jumped.emit()
         return
 
-    if _jump_rising and velocity.y > 0.0 and not Input.is_action_pressed(&"jump"):
+    if _jump_rising and velocity.y > 0.0 and not Input.is_action_pressed(act(&"jump")):
         velocity.y *= jump_cut_factor
         _jump_rising = false
     _apply_gravity(on_floor, delta)
@@ -443,7 +474,7 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
 
 ## With no stick/keys held, aim the attack at the nearest living enemy in range (3D only).
 func _soft_lock_facing() -> void:
-    var input: Vector2 = Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+    var input: Vector2 = Input.get_vector(act(&"move_left"), act(&"move_right"), act(&"move_forward"), act(&"move_back"))
     if input.length() > 0.2:
         return
     var best: Node3D = null
@@ -531,10 +562,10 @@ func _on_died() -> void:
 func _unhandled_input(event: InputEvent) -> void:
     if game_frozen or event.is_echo():
         return
-    if event.is_action_pressed(&"attack"):
+    if event.is_action_pressed(act(&"attack")):
         # Only a press that reached the player counts as holding: clicks eaten by the HUD or
         # by card targeting must not start a combo through Input.is_action_pressed.
         _attack_held = true
         _try_attack(light_attack)
-    elif event.is_action_pressed(&"heavy_attack"):
+    elif event.is_action_pressed(act(&"heavy_attack")):
         _try_attack(heavy_attack)

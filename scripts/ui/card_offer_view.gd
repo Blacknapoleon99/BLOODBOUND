@@ -42,6 +42,9 @@ func show_offers(cards: Array) -> void:
 func _unhandled_input(event: InputEvent) -> void:
     if not is_visible_in_tree():
         return
+    var pause_menu: Node = get_tree().get_first_node_in_group(&"pause_menu")
+    if pause_menu != null and pause_menu.call("is_open"):
+        return  # the pause menu is on top: no picking through it
     for i in mini(offers.size(), CardSystem.SLOT_ACTIONS.size()):
         if event.is_action_pressed(CardSystem.SLOT_ACTIONS[i]):
             get_viewport().set_input_as_handled()

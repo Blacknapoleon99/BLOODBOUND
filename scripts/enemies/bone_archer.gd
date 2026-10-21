@@ -171,7 +171,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _target() -> Node3D:
-    var player: Node3D = get_tree().get_first_node_in_group(&"player") as Node3D
+    var player: Node3D = Players.nearest(global_position) as Node3D
     if player == null or bool(player.get("in_3d_mode")):
         return null
     if absf(player.global_position.x - global_position.x) > engage_range or absf(player.global_position.y - global_position.y) > 3.0:
@@ -183,7 +183,7 @@ func _can_step(dir: float) -> bool:
     var next_x: float = global_position.x + dir * 0.6
     if absf(dir) > 1.0:
         next_x = global_position.x + dir
-    return next_x > min_x and next_x < max_x
+    return (next_x > min_x or dir > 0.0) and (next_x < max_x or dir < 0.0)
 
 
 func _on_hit(info: DamageInfo) -> void:

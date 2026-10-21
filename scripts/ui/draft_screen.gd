@@ -41,12 +41,18 @@ func _next_round() -> void:
     if RunState.draft_done():
         get_tree().change_scene_to_file(GAME_SCENE)
         return
-    round_label.text = "Pick %d of %d  ·  run seed %d" % [RunState.deck.size() + 1, RunState.DRAFT_ROUNDS, RunState.seed_value]
-    var names: Array = RunState.deck.map(func(c: CardData) -> String: return c.display_name)
+    var p: int = RunState.drafting_player()
+    var picking: Array[CardData] = RunState.deck_p2 if p == 1 else RunState.deck
+    var who: String = ("PLAYER %d  ·  " % (p + 1)) if RunState.coop else ""
+    round_label.text = "%sPick %d of %d  ·  run seed %d" % [who, picking.size() + 1, RunState.DRAFT_ROUNDS, RunState.seed_value]
+    var names: Array = picking.map(func(c: CardData) -> String: return c.display_name)
     chosen_label.text = "Your deck: " + (", ".join(names) if not names.is_empty() else "—")
-    offer_view.show_offers(RunState.next_offer())
+    offer_view.show_offers(RunState.next_offer(RunState.OFFER_SIZE, picking))
 
 
 func _on_picked(choice: Resource) -> void:
-    RunState.deck.append(choice as CardData)
+    if RunState.drafting_player() == 1:
+        RunState.deck_p2.append(choice as CardData)
+    else:
+        RunState.deck.append(choice as CardData)
     _next_round.call_deferred()

@@ -23,6 +23,8 @@ var state: State = State.ARMED
 var enemies: Array[Node3D] = []
 var _walls: Array[StaticBody3D] = []
 var wave: int = 0
+## Spawn indices already killed: a retry after a death does not bring them back.
+var _killed: Dictionary = {}
 
 
 static func create(label: String, trigger: float, left: float, right: float, spawn_list: Array[Dictionary]) -> Ambush:
@@ -57,11 +59,11 @@ func _prune() -> void:
 func _physics_process(_delta: float) -> void:
     match state:
         State.ARMED:
-            var player: Node3D = get_tree().get_first_node_in_group(&"player") as Node3D
-            if enabled and player != null and not bool(player.get("in_3d_mode")) \
-                    and player.global_position.x > trigger_x and player.global_position.x < right_x \
-                    and absf(player.global_position.y - global_position.y) < 4.0:
-                _start()
+            for player: Node3D in Players.standing():
+                if enabled and not bool(player.get("in_3d_mode")) and player.global_position.x > trigger_x \
+                        and player.global_position.x < right_x and absf(player.global_position.y - global_position.y) < 4.0:
+                    _start()
+                    break
         State.ACTIVE:
             if alive_count() == 0 and _spawn_wave(wave + 1) > 0:
                 wave += 1
@@ -83,11 +85,13 @@ func _start() -> void:
 ## Spawns every spawn of wave `n`; returns how many.
 func _spawn_wave(n: int) -> int:
     var count: int = 0
-    for spawn: Dictionary in spawns:
-        if int(spawn.get("wave", 0)) != n:
+    for index in spawns.size():
+        var spawn: Dictionary = spawns[index]
+        if int(spawn.get("wave", 0)) != n or _killed.has(index):
             continue
         var enemy: Node3D = EnemyFactory.spawn(spawn["type"], get_parent(), float(spawn["x"]), left_x + 0.8, right_x - 0.8, global_position.y + 1.0)
         enemy.add_to_group(&"ambush_enemy")
+        enemy.connect("defeated", func() -> void: _killed[index] = true)
         enemies.append(enemy)
         count += 1
     return count

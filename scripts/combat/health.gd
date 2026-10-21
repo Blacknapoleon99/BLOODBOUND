@@ -39,6 +39,12 @@ func heal(amount: int) -> void:
     changed.emit(current, max_health)
 
 
+## Back from 0 HP with `amount` HP (co-op revive). Unlike heal(), works on the dead.
+func revive(amount: int) -> void:
+    current = clampi(amount, 1, max_health)
+    changed.emit(current, max_health)
+
+
 func restore_full() -> void:
     current = max_health
     changed.emit(current, max_health)

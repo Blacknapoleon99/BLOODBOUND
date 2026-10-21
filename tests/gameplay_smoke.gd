@@ -316,6 +316,7 @@ func _test_defaults() -> void:
     SpikeTrap.enabled = false  # likewise for the traps (see _m13_hazard_checks)
     Profile.reset()  # starter gear only (no stats): equipment has its own checks
     LevelLayout.classic = true  # the original short layout; the full map has its own checks
+    RunState.coop = false  # solo; co-op has its own checks
     PendulumBlade.enabled = false
 
 
@@ -2453,7 +2454,8 @@ func _m18_gravewarden_checks() -> void:
     warden.start_move(&"summon")
     await _seconds(1.0)
     var minions: Array[Node] = root.get_tree().get_nodes_in_group(&"warden_minion")
-    _check(minions.size() == 2, "Raise Guard calls two Bone Crawlers (%d)" % minions.size())
+    var inside: bool = minions.all(func(m: Node) -> bool: return (m as Node3D).global_position.x >= warden.min_x and (m as Node3D).global_position.x <= warden.max_x)
+    _check(minions.size() >= 1 and minions.size() <= 2 and inside, "Raise Guard calls Bone Crawlers, never behind the hall's walls (%d)" % minions.size())
     for m: Node in minions:
         (m.get("health") as Health).apply_damage(9)
     await _seconds(1.0)
@@ -2572,13 +2574,18 @@ func _m19_merchant_secret_shortcut_checks() -> void:
         _tap(KEY_L)
         await _seconds(0.9)
     await _seconds(0.6)
-    _check(crack.is_broken and _player.global_position.y < -0.5, "heavy strikes break it and you drop into the cellar (y=%.1f)" % _player.global_position.y)
-    _player.call("teleport_to", cache.global_position + Vector3(0.8, 1.0, 0.0))
-    await _seconds(0.5)
+    _check(crack.is_broken and _player.global_position.y < -0.3 and _player.is_on_floor(), "heavy strikes break it and you drop into the niche below (y=%.1f)" % _player.global_position.y)
     var shards0: int = RunState.shards
-    _tap(KEY_E)
+    _tap(KEY_E)  # no teleport: the cache must be reachable from where you land
     await _frames(4)
-    _check(cache.used and RunState.shards == shards0 + cache.shards, "the hidden cache gives %d Bone Shards" % cache.shards)
+    _check(cache.used and RunState.shards == shards0 + cache.shards, "the hidden cache is right there: %d Bone Shards" % cache.shards)
+    _key(KEY_D, true)
+    _key(KEY_SPACE, true)
+    await _seconds(0.45)
+    _key(KEY_D, false)  # the test room ends 4 m on: stop before running off it
+    _key(KEY_SPACE, false)
+    await _seconds(0.5)
+    _check(_player.global_position.y > 0.5 and _player.is_on_floor(), "you can hop back out of the niche (y=%.2f)" % _player.global_position.y)
     _check(crawl.is_completable(), "the room stays completable with the floor broken")
     var no_target: bool = cards.find_enemy_target(50.0, crack.global_position).get("target") == null
     _check(no_target, "cards never target a cracked floor")
