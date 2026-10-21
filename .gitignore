@@ -34,4 +34,4 @@ Thumbs.db
 # MCP tool output
 .playwright-mcp/
 .mcp/
-tools/.elevenlabs_cache/
+tools/.elevenlabs_cache*/

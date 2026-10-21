@@ -322,3 +322,14 @@
     - Haste applies ×1.3, covers more ground than normal running, and wears off.
 - `build/windows-run7/Bloodbound.exe` exported; the release export probe exits 0.
 - Six new sounds are placeholders (synth) until the next ElevenLabs batch: card_step, card_hook, card_bridge, card_nova, card_haste, loot_drop.
+
+## Sound v2 + voices (2026-10-21)
+
+- **Generation:** 46/46 SFX and 20/20 voice lines generated, 0 failed. Files checked: mono 22050 Hz, Bishop lines 1.5–5.8 s, knight cries 0.5–2.6 s, peaks normalised.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 373/373**:
+  - every SFX (now including player_fall, player_death and player_effort) is triggered by gameplay;
+  - all 12 Bishop lines exist;
+  - the Bishop speaks at awakening, fight start, phases II–IV and death, plus at least 8 different lines in total;
+  - the knight has 4 hurt takes.
+- `build/windows-run8/Bloodbound.exe`; the release export probe exits 0.
+- Not verified: listening. The demonize settings are a first guess, and the knight's short cries depend on how TTS reads interjections.

@@ -1708,6 +1708,11 @@ const SOUND_IDS: Array[StringName] = [
     &"arrow_release", &"walls_rise", &"altar", &"ui_click", &"victory",
     &"bone_rain", &"geyser", &"hound_pounce", &"husk_burst", &"soldier_lunge", &"equip",
     &"card_step", &"card_hook", &"card_bridge", &"card_nova", &"card_haste", &"loot_drop",
+    &"player_fall", &"player_death", &"player_effort",
+]
+const VOICE_LINES: Array[StringName] = [
+    &"vo_awaken", &"vo_fight", &"vo_phase2", &"vo_phase3", &"vo_phase4", &"vo_slam", &"vo_beam",
+    &"vo_summon", &"vo_rain", &"vo_geyser", &"vo_taunt", &"vo_death",
 ]
 
 
@@ -1732,6 +1737,16 @@ func _m10_audio_checks() -> void:
         if int(Audio.played.get(id, 0)) == 0:
             silent.append(id)
     _check(silent.is_empty(), "every sound was triggered by gameplay during this run (never played: %s)" % [silent])
+    var missing_vo: Array[StringName] = []
+    for id: StringName in VOICE_LINES:
+        if not ResourceLoader.exists("res://assets/audio/%s.wav" % id):
+            missing_vo.append(id)
+    _check(missing_vo.is_empty(), "all %d Bishop voice lines exist (missing: %s)" % [VOICE_LINES.size(), missing_vo])
+    var spoken: Array = VOICE_LINES.filter(func(id: StringName) -> bool: return int(Audio.voiced.get(id, 0)) > 0)
+    _check(spoken.has(&"vo_awaken") and spoken.has(&"vo_fight") and spoken.has(&"vo_phase2") and spoken.has(&"vo_phase3") and spoken.has(&"vo_phase4") and spoken.has(&"vo_death"), "the Bishop speaks at awakening, fight start, each phase and death (%s)" % [spoken])
+    _check(spoken.size() >= 8, "the Bishop also calls out its attacks (%d different lines spoken)" % spoken.size())
+    var hurt_takes: Array = Audio._takes(&"player_hurt")
+    _check(hurt_takes.size() == 4, "the knight has 4 different hurt cries, picked at random (%d)" % hurt_takes.size())
 
 
 ## Relics & card upgrades: offers mix cards/relics/upgrades, every relic does what it says,

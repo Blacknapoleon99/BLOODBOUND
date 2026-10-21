@@ -150,3 +150,7 @@ User playtest of windows-run6: listen pass on the new audio, plus feel of the ne
 ### Next action
 - ElevenLabs regeneration with the user's new key (needs cost approval).
 - Start the art/asset phase (see the plan in chat).
+
+## 2026-10-21 — Sound v2 + Bishop and knight voices
+
+- 46 regenerated sounds and 20 voice lines (Bishop demon-robot, knight cries/scream). Build `build/windows-run8/Bloodbound.exe`.

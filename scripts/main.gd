@@ -36,6 +36,8 @@ var altars: Array[BloodAltar] = []
 var offer_overlay: CardOfferOverlay
 var card_system: CardSystem
 var _pending_altar: BloodAltar
+var _fall_screamed: bool = false
+var _callout_cooldown: float = 0.0
 var loot_chest: LootChest
 var _loot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -148,6 +150,12 @@ func _process(delta: float) -> void:
         phase_banner.modulate.a = clampf(_banner_left / 0.6, 0.0, 1.0)
         phase_banner.visible = _banner_left > 0.0
 
+    _callout_cooldown = maxf(0.0, _callout_cooldown - delta)
+    if player.is_on_floor():
+        _fall_screamed = false
+    elif not _fall_screamed and player.global_position.y < -1.5 and player.velocity.y < -7.0:
+        _fall_screamed = true
+        Audio.sfx(&"player_fall", 0.03)  # falling into the abyss
     if player.global_position.y < -9.0:
         _respawn()
 
@@ -155,12 +163,14 @@ func _process(delta: float) -> void:
         _flash("The portcullis is sealed while the plagued soldier stands.", 1.0)
     if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and player.global_position.x > PURSUIT_START_X:
         boss.awaken()
+        Audio.voice(&"vo_awaken", true)
         _flash("THE HOLLOW BISHOP rises from the abyss — run for the cathedral!", 3.5)
     if not in_arena and not boss.fight_started and player.global_position.x > FIGHT_START_X:
         boss.min_x = boss_arena.left_x() + 4.0
         boss.max_x = boss_arena.right_x() - 4.0
         boss.begin_fight()
         Audio.music(&"music_boss")
+        Audio.voice(&"vo_fight", true)
         _flash("The Bishop turns to face you. Strike the stigmata when its hand falls.", 3.5)
     _update_boss_bar()
     var ambush_now: Ambush = _active_ambush()
@@ -500,7 +510,11 @@ func _connect_audio() -> void:
     player.connect("jumped", func() -> void: Audio.sfx(&"jump", 0.1, -6.0))
     player.connect("landed", func() -> void: Audio.sfx(&"land", 0.1, -8.0))
     player.connect("hurt", func(_i: DamageInfo) -> void: Audio.sfx(&"player_hurt"))
-    player.connect("died", func() -> void: Audio.sfx(&"death"))
+    player.connect("died", func() -> void:
+        Audio.sfx(&"death")
+        Audio.sfx(&"player_death", 0.0)
+        if boss.fight_started and boss.is_active():
+            get_tree().create_timer(1.2).timeout.connect(func() -> void: Audio.voice(&"vo_taunt", true)))
     card_system.card_played.connect(func(card: CardData, _slot: int) -> void: Audio.sfx(CARD_SOUNDS.get(card.effect, &"card_spear")))
     card_system.card_failed.connect(func(_c: CardData, _slot: int, _r: StringName) -> void: Audio.sfx(&"card_refused", 0.0))
 
@@ -509,18 +523,34 @@ func _on_player_attack_audio(id: StringName) -> void:
     match id:
         &"player_light_finisher":
             Audio.sfx(&"slash_finisher")
+            Audio.sfx(&"player_effort", 0.04, -3.0)
         &"player_heavy":
             Audio.sfx(&"heavy_swing")
+            Audio.sfx(&"player_effort", 0.04)
         _:
             Audio.sfx(&"slash", 0.12)
+
+
+const PHASE_LINES: Dictionary = {"COLLAPSE": &"vo_phase2", "COVENANT": &"vo_phase3", "UNMAKING": &"vo_phase4"}
+const ATTACK_LINES: Dictionary = {
+    &"slam": &"vo_slam", &"sunder": &"vo_slam", &"beam": &"vo_beam", &"summon": &"vo_summon",
+    &"bone_rain": &"vo_rain", &"marrow_geyser": &"vo_geyser",
+}
 
 
 func _on_boss_audio_phase(phase_name: String) -> void:
     if phase_name in ["INTRO", "COLLAPSE", "COVENANT", "UNMAKING"]:
         Audio.sfx(&"bishop_roar", 0.03)
+    if PHASE_LINES.has(phase_name):
+        Audio.voice(PHASE_LINES[phase_name], true)
+        _callout_cooldown = 6.0
 
 
 func _on_boss_audio_attack(attack: StringName) -> void:
+    # Callouts: never over another line, at most one every 4 s, so they stay menacing, not chatty.
+    if ATTACK_LINES.has(attack) and _callout_cooldown <= 0.0 and boss.fight_started:
+        if Audio.voice(ATTACK_LINES[attack]):
+            _callout_cooldown = 4.0
     match attack:
         &"lance", &"lance_volley":
             Audio.sfx(&"lance_whistle")
@@ -538,6 +568,7 @@ func _on_boss_audio_attack(attack: StringName) -> void:
 
 func _on_boss_defeated() -> void:
     Audio.stop_music()
+    Audio.voice(&"vo_death", true)
     Audio.sfx(&"victory", 0.0)
     game_won = true
     player.set("game_frozen", true)

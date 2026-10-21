@@ -242,3 +242,15 @@ Playtester: more mechanics and things to do between the start and the Bishop.
 - `Player.blink` raycasts at knee, chest and head height. It skips bodies in the enemy group and stops 0.45 m short of anything else.
 - Found by test: the first Grave Hook test stood in a gap, and the ledge wall correctly blocked the pull. That led to the hook's lift.
 - `tools/generate_audio.gd` now takes ids after `--`, so placeholder sounds for new content never overwrite the ElevenLabs set.
+
+## DEC-036 — Sound v2 and voices (2026-10-21)
+
+- **Effects v2.** Playtester: some sounds were still generic. All 46 SFX and music were regenerated with the user's new ElevenLabs key. The prompts now name materials, layers and characters (`tools/elevenlabs_sfx.py`), with prompt_influence 0.7, and the music loops are 30 s. The v1 cache is kept locally in `tools/.elevenlabs_cache_v1/`.
+- **Key handling.** The key file's path is passed with `--key-file`; the tool reads it at runtime and never prints or stores it.
+- **Voices** (`tools/elevenlabs_voice.py`, ElevenLabs TTS `eleven_v4`). The free plan cannot design or save custom voices, nor use premium library voices, through the API, so each speaker uses one fixed default voice:
+  - **The Hollow Bishop** (Adam, then the same `demonize` chain on every line: pitch −20%, 60 Hz ring modulation for the robotic metal, tanh distortion, bit grit, 130 ms cathedral echo).
+    - 12 lines: awakening, fight start, each phase, attack callouts (slam/sunder, beam, summon, Bone Rain, Marrow Geyser), a taunt when it kills you, and its death.
+    - Callouts never talk over another line, and at most one plays every 4 s.
+  - **The knight** (Harry, "fierce warrior"): 4 hurt cries picked at random, a falling scream ("Aaaah!", played when you drop into the abyss), a death line and 2 effort shouts on finishers and heavy swings.
+- `Audio.sfx` now plays a random take when `<id>_2..6` exist; `Audio.voice` is a single voice channel (urgent lines interrupt).
+- **Credits:** the new key's meter showed 506 used right after the batches (it lags). Expected total ≈ 1,100 (SFX) + ≈ 450 (TTS characters).
