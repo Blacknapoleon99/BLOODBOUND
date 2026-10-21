@@ -212,3 +212,12 @@ Playtester: more mechanics and things to do between the start and the Bishop.
 - **Flow:** Start → Armory → draft → level. A victory adds a spoil (pick 1 of 3 unowned items), and R after victory opens the Armory.
 - **Application:** `Equipment.apply` runs once per level load, after relics. It reuses the relic hooks: `MeleeAttack.bonus_damage`, and the new `MeleeAttack.speed_scale` for attack speed.
 - **Tests:** they reset the Profile to starter gear (no stats), so equipment never changes scripted timings. The export probe disables persistence so it never writes the player's profile.
+
+## DEC-034 — ElevenLabs sound pass (2026-10-21)
+
+- Playtester: the synthesized sounds were too generic. With the user's approval of the credit cost, `tools/elevenlabs_sfx.py` generated all 38 effects and both music loops with the ElevenLabs Sound Effects API (`eleven_text_to_sound_v2`; music uses `loop: true`).
+- **Cost and account:** 808 credits (account went from 8,682 to 9,490 used of 10,000), about 10 credits per requested second. The account is on the free tier.
+- **Format:** the API returns 16-bit **stereo** PCM for `pcm_22050`. Found by checking sample correlation, because clips came back at double length. The script downmixes to mono, trims leading and trailing silence on effects (instant response), fades the tail and peak-normalises per sound.
+- **Cache:** raw responses are cached in `tools/.elevenlabs_cache/` (git-ignored), so reruns only pay for missing sounds. The key is read from `ELEVENLABS_API_KEY` and never printed.
+- **Fallback:** `tools/generate_audio.gd` (the synthesized set) writes the same files. Rerunning it replaces the ElevenLabs audio.
+- **Open question:** ElevenLabs' free plan may not grant commercial rights to generated audio. Check their current terms before any commercial release (or regenerate on a paid plan).

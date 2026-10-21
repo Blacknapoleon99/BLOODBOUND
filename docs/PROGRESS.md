@@ -134,3 +134,11 @@ User playtest of `build/windows-run4` (draft → altars → fracture → Bishop)
 ### Next action
 - ElevenLabs sound pass. This needs the user's go-ahead for the credit cost.
 - User playtest of windows-run5.
+
+## 2026-10-21 — ElevenLabs audio
+
+- All 38 SFX and both music loops replaced with ElevenLabs generations (808 credits). See DEC-034 for the tool, cache and licensing note.
+- Build: `build/windows-run6/Bloodbound.exe`.
+
+### Next action
+User playtest of windows-run6: listen pass on the new audio, plus feel of the new pace, abilities, hazards and the Armory.

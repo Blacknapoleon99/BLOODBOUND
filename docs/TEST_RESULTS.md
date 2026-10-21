@@ -295,3 +295,11 @@
 - Build: `build/windows-run5/Bloodbound.exe`, exit 0. The release export probe (now Start → Armory → draft → level) exits 0.
 - Screenshot: `docs/screenshots/11_armory.png`.
 - Not verified by a human: feel of the new pace, difficulty of the Bishop at 120 HP, hazard timing on a keyboard.
+
+## ElevenLabs audio run (2026-10-21)
+
+- Two single-sound test calls first, to measure the real cost and format. Then the full batch: 40/40 generated, 0 failed, 808 credits in total.
+- File check: every WAV is mono 22050 Hz and non-silent (RMS 0.03–0.38, peaks 0.45–0.95). Music is 24.0 s (level) and 16.0 s (boss).
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 347/347** (every sound loads and is triggered by gameplay; music loops).
+- `build/windows-run6/Bloodbound.exe` exported; the release export probe exits 0.
+- Not verified: how the sounds actually sound. No human has listened yet, and the loop seams are only as clean as the model's `loop` output.
