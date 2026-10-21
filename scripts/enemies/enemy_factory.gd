@@ -16,6 +16,8 @@ static func husk(parent: Node, x: float, roam_min: float, roam_max: float) -> Pl
     husk_node.chase_speed = 3.6
     husk_node.attack_cooldown = 1.2
     husk_node.poise_max = 1
+    husk_node.lunge_enabled = false  # Husks swarm; their trick is the death burst
+    husk_node.burst_on_death = true
     (husk_node.get_node("Health") as Health).max_health = 2
     parent.add_child(husk_node)
     husk_node.global_position = Vector3(x, 1.0, 0.0)
@@ -36,3 +38,15 @@ static func archer(parent: Node, x: float, min_x: float, max_x: float) -> BoneAr
     archer_node.global_position = Vector3(x, 1.0, 0.0)
     archer_node.defeated.connect(func() -> void: archer_node.get_tree().create_timer(1.5).timeout.connect(archer_node.queue_free))
     return archer_node
+
+
+## A Crypt Hound kept between [min_x, max_x].
+static func hound(parent: Node, x: float, min_x: float, max_x: float) -> CryptHound:
+    var hound_node: CryptHound = CryptHound.new()
+    hound_node.name = "CryptHound"
+    hound_node.min_x = min_x
+    hound_node.max_x = max_x
+    parent.add_child(hound_node)
+    hound_node.global_position = Vector3(x, 1.0, 0.0)
+    hound_node.defeated.connect(func() -> void: hound_node.get_tree().create_timer(1.5).timeout.connect(hound_node.queue_free))
+    return hound_node

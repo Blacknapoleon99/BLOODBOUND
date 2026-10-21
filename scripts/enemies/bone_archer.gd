@@ -4,6 +4,9 @@ extends CharacterBody3D
 ## `aim_time` s), looses an arrow along the causeway, then recovers.
 ## States: IDLE → AIM → RECOVER → (AIM...) ; HITSTUN on poise break ; DEAD.
 ## Too close (< `retreat_distance`) and it backs away instead of aiming, unless cornered.
+## Abilities: every `lob_every`-th shot is a Grave Arrow lobbed high that lands on the player's
+## spot (red ring, StrikeZone) — move off the mark. Too close, it Bone-Hops backwards (a leap,
+## every `hop_cooldown` s) instead of walking.
 ## Shares the combat contracts: Health/Hurtbox (team enemy), poise, silence, enemy group.
 
 signal defeated
@@ -21,6 +24,8 @@ enum State { IDLE, AIM, RECOVER, HITSTUN, DEAD }
 @export var min_x: float = -INF
 @export var max_x: float = INF
 @export var ai_enabled: bool = true
+@export var lob_every: int = 3
+@export var hop_cooldown: float = 2.5
 
 var state: State = State.IDLE
 var facing: float = -1.0
@@ -32,6 +37,9 @@ var _t: float = 0.0
 var _stun_left: float = 0.0
 var _silenced_left: float = 0.0
 var _flash_left: float = 0.0
+var _hop_left: float = 0.0
+var _hopping: bool = false
+var lobs_fired: int = 0
 var _aim_line: MeshInstance3D
 var _body_material: StandardMaterial3D
 var _visual: Node3D
@@ -91,15 +99,24 @@ func _physics_process(delta: float) -> void:
     _stun_left = maxf(0.0, _stun_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
     _flash_left = maxf(0.0, _flash_left - delta)
+    _hop_left = maxf(0.0, _hop_left - delta)
+    if _hopping and is_on_floor() and velocity.y <= 0.0:
+        _hopping = false
     var target: Node3D = _target()
     match state:
         State.IDLE:
-            velocity.x = 0.0
-            if ai_enabled and target != null and _silenced_left <= 0.0:
+            if not _hopping:
+                velocity.x = 0.0
+            if ai_enabled and target != null and _silenced_left <= 0.0 and not _hopping:
                 var dx: float = target.global_position.x - global_position.x
                 facing = signf(dx) if absf(dx) > 0.01 else facing
                 if absf(dx) < retreat_distance and _can_step(-facing):
-                    velocity.x = -facing * move_speed
+                    if _hop_left <= 0.0 and is_on_floor() and _can_step(-facing * 3.0):
+                        velocity = Vector3(-facing * 5.5, 7.5, 0.0)  # Bone Hop
+                        _hopping = true
+                        _hop_left = hop_cooldown
+                    else:
+                        velocity.x = -facing * move_speed
                 else:
                     _set_state(State.AIM)
                     Audio.sfx(&"archer_draw")
@@ -114,11 +131,25 @@ func _physics_process(delta: float) -> void:
             if _t >= aim_time:
                 _aim_line.visible = false
                 Audio.sfx(&"arrow_release")
-                get_parent().add_child(BoneArrow.create(global_position + Vector3(facing * 0.6, 0.15, 0.0), Vector3(facing, 0.0, 0.0)))
+                if lob_every > 0 and (arrows_fired + 1) % lob_every == 0 and target != null:
+                    # Grave Arrow: lobbed out of sight, lands on the marked spot.
+                    var ground_y: float = global_position.y - 0.9  # ambush floors are flat: the archer's own feet
+                    get_parent().add_child(StrikeZone.create(Vector3(target.global_position.x, ground_y, 0.0), 0.9, 1.6, 0.9, 1, &"archer_lob", &"bone"))
+                    lobs_fired += 1
+                else:
+                    get_parent().add_child(BoneArrow.create(global_position + Vector3(facing * 0.6, 0.15, 0.0), Vector3(facing, 0.0, 0.0)))
                 arrows_fired += 1
                 _set_state(State.RECOVER)
         State.RECOVER:
-            velocity.x = 0.0
+            if not _hopping:
+                velocity.x = 0.0
+            if ai_enabled and target != null and not _hopping and _hop_left <= 0.0 and is_on_floor():
+                var near: float = target.global_position.x - global_position.x
+                if absf(near) < retreat_distance and _can_step(-signf(near) * 3.0):
+                    facing = signf(near)
+                    velocity = Vector3(-facing * 5.5, 7.5, 0.0)  # Bone Hop out of recovery
+                    _hopping = true
+                    _hop_left = hop_cooldown
             if _t >= recover_time:
                 _set_state(State.IDLE)
         State.HITSTUN:
@@ -150,6 +181,8 @@ func _target() -> Node3D:
 
 func _can_step(dir: float) -> bool:
     var next_x: float = global_position.x + dir * 0.6
+    if absf(dir) > 1.0:
+        next_x = global_position.x + dir
     return next_x > min_x and next_x < max_x
 
 

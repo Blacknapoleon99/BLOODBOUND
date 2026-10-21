@@ -13,6 +13,13 @@ extends CharacterBody3D
 ## Leash: the soldier never moves outside [patrol_min_x - leash_margin, patrol_max_x + leash_margin],
 ## so it cannot follow the player off a ledge. If it is ever knocked into a pit it returns home,
 ## because the level's exit depends on it being killable.
+## Abilities:
+##   Plague Lunge (`lunge_enabled`): at 3–6 m it crouches (0.55 s telegraph, red marker) and
+##     dashes ~2.5 m forward with its blade out — back off or dodge through.
+##   Frenzy (`enrage_enabled`, soldiers with >= 4 HP): at half health it turns red, chases 30%
+##     faster and attacks twice as often.
+##   Death Burst (`burst_on_death`, Husks): 0.6 s after dying it bursts in a plague cloud
+##     (StrikeZone, 1.3 m, 1 damage) — don't stand on the corpse.
 ## Unlocked (plane_locked = false, Reality Fracture arenas): it chases and strikes on X/Z and is
 ## leashed to `leash_radius` around its home instead of the X range.
 
@@ -39,6 +46,10 @@ enum State { IDLE, PATROL, CHASE, ATTACK, HITSTUN, DEAD }
 @export var gravity_force: float = 26.0
 ## Debug/test switch: when false the soldier idles in place (deterministic test setups).
 @export var ai_enabled: bool = true
+@export var lunge_enabled: bool = true
+@export var lunge_cooldown: float = 3.5
+@export var enrage_enabled: bool = true
+@export var burst_on_death: bool = false
 @export var slash: AttackData
 @export var health: Health
 @export var hurtbox: Hurtbox
@@ -63,6 +74,27 @@ var _poise_regen_left: float = 0.0
 var _flash_left: float = 0.0
 var _flinch_left: float = 0.0
 var _silenced_left: float = 0.0
+var _lunge_left: float = 1.5
+var enraged: bool = false
+var _calm_color: Color
+static var _lunge_data: AttackData
+
+
+## The Plague Lunge attack (shared by every soldier).
+static func lunge_attack() -> AttackData:
+    if _lunge_data == null:
+        _lunge_data = AttackData.new()
+        _lunge_data.id = &"soldier_lunge"
+        _lunge_data.startup = 0.55
+        _lunge_data.active = 0.22
+        _lunge_data.recovery = 0.55
+        _lunge_data.damage = 1
+        _lunge_data.knockback = 6.0
+        _lunge_data.hitstun = 0.3
+        _lunge_data.reach_offset = 0.8
+        _lunge_data.reach = 1.4
+        _lunge_data.lunge_speed = 11.0
+    return _lunge_data
 
 
 func _ready() -> void:
@@ -134,6 +166,10 @@ func revive_at_home() -> void:
         _death_tween.kill()
     melee.cancel()
     health.restore_full()
+    if enraged:
+        enraged = false
+        _base_color = _calm_color
+    _lunge_left = 1.5
     visual.position = Vector3.ZERO
     visual.rotation = Vector3.ZERO
     collision_layer = 1
@@ -155,6 +191,7 @@ func _physics_process(delta: float) -> void:
     _flash_left = maxf(0.0, _flash_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
     _flinch_left = maxf(0.0, _flinch_left - delta)
+    _lunge_left = maxf(0.0, _lunge_left - delta)
     if poise < poise_max:
         _poise_regen_left -= delta
         if _poise_regen_left <= 0.0:
@@ -208,7 +245,8 @@ func _apply_leash() -> void:
                 velocity.x -= dir.x * outward
                 velocity.z -= dir.z * outward
         return
-    var x: float = global_position.x
+    # Predictive: fast moves (Plague Lunge) must not step past the leash within one frame.
+    var x: float = global_position.x + velocity.x * get_physics_process_delta_time()
     if (x <= patrol_min_x - leash_margin and velocity.x < 0.0) or (x >= patrol_max_x + leash_margin and velocity.x > 0.0):
         velocity.x = 0.0
 
@@ -257,15 +295,25 @@ func _chase() -> void:
         if melee.start(slash, facing):
             _set_state(State.ATTACK)
         return
+    if lunge_enabled and _lunge_left <= 0.0 and _silenced_left <= 0.0 and distance > 3.0 and distance < 6.0:
+        velocity.x = 0.0
+        velocity.z = 0.0
+        if melee.start(lunge_attack(), facing):
+            _lunge_left = lunge_cooldown
+            Audio.sfx(&"soldier_lunge")
+            _set_state(State.ATTACK)
+        return
     var speed: float = chase_speed if distance > attack_range * 0.8 else 0.0
+    if enraged:
+        speed *= 1.3
     velocity.x = facing.x * speed
     velocity.z = facing.z * speed
 
 
 func _attack_motion() -> void:
-    if melee.phase == MeleeAttack.Phase.ACTIVE:
-        velocity.x = melee.facing.x * slash.lunge_speed
-        velocity.z = melee.facing.z * slash.lunge_speed
+    if melee.phase == MeleeAttack.Phase.ACTIVE and melee.current != null:
+        velocity.x = melee.facing.x * melee.current.lunge_speed
+        velocity.z = melee.facing.z * melee.current.lunge_speed
     else:
         velocity.x = 0.0
         velocity.z = 0.0
@@ -275,14 +323,14 @@ func _on_attack_phase(phase: MeleeAttack.Phase) -> void:
     var telegraphing: bool = phase == MeleeAttack.Phase.STARTUP
     telegraph_marker.visible = telegraphing
     if telegraphing:
-        var reach_center: Vector3 = melee.facing * slash.reach_offset
+        var reach_center: Vector3 = melee.facing * (melee.current.reach_offset if melee.current else slash.reach_offset)
         telegraph_marker.position = Vector3(reach_center.x, -0.82, reach_center.z)
         telegraph_marker.basis = Basis.looking_at(melee.facing, Vector3.UP)
 
 
 func _on_attack_finished(_data: AttackData) -> void:
     telegraph_marker.visible = false
-    _cooldown_left = attack_cooldown
+    _cooldown_left = attack_cooldown * (0.5 if enraged else 1.0)
     if state == State.ATTACK:
         _set_state(State.CHASE if ai_enabled else State.IDLE)
 
@@ -294,6 +342,10 @@ func _on_hit_received(info: DamageInfo) -> void:
     _flinch_left = 0.2
     poise -= info.poise_damage
     _poise_regen_left = poise_regen_delay
+    if enrage_enabled and not enraged and health.max_health >= 4 and health.current * 2 <= health.max_health and not health.is_dead():
+        enraged = true
+        _calm_color = _base_color
+        _base_color = Color(0.75, 0.18, 0.12)
     if poise > 0:
         # Flinch only: keep any attack going, small shove if not mid-swing.
         if state != State.ATTACK:
@@ -320,6 +372,9 @@ func _on_died() -> void:
     _death_tween = create_tween()
     _death_tween.tween_property(visual, "rotation:x", PI * 0.5, 0.35)
     _death_tween.tween_property(visual, "position:y", -0.7, 0.8)
+    if burst_on_death and is_inside_tree():
+        get_tree().create_timer(0.6).timeout.connect(func() -> void: Audio.sfx(&"husk_burst"))
+        get_parent().add_child(StrikeZone.create(global_position + Vector3(0.0, -0.95, 0.0), 1.3, 0.5, 0.6, 1, &"husk_burst", &"burst"))
     defeated.emit()
 
 

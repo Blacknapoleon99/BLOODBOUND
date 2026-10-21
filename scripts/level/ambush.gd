@@ -76,6 +76,8 @@ func _start() -> void:
         var enemy: Node3D
         if spawn["type"] == &"archer":
             enemy = EnemyFactory.archer(get_parent(), x, left_x + 0.8, right_x - 0.8)
+        elif spawn["type"] == &"hound":
+            enemy = EnemyFactory.hound(get_parent(), x, left_x + 0.8, right_x - 0.8)
         else:
             enemy = EnemyFactory.husk(get_parent(), x, left_x + 0.8, right_x - 0.8)
         enemy.add_to_group(&"ambush_enemy")

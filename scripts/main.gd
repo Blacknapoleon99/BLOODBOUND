@@ -496,6 +496,10 @@ func _on_boss_audio_attack(attack: StringName) -> void:
             Audio.sfx(&"beam_charge", 0.0)
         &"summon":
             Audio.sfx(&"summon")
+        &"bone_rain":
+            Audio.sfx(&"bone_rain")
+        &"marrow_geyser":
+            Audio.sfx(&"geyser")
 
 
 func _on_boss_defeated() -> void:
@@ -675,8 +679,8 @@ func _build_greybox() -> void:
 
     _build_approach()
     # Ambushes: E1 after the soldier (its altar is the reward), E2 on the landing mid-pursuit.
-    var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"husk", "x": 16.0}, {"type": &"archer", "x": 17.5}]
-    var e2_spawns: Array[Dictionary] = [{"type": &"husk", "x": 40.8}, {"type": &"archer", "x": 42.2}, {"type": &"archer", "x": 43.2}]
+    var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"hound", "x": 16.0}, {"type": &"archer", "x": 17.5}]
+    var e2_spawns: Array[Dictionary] = [{"type": &"hound", "x": 40.8}, {"type": &"husk", "x": 41.6}, {"type": &"archer", "x": 42.2}, {"type": &"archer", "x": 43.2}]
     for spec: Array in [["Ambush: Gate ossuary", 10.0, 9.3, 18.3, e1_spawns], ["Ambush: Landing", 38.6, 37.8, 43.8, e2_spawns]]:
         var ambush: Ambush = Ambush.create(spec[0], spec[1], spec[2], spec[3], spec[4])
         ambush.started.connect(_on_ambush_started)

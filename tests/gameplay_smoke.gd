@@ -160,6 +160,7 @@ func _run() -> void:
     await _m9_archer_and_ambush_checks()
     await _m10_audio_checks()
     await _m11_relic_checks()
+    await _m12_enemy_ability_checks()
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
 
@@ -1634,7 +1635,7 @@ func _m9_archer_and_ambush_checks() -> void:
     await _seconds(0.4)
     await _hold(KEY_D, 0.25)
     await _frames(3)
-    _check(e2.is_active() and e2.alive_count() == 3, "the landing ambush springs (%d foes)" % e2.alive_count())
+    _check(e2.is_active() and e2.alive_count() == 4, "the landing ambush springs (%d foes)" % e2.alive_count())
     health.apply_damage(health.current)  # debug: lethal
     await _frames(6)
     var leftover: int = root.get_tree().get_nodes_in_group(&"ambush_enemy").filter(func(n: Node) -> bool: return not n.is_queued_for_deletion() and not bool(n.call("is_dead"))).size()
@@ -1814,6 +1815,133 @@ func _relic_offer_is_empty() -> bool:
     return offer.size() == 3 and offer.all(func(c: Resource) -> bool: return c is CardData)
 
 
+## Bone Rain and Marrow Geyser: telegraphed rings, real damage if you stay, none if you move.
+func _barrage_checks(boss: HollowBishop) -> void:
+    _heal()
+    var x: float = _bx(28.0)
+    _player.call("teleport_to", Vector3(x, 1.0, 0.0))
+    await _seconds(0.5)
+    var hp0: int = _player_hp()
+    _check(boss.debug_attack(&"bone_rain", x), "Bone Rain starts")
+    await _frames(3)
+    var rings: Array[Node] = root.get_tree().get_nodes_in_group(&"strike_zone")
+    _check(rings.size() >= 4 and rings.all(func(z: Node) -> bool: return not (z as StrikeZone).landed), "Bone Rain marks %d rings before anything falls" % rings.size())
+    await _seconds(0.6)
+    var wave2: Array[Node] = root.get_tree().get_nodes_in_group(&"strike_zone")
+    _check(wave2.size() > rings.size(), "a second, offset wave is marked (%d rings)" % wave2.size())
+    await _boss_idle(boss)
+    _check(_player_hp() < hp0, "standing on a ring gets you hit by the bones (hp %d -> %d)" % [hp0, _player_hp()])
+    await _seconds(0.6)
+
+    _heal()
+    _player.call("teleport_to", Vector3(_bx(22.5), 1.0, 0.0))
+    await _seconds(0.5)
+    hp0 = _player_hp()
+    _check(boss.debug_attack(&"marrow_geyser", _bx(22.5)), "Marrow Geyser starts")
+    _key(KEY_D, true)
+    await _boss_idle(boss)
+    _key(KEY_D, false)
+    _check(_player_hp() == hp0, "running keeps ahead of the Marrow Geyser (hp %d)" % _player_hp())
+    await _seconds(0.8)
+    hp0 = _player_hp()
+    boss.debug_attack(&"marrow_geyser", _player.global_position.x)
+    await _boss_idle(boss)
+    _check(_player_hp() < hp0, "standing still, the geyser finds you (hp %d -> %d)" % [hp0, _player_hp()])
+    await _seconds(0.8)
+    boss.debug_attack(&"bone_rain", _player.global_position.x)
+    await _frames(3)
+    boss.silence(1.0)
+    await _frames(3)
+    var left: Array = root.get_tree().get_nodes_in_group(&"strike_zone").filter(func(n: Node) -> bool: return not n.is_queued_for_deletion())
+    _check(not boss.is_attacking() and left.is_empty(), "Bell of Silence cancels a barrage still being marked")
+    _heal()
+    await _seconds(1.2)
+
+
+## Unique abilities of the small enemies: lunge + frenzy, Husk death burst, archer lob + hop,
+## Crypt Hound pounce.
+func _m12_enemy_ability_checks() -> void:
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    await _seconds(0.3)
+
+    # Plague Lunge from mid range.
+    await _place(3.0, 7.5, true)
+    var lunged: bool = await _wait_until(func() -> bool: return _enemy.melee.current != null and _enemy.melee.current.id == &"soldier_lunge", 2.0)
+    _check(lunged, "the soldier lunges from mid range (Plague Lunge)")
+    await _seconds(1.5)
+    _heal()
+    _enemy.set_ai_enabled(false)
+    _enemy.health.apply_damage(_enemy.health.current - _enemy.health.max_health / 2)
+    _enemy.hurtbox.hit_received.emit(DamageInfo.new())
+    _check(_enemy.enraged, "below half HP the soldier enters a Frenzy")
+    _enemy.revive_at_home()
+    _check(not _enemy.enraged, "reviving clears the Frenzy")
+
+    # Husk death burst.
+    var husk: PlaguedSoldier = EnemyFactory.husk(_main, -12.0, -18.0, -7.5)
+    husk.set_ai_enabled(false)
+    # Leave the revived soldier's contact range first (its knockback would carry us out of the burst).
+    _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    await _seconds(1.0)
+    _player.call("teleport_to", Vector3(-13.4, 1.0, 0.0))  # out of the Husk's contact reach, inside the burst
+    await _seconds(0.3)
+    _heal()
+    var hp0: int = _player_hp()
+    husk.health.apply_damage(husk.health.current)
+    await _frames(3)
+    var cloud: bool = root.get_tree().get_nodes_in_group(&"strike_zone").size() > 0
+    var lowest: int = hp0
+    for i in int(0.9 * PHYSICS_HZ):
+        await physics_frame
+        lowest = mini(lowest, _player_hp())
+    _check(cloud and lowest < hp0, "a slain Husk bursts in a plague cloud (hp %d -> %d, now %d)" % [hp0, lowest, _player_hp()])
+    await _seconds(1.0)
+
+    # Bone Archer: every third shot is a lobbed Grave Arrow onto the player's spot.
+    _heal()
+    var archer: BoneArcher = EnemyFactory.archer(_main, -9.0, -18.0, -7.5)
+    archer.arrows_fired = 2
+    _player.call("teleport_to", Vector3(-15.0, 1.0, 0.0))
+    var lobbed: bool = await _wait_until(func() -> bool: return archer.lobs_fired >= 1, 3.0)
+    var marks: Array = root.get_tree().get_nodes_in_group(&"strike_zone").filter(func(n: Node) -> bool: return absf((n as Node3D).global_position.x - _player.global_position.x) < 1.0)
+    _check(lobbed and not marks.is_empty(), "the archer's third shot lobs a Grave Arrow onto the player's spot")
+    _key(KEY_A, true)
+    await _seconds(0.3)
+    _key(KEY_A, false)
+    await _seconds(1.0)
+    _heal()
+    _player.call("teleport_to", Vector3(archer.global_position.x + 1.5, 1.0, 0.0))  # room to hop left
+    var hopped: bool = await _wait_until(func() -> bool: return archer.velocity.y > 3.0, 2.5)
+    _check(hopped, "crowded, the archer Bone-Hops away")
+    archer.health.apply_damage(archer.health.current)
+    await _seconds(0.5)
+
+    # Crypt Hound: runs in, crouches (telegraph), pounces, lands exposed.
+    _heal()
+    _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    var hound: CryptHound = EnemyFactory.hound(_main, -8.5, -18.0, -7.5)
+    var crouched: bool = await _wait_until(func() -> bool: return hound.state_name() == "CROUCH", 3.0)
+    _check(crouched and absf(hound.global_position.x - _player.global_position.x) < hound.pounce_range + 0.3, "the Crypt Hound runs in and crouches to pounce")
+    hp0 = _player_hp()
+    var landed: bool = await _wait_until(func() -> bool: return hound.state_name() == "RECOVER", 2.0)
+    _check(landed and hound.pounces == 1 and _player_hp() < hp0, "its pounce lands on a player who stands still (hp %d -> %d)" % [hp0, _player_hp()])
+    _heal()
+    await _seconds(0.3)
+    var hit: bool = false
+    for i in 8:
+        if hound.is_dead():
+            break
+        _player.set("facing_direction", signf(hound.global_position.x - _player.global_position.x))
+        _tap(KEY_J)
+        await _seconds(0.3)
+    _check(hound.is_dead(), "the hound dies to the combo during its recovery")
+    _check(_main.get("ambushes")[0].spawns.any(func(d: Dictionary) -> bool: return d["type"] == &"hound"), "Crypt Hounds join the ambushes")
+    await _seconds(0.5)
+
+
 func _m3_boss_checks() -> void:
     var boss: HollowBishop = _main.get("boss")
     var arena: BossArena = _main.get("boss_arena")
@@ -1833,6 +1961,7 @@ func _m3_boss_checks() -> void:
     await _boss_idle(boss)
     _check(boss.global_position.z < -20.0 and boss.global_position.y > -1.0, "Bishop stands far behind the play plane (z=%.1f)" % boss.global_position.z)
     await _shot("05_bishop_awake")
+    await _barrage_checks(boss)
 
     # Hand Slam on a standing player: long telegraph, travels from depth, real damage.
     _heal()

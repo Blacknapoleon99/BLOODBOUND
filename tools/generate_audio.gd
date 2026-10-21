@@ -35,6 +35,8 @@ const SFX: Dictionary = {
     "censer_swing": "_censer_swing", "beam_charge": "_beam_charge", "beam_fire": "_beam_fire",
     "summon": "_summon", "archer_draw": "_archer_draw", "arrow_release": "_arrow_release",
     "walls_rise": "_walls_rise", "altar": "_altar", "ui_click": "_ui_click", "victory": "_victory",
+    "bone_rain": "_bone_rain", "geyser": "_geyser", "hound_pounce": "_hound_pounce",
+    "husk_burst": "_husk_burst", "soldier_lunge": "_soldier_lunge", "equip": "_equip",
 }
 
 
@@ -331,6 +333,51 @@ func _victory() -> PackedFloat32Array:
 # --- Music -------------------------------------------------------------------------------
 
 ## 24 s ambient drone in A minor: low organ fifths breathing on a slow LFO, a distant bell.
+func _bone_rain() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(1.4)
+    _noise(b, 0.0, 0.9, 0.3, 4000.0, 800.0, 0.5, 0.3)
+    for k in 6:
+        _noise(b, 0.75 + k * 0.09, 0.12, 0.5, 2500.0, 900.0, 0.001, 0.06)
+    return b
+
+
+func _geyser() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.9)
+    _tone(b, 0.0, 0.5, 0.3, 60.0, 90.0, 0.4, 0.1)
+    _noise(b, 0.45, 0.4, 0.8, 300.0, 3000.0, 0.005, 0.25)
+    _tone(b, 0.45, 0.3, 0.4, 180.0, 60.0, 0.002, 0.2)
+    return b
+
+
+func _hound_pounce() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.6)
+    _tone(b, 0.0, 0.35, 0.4, 220.0, 140.0, 0.01, 0.2, 4)
+    _noise(b, 0.0, 0.35, 0.35, 900.0, 2500.0, 0.02, 0.2)
+    return b
+
+
+func _husk_burst() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.8)
+    _noise(b, 0.0, 0.7, 0.7, 200.0, 900.0, 0.003, 0.5)
+    _tone(b, 0.0, 0.4, 0.35, 90.0, 40.0, 0.003, 0.3)
+    _echo(b, 0.12, 0.3)
+    return b
+
+
+func _soldier_lunge() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.7)
+    _tone(b, 0.0, 0.5, 0.35, 120.0, 260.0, 0.3, 0.1, 3)
+    _noise(b, 0.45, 0.25, 0.5, 1500.0, 600.0, 0.005, 0.15)
+    return b
+
+
+func _equip() -> PackedFloat32Array:
+    var b: PackedFloat32Array = _buf(0.5)
+    _tone(b, 0.0, 0.35, 0.3, 1200.0, 1150.0, 0.001, 0.25, 4)
+    _noise(b, 0.0, 0.1, 0.3, 3000.0, 2000.0, 0.001, 0.05)
+    return b
+
+
 func _music_level() -> PackedFloat32Array:
     var seconds: float = 24.0
     var b: PackedFloat32Array = _buf(seconds)

@@ -22,6 +22,8 @@ extends Node3D
 ##   Bone Lances: up to three lances thrown from depth at fixed x lanes, each with a red column.
 ##   Censer Sweep (CenserSweep): knee-high censer sweeps the causeway — jump it.
 ##   Requiem Beam (RequiemBeam): heart beam sweeps the causeway too fast to outrun — dodge through.
+##   Bone Rain (BishopBarrage): two offset waves of bones fall on red rings around the player.
+##   Marrow Geyser (BishopBarrage): three spikes erupt in turn under the player's position.
 ##   Grasping Dead: raises up to `max_minions` Husks (weak Plagued Soldiers) onto the causeway.
 ##
 ## Ritual Chains (card): while a Slam/Sunder is still aiming or hovering (before the descent),
@@ -40,8 +42,8 @@ signal defeated
 
 enum Phase { DORMANT, INTRO, PURSUIT, PROCESSION, COLLAPSE, COVENANT, UNMAKING, DEFEATED }
 
-const ACTOR_ATTACKS: Array[StringName] = [&"censer", &"beam"]
-const ALL_ATTACKS: Array[StringName] = [&"slam", &"sunder", &"lance", &"lance_volley", &"censer", &"beam", &"summon"]
+const ACTOR_ATTACKS: Array[StringName] = [&"censer", &"beam", &"bone_rain", &"marrow_geyser"]
+const ALL_ATTACKS: Array[StringName] = [&"slam", &"sunder", &"lance", &"lance_volley", &"censer", &"beam", &"summon", &"bone_rain", &"marrow_geyser"]
 
 const PHASE_TITLES: Dictionary = {
     Phase.PROCESSION: "I · THE PROCESSION",
@@ -303,14 +305,14 @@ func _engaged_player() -> Node3D:
 
 
 func _next_pattern_attack() -> StringName:
-    var pattern: Array = [&"slam", &"lance_volley"]
+    var pattern: Array = [&"slam", &"lance_volley", &"marrow_geyser"]
     match phase:
         Phase.COLLAPSE:
-            pattern = [&"summon", &"sunder", &"censer", &"lance_volley", &"slam"]
+            pattern = [&"summon", &"sunder", &"bone_rain", &"censer", &"lance_volley", &"slam", &"marrow_geyser"]
         Phase.COVENANT:
-            pattern = [&"summon", &"beam", &"slam", &"censer", &"lance_volley", &"sunder"]
+            pattern = [&"summon", &"beam", &"slam", &"bone_rain", &"censer", &"marrow_geyser", &"lance_volley", &"sunder"]
         Phase.UNMAKING:
-            pattern = [&"beam", &"slam", &"censer", &"lance_volley", &"slam"]
+            pattern = [&"beam", &"slam", &"marrow_geyser", &"censer", &"bone_rain", &"lance_volley", &"slam"]
     var attack: StringName = pattern[_pattern_index % pattern.size()]
     _pattern_index += 1
     if attack == &"summon" and minions().size() >= max_minions:
@@ -338,7 +340,10 @@ func _start_attack(attack: StringName, x: float) -> bool:
     elif attack == &"lance_volley":
         _lance_plan = [x, x - 3.5, x + 3.5]
     _lance_index = 0
-    if attack in ACTOR_ATTACKS:
+    if attack == &"bone_rain" or attack == &"marrow_geyser":
+        _actor = BishopBarrage.create(attack, x, min_x - 3.5, max_x + 3.5)
+        add_child(_actor)
+    elif attack in ACTOR_ATTACKS:
         # Sweep from the far end toward (and past) the player.
         var left: float = min_x - 3.5
         var right: float = max_x + 3.5
