@@ -199,10 +199,17 @@ or heavily reworked pieces.
 
 ## 12. Concept references
 
-Generated with ChatGPT (web, the user's account) from text prompts only. No project files were
-uploaded. The chats are titled "Create Gothic Mood Board", "Create Knight Turnaround Sheet",
-"Create character concept sheet" (the Plagued Soldier), "Create Boss Concept Art" and "Create
-Gothic Game Image" (the causeway). Once downloaded, they go in `assets/concepts/`:
-`00_moodboard`, `01_player_knight`, `02_plagued_soldier`, `03_hollow_bishop`,
-`04_causeway_frame`. They are mood and shape references, not designs to copy one to one.
-Provenance is recorded in `assets/manifests/assets.json`.
+These were generated on 2026-10-21 with ChatGPT (web, the user's account) from text prompts only;
+no project files were uploaded. They live in `assets/concepts/`, which has a `.gdignore`, so
+Godot never imports or exports them. They are mood and shape references, not designs to copy one
+to one. Provenance is in `assets/manifests/assets.json`.
+
+| File | Use it for | Notes |
+|---|---|---|
+| `00_moodboard.png` | Palette, materials, the "only red is danger" rule | Six panels plus a swatch strip. |
+| `01_player_knight.png` | Knight silhouette, plate, cape and pauldron | Front, side and back views plus a silhouette. A Tripo3D reference candidate (needs upload approval). |
+| `02_plagued_soldier.png` | Hunch, falchion wind-up, bone and rag read | Idle and wind-up side views plus a silhouette. |
+| `03_hollow_bishop.png` | Scale and composition, mitre and ribcage, a white-gold stigmata in the palm, a red slam zone on the causeway | The best match to sections 4 and 8. Use it as the boss art target. |
+| `04_causeway_frame.png` | Depth layers, the lit walkable top, the arcade causeway, skyline spires | The causeway kit (#1–#11 in the asset list) follows this. |
+
+Using any of these as an image input for Tripo3D sends it to a third party. Ask first.

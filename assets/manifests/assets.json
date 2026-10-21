@@ -11,12 +11,71 @@
       "cost": "none",
       "approval": "not required (free, no third-party transfer)",
       "tris": 1936,
-      "materials": ["bb_stone_a", "bb_stone_b", "bb_stone_c", "bb_mortar"],
+      "materials": [
+        "bb_stone_a",
+        "bb_stone_b",
+        "bb_stone_c",
+        "bb_mortar"
+      ],
       "textures": "none (flat PBR values)",
-      "dimensions_m": [4.0, 1.0, 4.0],
+      "dimensions_m": [
+        4.0,
+        1.0,
+        4.0
+      ],
       "pivot": "box centre; walkable top at +0.5; front face +Z (Godot)",
       "replaces": "main.gd _build_greybox 'Starting causeway appearance' via scripts/art/art_swap.gd",
       "validation": "tools/run_checks.ps1 + tests/shot_art_swap.gd (docs/screenshots/15_art_causeway.png)"
+    },
+    {
+      "id": "concept_00_moodboard",
+      "file": "assets/concepts/00_moodboard.png",
+      "kind": "concept reference (not shipped; .gdignore)",
+      "provider": "ChatGPT web image generation (user's account), text prompt only, 2026-10-21",
+      "subject": "style/mood board",
+      "license": "OpenAI terms: output owned by the user; reference use only",
+      "cost": "counts against the user's ChatGPT plan",
+      "approval": "user approved generation and download 2026-10-21"
+    },
+    {
+      "id": "concept_01_player_knight",
+      "file": "assets/concepts/01_player_knight.png",
+      "kind": "concept reference (not shipped; .gdignore)",
+      "provider": "ChatGPT web image generation (user's account), text prompt only, 2026-10-21",
+      "subject": "player knight turnaround",
+      "license": "OpenAI terms: output owned by the user; reference use only",
+      "cost": "counts against the user's ChatGPT plan",
+      "approval": "user approved generation and download 2026-10-21"
+    },
+    {
+      "id": "concept_02_plagued_soldier",
+      "file": "assets/concepts/02_plagued_soldier.png",
+      "kind": "concept reference (not shipped; .gdignore)",
+      "provider": "ChatGPT web image generation (user's account), text prompt only, 2026-10-21",
+      "subject": "Plagued Soldier sheet",
+      "license": "OpenAI terms: output owned by the user; reference use only",
+      "cost": "counts against the user's ChatGPT plan",
+      "approval": "user approved generation and download 2026-10-21"
+    },
+    {
+      "id": "concept_03_hollow_bishop",
+      "file": "assets/concepts/03_hollow_bishop.png",
+      "kind": "concept reference (not shipped; .gdignore)",
+      "provider": "ChatGPT web image generation (user's account), text prompt only, 2026-10-21",
+      "subject": "Hollow Bishop key art",
+      "license": "OpenAI terms: output owned by the user; reference use only",
+      "cost": "counts against the user's ChatGPT plan",
+      "approval": "user approved generation and download 2026-10-21"
+    },
+    {
+      "id": "concept_04_causeway_frame",
+      "file": "assets/concepts/04_causeway_frame.png",
+      "kind": "concept reference (not shipped; .gdignore)",
+      "provider": "ChatGPT web image generation (user's account), text prompt only, 2026-10-21",
+      "subject": "causeway environment frame",
+      "license": "OpenAI terms: output owned by the user; reference use only",
+      "cost": "counts against the user's ChatGPT plan",
+      "approval": "user approved generation and download 2026-10-21"
     }
   ]
 }
