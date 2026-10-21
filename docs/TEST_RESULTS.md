@@ -360,3 +360,25 @@
 - Screenshots: `docs/screenshots/12_map_*.png` (visible run of `tests/shot_map.gd`, seed 77).
 - `build/windows-run9/Bloodbound.exe`; the release export probe exits 0.
 - **Not verified:** time to reach the Bishop (needs a human run), difficulty balance across rooms, and how the new enemies feel.
+
+## Tighten-up + co-op run (2026-10-21)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446** (22 new: 21 for co-op, 1 for the niche hop-out).
+- **Bug-hunt fixes verified by tests:**
+  - the secret is claimed and exited without teleporting;
+  - Gravewarden summons stay inside its walls;
+  - the solo suite is unchanged (425 → still green).
+- **Co-op checks:**
+  - two players with separate hands and HUD;
+  - arrows/numpad drive only player 2, and D drives only player 1;
+  - player 2's card spends player 2's blood;
+  - enemies pick the nearest player; the camera centres between them; the leash holds 18 m;
+  - down → revive by holding E (2 HP); both down → checkpoint;
+  - a pit fall rejoins the partner (−1 HP);
+  - relics apply to both, and an altar card goes to the presser;
+  - the Fracture is sealed in co-op;
+  - the two-player draft builds both decks; player 2 starts with their cards;
+  - back in solo, the arrows move player 1 again.
+- Screenshot: `docs/screenshots/13_coop.png`.
+- `build/windows-run10/Bloodbound.exe`; the release export probe exits 0.
+- **Not verified:** a physical second gamepad (pad device mapping is by connected-joypad order), and co-op feel and balance.

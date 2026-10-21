@@ -284,3 +284,52 @@ Built from docs/superpowers/specs/2026-10-21-first-map-design.md (approved by th
 - **Known gaps:**
   - The 10-minute length is estimated, not measured. The full route is ~430 m (about 8 rooms of 45–65 m plus the opening and approach), and the hazards and fights set the pace.
   - No bot plays the whole map end to end. Reachability plus "every checkpoint stands on ground" are the automated guarantees.
+
+## DEC-038 — Tighten-up pass: a 3-reviewer bug hunt (2026-10-21)
+
+Three read-only reviewers swept three areas: combat/enemies/boss; level/map/run flow; cards/UI/items/audio. They reported 23 findings with code evidence. 22 were fixed (see commit 3258e38); one stays a known gap (below).
+
+**Highest-impact fixes:**
+- **Secret cellars could not be reached in real play.** The test teleported to the cache, which hid it. They are now a sealed niche under the cracked floor, and the test claims the cache and hops out with no teleport.
+- **Esc over a reward or shop overlay unpaused the game underneath.** This allowed altar rerolls and lost rewards. Now the pause menu restores the overlay's pause, overlay keys ignore input while paused, and the level ignores Interact while an overlay is open.
+- **A killing blow knocked the player back after respawning.** Player deaths are now handled deferred.
+- **The Bishop's pursuit lances could follow you back into the rooms.** Its engage line now follows `map_offset`.
+- **Economy exploits:**
+  - shop relics already owned, and stale card upgrades, are dropped;
+  - reliquaries and shrines roll their offer once;
+  - ambush retries keep dead foes dead (no shard farming);
+  - Gravewarden summons pay no shards.
+- **The Gravewarden:**
+  - no crawlers behind its walls;
+  - its crawlers crumble when it dies instead of bursting;
+  - the enraged double charge now actually happens.
+
+**Smaller fixes:**
+- **Enemies:** the knight's stagger is no longer cut short; hounds and archers can walk back inside their bounds.
+- **Player and cards:**
+  - respawn clears combo, haste and shield;
+  - Bell of Silence refuses (no cost) with nothing in earshot;
+  - a queued card whose target vanished fails rather than retargeting.
+- **UI:** the cursor is restored, and the Armory keeps keyboard/gamepad focus.
+- **Audio:** music state is set only once a stream has loaded, and voice stops when the level ends.
+- **Level:** the Wraith Belfry shortcut bridge runs under the beams.
+
+**Known gap:** a dead-but-not-freed queued target already fails correctly. Only the freed case was changed.
+
+## DEC-039 — Local co-op, structured for online later (2026-10-21)
+
+Design: docs/superpowers/specs/2026-10-21-coop-design.md (the user chose local-first and separate decks with a shared run).
+
+- **Start Co-op** in the main menu goes Armory → draft for player 1, then player 2 → level.
+  - **Player 1:** keyboard + mouse.
+  - **Player 2:** the first gamepad, or arrows + numpad.
+  - With two pads, player 1 also gets pad #1 and player 2 pad #2.
+- **Input:** the player script reads actions through `act()`, using `input_prefix` ("" or "p2_"). `CardSystem.slot_action()` does the same for card keys. `InputBindings.configure_players(coop)` builds the p2_ actions and assigns devices; in co-op the arrow keys move from player 1 to player 2.
+  - **Online later:** a remote player is just another prefix whose actions are pressed by received network input (`Input.action_press`). No gameplay script reads raw devices.
+- **Targeting:** `Players` (`all`, `standing`, `nearest`, `leader`) replaces every single-player lookup in enemies, bosses and ambushes. Downed players are ignored.
+- **Separate:** HP, blood and hands (player 2's hand HUD is bottom-right; player 2 is red).
+- **Shared:** relics (applied to both), shards, the map and Armory gear.
+- **Rewards:** altars, reliquaries, shrines and the merchant give to whoever pressed Interact.
+- **Down and revive:** in co-op, 0 HP downs you. Your partner holds Interact beside you for 1.2 s to bring you back at 2 HP. Both down sends both to the checkpoint. A pit fall pulls you back beside a grounded partner for 1 HP.
+- **Camera and leash:** the camera frames the midpoint and pulls back as the players spread. A leash keeps them within 18 m (main runs its physics after the players).
+- **The Reality Fracture** is solo-only for now.

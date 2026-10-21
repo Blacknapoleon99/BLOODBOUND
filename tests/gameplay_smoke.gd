@@ -184,6 +184,7 @@ func _run() -> void:
     await _m17_new_enemy_checks()
     await _m18_gravewarden_checks()
     await _m19_merchant_secret_shortcut_checks()
+    await _m20_coop_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2610,6 +2611,138 @@ func _m19_merchant_secret_shortcut_checks() -> void:
     _player.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
     _heal()
     await _seconds(0.5)
+
+
+## Local co-op: two players with their own controls, hands and HP; shared relics/shards;
+## downed + revive; partner rejoin; camera + leash; per-player rewards; two-player draft.
+func _m20_coop_checks() -> void:
+    RunState.coop = true
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    _enemy.set_ai_enabled(false)
+    var players: Array = _main.get("players")
+    var p1: CharacterBody3D = players[0]
+    var p2: CharacterBody3D = players[1] if players.size() > 1 else null
+    _check(players.size() == 2 and p2 != null and p2.get("input_prefix") == "p2_", "co-op spawns two players")
+    var c1: CardSystem = _main.call("cards_of", p1)
+    var c2: CardSystem = _main.call("cards_of", p2)
+    _check(c1 != c2 and c2.deck.hand.size() == 3 and _main.find_child("CardHandP2", true, false) != null, "each player has their own hand (and HUD)")
+    await _seconds(0.5)
+
+    # Separate controls: arrows move player 2 only; D moves player 1 only.
+    var x1: float = p1.global_position.x
+    var x2: float = p2.global_position.x
+    await _hold(KEY_RIGHT, 0.4)
+    _check(p2.global_position.x > x2 + 1.0 and absf(p1.global_position.x - x1) < 0.1, "arrow keys move player 2, not player 1")
+    await _seconds(0.3)  # let player 2 stop sliding
+    x1 = p1.global_position.x
+    x2 = p2.global_position.x
+    await _hold(KEY_D, 0.4)
+    _check(p1.global_position.x > x1 + 1.0 and absf(p2.global_position.x - x2) < 0.1, "D moves player 1, not player 2")
+    _tap(KEY_KP_4)
+    await physics_frame
+    _check((p2.get("melee") as MeleeAttack).is_busy() and not (p1.get("melee") as MeleeAttack).is_busy(), "Numpad 4 swings player 2's sword")
+    await _seconds(0.6)
+    c2.energy.set_amount(6.0)
+    c1.energy.regen_per_second = 0.0
+    var e1: float = c1.energy.current
+    c2.deck.hand[0] = CardPool.by_id(&"haste_sigil")
+    _tap(KEY_KP_1)
+    await _frames(2)
+    _check(bool(p2.call("is_hasted")) and not bool(p1.call("is_hasted")) and is_equal_approx(c1.energy.current, e1), "Numpad 1 plays player 2's card, from player 2's blood")
+    await _seconds(5.2)
+
+    # Enemies go for the nearest standing player; the camera frames both.
+    p1.call("teleport_to", Vector3(-16.0, 1.0, 0.0))
+    p2.call("teleport_to", Vector3(3.0, 1.0, 0.0))
+    await _seconds(0.4)
+    _check(Players.nearest(_enemy.global_position) == p2, "enemies target the nearest player")
+    var focus: Vector3 = _main.call("_focus")
+    var mid: float = (p1.global_position.x + p2.global_position.x) * 0.5
+    _check(absf(focus.x - mid) < 0.1 and absf(mid - (-6.5)) < 1.5, "the camera centres between the two players (x=%.1f)" % focus.x)
+    p2.call("teleport_to", Vector3(30.0, 1.0, 0.0))
+    await _frames(3)
+    _check(absf(p2.global_position.x - p1.global_position.x) <= 18.05, "the co-op leash keeps them within 18 m (%.1f)" % absf(p2.global_position.x - p1.global_position.x))
+
+    # Down, then revived by the partner holding Interact.
+    p2.call("teleport_to", Vector3(-14.8, 1.0, 0.0))
+    await _seconds(0.4)
+    var h1: Health = p1.get("health")
+    var h2: Health = p2.get("health")
+    h2.apply_damage(h2.current)
+    await _frames(4)
+    _check(bool(p2.get("is_downed")) and not bool(p1.get("is_downed")) and Players.standing().size() == 1, "player 2 at 0 HP is DOWN, not reset; enemies ignore them")
+    _key(KEY_E, true)
+    await _seconds(1.5)
+    _key(KEY_E, false)
+    _check(not bool(p2.get("is_downed")) and h2.current == 2, "holding Interact beside them revives them at 2 HP")
+    # Both down: back to the checkpoint together.
+    h2.apply_damage(h2.current)
+    await _frames(4)
+    h1.apply_damage(h1.current)
+    await _frames(6)
+    _check(not bool(p1.get("is_downed")) and not bool(p2.get("is_downed")) and h1.current == h1.max_health and h2.current == h2.max_health, "both down: both restored at the checkpoint")
+    await _seconds(0.6)
+    # A pit fall pulls you back beside your partner for 1 HP.
+    p1.call("teleport_to", Vector3(-15.0, 1.0, 0.0))
+    await _seconds(0.4)
+    var hp2: int = h2.current
+    p2.call("teleport_to", Vector3(-4.0, -9.5, 0.0))
+    await _frames(3)
+    _check(p2.global_position.distance_to(p1.global_position) < 2.0 and h2.current == hp2 - 1, "falling into the abyss rejoins your partner (-1 HP)")
+
+    # Shared relics; rewards go to whoever pressed Interact.
+    _main.call("_on_offer_resolved", RelicPool.by_id(&"bone_ward"))
+    _check(h1.max_health == 6 and h2.max_health == 6, "relics apply to both players")
+    RunState.relics.clear()
+    var altar: BloodAltar = (_main.get("altars") as Array)[0]
+    p1.call("teleport_to", altar.global_position + Vector3(-3.0, 1.0, 0.0))  # within the leash
+    p2.call("teleport_to", altar.global_position + Vector3(0.0, 1.0, 0.0))
+    await _seconds(0.4)
+    var deck1: int = c1.deck.total_cards()
+    var deck2: int = c2.deck.total_cards()
+    _tap(KEY_KP_ENTER)
+    await _frames(4)
+    var overlay: CardOfferOverlay = _main.get("offer_overlay")
+    _check(overlay.is_open(), "player 2 opens the altar with Numpad Enter")
+    if overlay.is_open():
+        overlay.offer_view.buttons[0].pressed.emit()
+    await _frames(4)
+    _check(c2.deck.total_cards() == deck2 + 1 and c1.deck.total_cards() == deck1, "the altar's card goes to player 2's deck")
+    _tap(KEY_E)
+    p1.call("teleport_to", Vector3(12.6, 1.0, 0.0))
+    await _seconds(0.4)
+    _tap(KEY_E)
+    await _frames(4)
+    _check(not bool(p1.get("in_3d_mode")), "the Reality Fracture stays sealed in co-op")
+
+    # Two-player draft.
+    RunState.end_run()
+    change_scene_to_file("res://scenes/draft.tscn")
+    await _frames(8)
+    for i in 6:
+        if i == 3:
+            var label: Label = current_scene.get("round_label")
+            _check(label.text.begins_with("PLAYER 2"), "after player 1's three picks, player 2 drafts (%s)" % label.text)
+        _tap(CARD_KEYS[i % 3])
+        await _frames(6)
+    await _frames(10)
+    _check(RunState.deck.size() == 3 and RunState.deck_p2.size() == 3 and current_scene.scene_file_path == "res://scenes/main.tscn", "the co-op draft builds both decks, then the level loads")
+    _bind()
+    var hand2: Array = (_main.call("cards_of", (_main.get("players") as Array)[1]) as CardSystem).deck.all_cards().map(func(c: CardData) -> StringName: return c.id)
+    _check(RunState.deck_p2.all(func(c: CardData) -> bool: return hand2.has(c.id)), "player 2 starts with their drafted cards")
+
+    # Back to solo for the rest of the suite.
+    RunState.coop = false
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    var xs: float = _player.global_position.x
+    await _hold(KEY_RIGHT, 0.3)
+    _check(_player.global_position.x > xs + 0.5, "back in solo, the arrow keys move player 1 again")
 
 
 func _m3_boss_checks() -> void:

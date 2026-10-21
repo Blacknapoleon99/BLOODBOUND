@@ -163,3 +163,12 @@ User playtest of windows-run6: listen pass on the new audio, plus feel of the ne
 - User playtest: time a full run (target ~10 min), and note rooms that are too hard, too easy or confusing.
 - Then the art/asset phase can start from a settled map.
 - New placeholder sounds still to give the ElevenLabs treatment: shield_block (knight), plus any new voice lines (Gravewarden, merchant).
+
+## 2026-10-21 — Tighten-up pass + local co-op
+
+- 22 fixes from a 3-reviewer bug hunt (the biggest: unreachable secrets, the pause/overlay exploit, knockback after respawn, shop/reroll/farming exploits).
+- Local co-op (online-ready input structure). 446/446; build `build/windows-run10/Bloodbound.exe`.
+
+### Next action
+- User playtest of co-op with a gamepad, and a solo run timing the map.
+- Online co-op when wanted (see DEC-039 for the path).
