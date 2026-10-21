@@ -24,5 +24,21 @@ func _run() -> void:
         await RenderingServer.frame_post_draw
         var file: String = "15_art_causeway.png" if art else "15_art_causeway_greybox.png"
         root.get_viewport().get_texture().get_image().save_png("res://docs/screenshots/" + file)
+        # The first Plagued Soldier (the camera follows the player, so stand just short of it).
+        var main: Node = current_scene
+        var player: CharacterBody3D = main.get("player")
+        player.call("teleport_to", Vector3(0.5, 1.5, 0.0))
+        for i in 40:
+            await physics_frame
+        await RenderingServer.frame_post_draw
+        file = "17_art_soldier.png" if art else "17_art_soldier_greybox.png"
+        root.get_viewport().get_texture().get_image().save_png("res://docs/screenshots/" + file)
+        # The Hollow Bishop, framed from the arena threshold.
+        player.call("teleport_to", Vector3(main.BOSS_ARENA_START_X + float(main.get("map_offset")) - 3.0, 1.5, 0.0))
+        for i in 150:
+            await physics_frame
+        await RenderingServer.frame_post_draw
+        file = "16_art_bishop.png" if art else "16_art_bishop_greybox.png"
+        root.get_viewport().get_texture().get_image().save_png("res://docs/screenshots/" + file)
     ArtSwap.enabled = true
     quit()

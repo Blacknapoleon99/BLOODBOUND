@@ -76,6 +76,61 @@
       "license": "OpenAI terms: output owned by the user; reference use only",
       "cost": "counts against the user's ChatGPT plan",
       "approval": "user approved generation and download 2026-10-21"
+    },
+    {
+      "id": "boss_bishop_body",
+      "file": "assets/models/boss/bishop_body.glb",
+      "ref": "assets/concepts/refs/bishop_body.png",
+      "cost": "30 credits",
+      "tris": 29451,
+      "textures": "2k PBR (jpg)",
+      "fit": "boss-local metres: hem y -12, mitre tip 18.5, faces +Z",
+      "replaces": "hollow_bishop.gd _build_body boxes (Robe, Rib*, Spine, Shoulders, Mitre, LeftArm, Skull, Eye); Heart and SlamArm kept",
+      "provider": "Tripo Studio web (H3.1 HD Model, multiview from ChatGPT turnaround in assets/concepts/refs/), cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); reference images ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21 ('continue use the 1100')"
+    },
+    {
+      "id": "boss_bishop_hand",
+      "file": "assets/models/boss/bishop_hand.glb",
+      "ref": "assets/concepts/refs/bishop_hand.png",
+      "cost": "30 credits",
+      "tris": 9559,
+      "textures": "1k PBR",
+      "fit": "palm up, fingers +Z, origin on stigmata socket, 3.8 m long; stray floating islands removed",
+      "replaces": "bishop_hand.gd Palm/Finger*/Thumb; Stigmata glow and all collision kept",
+      "provider": "Tripo Studio web (H3.1 HD Model, multiview from ChatGPT turnaround in assets/concepts/refs/), cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); reference images ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21 ('continue use the 1100')"
+    },
+    {
+      "id": "enemy_plagued_soldier",
+      "file": "assets/models/enemies/plagued_soldier.glb",
+      "ref": "assets/concepts/refs/soldier.png",
+      "cost": "30 credits + 20 rig (Mixamo skeleton, 65 bones); preset animations free",
+      "tris": 14878,
+      "textures": "1k PBR",
+      "animations": [
+        "idle"
+      ],
+      "fit": "1 m tall feet at origin facing +Z; ArtSwap scales to 1.8 m, yaw 180",
+      "replaces": "plagued_soldier Visual Body/Head (Blade kept); Husk inherits",
+      "provider": "Tripo Studio web (H3.1 HD Model, multiview from ChatGPT turnaround in assets/concepts/refs/), cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); reference images ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21 ('continue use the 1100')"
+    },
+    {
+      "id": "enemy_flying_wraith",
+      "file": "assets/models/enemies/flying_wraith.glb",
+      "ref": "assets/concepts/refs/wraith.png",
+      "cost": "30 credits",
+      "tris": 8803,
+      "textures": "1k PBR",
+      "fit": "1.5 m, yaw 90 (faces +X)",
+      "replaces": "flying_wraith Shroud/Skull",
+      "provider": "Tripo Studio web (H3.1 HD Model, multiview from ChatGPT turnaround in assets/concepts/refs/), cleaned in Blender 5.2.2",
+      "license": "Tripo paid plan output (user's Max plan, private); reference images ChatGPT (user's account)",
+      "approval": "user approved 2026-10-21 ('continue use the 1100')"
     }
   ]
 }

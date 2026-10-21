@@ -393,3 +393,18 @@
   - with art off: `model=false greybox_visible=true collision=(12, 1, 4)`.
 - Screenshots: `docs/screenshots/15_art_causeway.png` and `15_art_causeway_greybox.png`.
 - **Not verified:** the Web export render of the GLB, and the `-- --greybox` command-line toggle (the code path is the same as `ArtSwap.enabled = false`, which was exercised).
+
+## Tripo models in game: Bishop, Plagued Soldier, Wraith (2026-10-22)
+
+- **Models:** Tripo Studio HD multiview generations from ChatGPT turnarounds, cleaned in Blender:
+  - Bishop body: 29k tris, 2k textures.
+  - Bishop hand: 9.6k tris, stray islands removed.
+  - Rigged Soldier: 14.9k tris, Mixamo skeleton, `idle` clip.
+  - Wraith: 8.8k tris.
+- **Wiring:** `ArtSwap` dresses the Bishop at level build and enemies as they enter the tree. Collision, hitboxes, the heart glow, the stigmata glow and the slam arm are untouched.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446** with art enabled.
+- **Screenshots:** `docs/screenshots/16_art_bishop(_greybox).png` and `17_art_soldier(_greybox).png`.
+- **Not verified:**
+  - The Wraith in a screenshot (it only appears in certain rooms).
+  - Hit-flash and enrage tints on model enemies (the code tints the hidden greybox material).
+  - The Web export.
