@@ -13,6 +13,7 @@ const KEYS: Dictionary = {
     &"attack": [KEY_J],
     &"heavy_attack": [KEY_L],
     &"dodge": [KEY_K, KEY_SHIFT],
+    &"crouch": [KEY_CTRL, KEY_C],
     &"interact": [KEY_E],
     &"restart": [KEY_R],
     &"pause": [KEY_ESCAPE, KEY_P],
@@ -32,6 +33,7 @@ const PAD_BUTTONS: Dictionary = {
     &"attack": [JOY_BUTTON_X],
     &"heavy_attack": [JOY_BUTTON_RIGHT_SHOULDER],
     &"dodge": [JOY_BUTTON_B],
+    &"crouch": [JOY_BUTTON_LEFT_SHOULDER],
     &"interact": [JOY_BUTTON_Y],
     &"restart": [JOY_BUTTON_BACK],
     &"pause": [JOY_BUTTON_START],
@@ -60,6 +62,7 @@ const P2_KEYS: Dictionary = {
     &"attack": [KEY_KP_4],
     &"heavy_attack": [KEY_KP_5],
     &"dodge": [KEY_KP_6],
+    &"crouch": [KEY_KP_0],
     &"interact": [KEY_KP_ENTER],
     &"card_1": [KEY_KP_1],
     &"card_2": [KEY_KP_2],
@@ -67,7 +70,7 @@ const P2_KEYS: Dictionary = {
 }
 const PLAYER_ACTIONS: Array[StringName] = [
     &"move_left", &"move_right", &"move_forward", &"move_back", &"jump", &"attack",
-    &"heavy_attack", &"dodge", &"interact", &"card_1", &"card_2", &"card_3",
+    &"heavy_attack", &"dodge", &"crouch", &"interact", &"card_1", &"card_2", &"card_3",
 ]
 
 ## [action, axis, direction]

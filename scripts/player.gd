@@ -20,6 +20,9 @@ extends CharacterBody3D
 ##   then `hurt_invulnerable_time` of invulnerability (from the moment of the hit).
 
 signal jumped
+## Full-3D moveset events (PlatformerMotor): &"skid", &"jump_<kind>", &"wall_slide",
+## &"ledge_grab", &"pull_up", &"pound_start", &"pound_land" — for sound, camera and tests.
+signal move_event(name: StringName)
 signal blinked(from: Vector3, to: Vector3)
 signal landed
 signal dodge_started(direction: Vector3)
@@ -108,6 +111,8 @@ var is_downed: bool = false
 var view_camera: Node3D
 ## Full-3D lock-on target (set by the camera): the player faces it; cards aim at it.
 var lock_target: Node3D
+## The full-3D platformer moveset; drives movement whenever a third-person camera is assigned.
+var motor: PlatformerMotor
 var _haste_left: float = 0.0
 var _haste_mult: float = 1.0
 var _invulnerable_left: float = 0.0
@@ -135,6 +140,7 @@ func _ready() -> void:
     hurtbox.hit_blocked.connect(func(info: DamageInfo) -> void: blocked.emit(info))
     health.died.connect(_on_died)
     melee.attack_finished.connect(_on_attack_finished)
+    motor = PlatformerMotor.new(self)
     _build_shield_visual()
     var knight: MeshInstance3D = get_node_or_null("VisualRoot/PlaceholderKnight") as MeshInstance3D
     if knight:
@@ -269,6 +275,8 @@ func teleport_to(target: Vector3) -> void:
     _stun_left = 0.0
     _queued_attack = null
     melee.cancel()
+    if motor != null:
+        motor.reset()
 
 
 ## Respawn helper: full health plus a clean motion state.
@@ -311,7 +319,7 @@ func _physics_process(delta: float) -> void:
             var world: Vector3 = (view_camera.call("flat_basis") as Basis) * Vector3(input_x, 0.0, input_z)
             input_x = world.x
             input_z = world.z
-    if not melee.is_busy():
+    if not melee.is_busy() and not (_full_3d() and motor.locks_facing()):
         _update_facing(input_x, input_z)
         _face_lock_target()
 
@@ -343,8 +351,7 @@ func _physics_process(delta: float) -> void:
         _apply_attack_motion(input_x, input_z, on_floor, delta)
         _apply_gravity(on_floor, delta)
     elif _full_3d():
-        _apply_run_3d(input_x, input_z, on_floor, delta)
-        _apply_jump_and_gravity(on_floor, delta)
+        motor.step(Vector2(input_x, input_z), on_floor, delta)
     else:
         _apply_run(input_x, input_z, on_floor, delta)
         _apply_jump_and_gravity(on_floor, delta)
@@ -543,6 +550,8 @@ func _apply_gravity(on_floor: bool, delta: float) -> void:
 func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
     if _dodge_cooldown_left > 0.0 or is_dodging():
         return
+    if _full_3d() and motor.blocks_dodge():
+        return
     if not on_floor and _air_dodge_used:
         return
     if melee.is_busy() and not melee.can_cancel_into_dodge():
@@ -564,6 +573,8 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
     _jump_rising = false
     if not on_floor:
         _air_dodge_used = true
+    if _full_3d():
+        motor.reset()  # the dash cancels a slide, crouch or wall slide
     dodge_started.emit(_dodge_direction)
 
 
@@ -613,6 +624,8 @@ func _end_dodge() -> void:
 func _try_attack(data: AttackData) -> void:
     if data == null or is_dodging() or health.is_dead():
         return
+    if _full_3d() and motor.blocks_attacks():
+        return
     data = _resolve_light(data)
     if is_stunned():
         # Held until the stun ends (same idea as the card buffer), not silently dropped.
@@ -627,6 +640,8 @@ func _try_attack(data: AttackData) -> void:
         _soft_lock_facing()
     if melee.start(data, get_facing_vector()):
         _buffer_left = 0.0
+        if _full_3d():
+            motor.reset()  # swinging stands you up out of a crouch or slide
         attack_started.emit(data.id)
 
 

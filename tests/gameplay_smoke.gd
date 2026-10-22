@@ -189,6 +189,7 @@ func _run() -> void:
     await _m22_3d_core_checks()
     await _m23_3d_enemy_checks()
     await _m24_3d_room_checks()
+    await _m25_moveset_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2857,10 +2858,12 @@ func _m22_3d_core_checks() -> void:
     _key(KEY_D, false)
     _key(KEY_A, true)
     var t_rev: int = 0
+    var skidded: bool = false
     while p.velocity.x > -top * 0.95 and t_rev < 60:
         await physics_frame
         t_rev += 1
-    _check(t_rev / PHYSICS_HZ <= 0.2, "a full reversal takes %.2f s (<= 0.20)" % (t_rev / PHYSICS_HZ))
+        skidded = skidded or (p.get("motor") as PlatformerMotor).state == PlatformerMotor.State.SKID
+    _check(t_rev / PHYSICS_HZ <= 0.3 and skidded, "a full reversal skids and relaunches in %.2f s (<= 0.30)" % (t_rev / PHYSICS_HZ))
     _key(KEY_A, false)
     var stop_from: Vector3 = p.global_position
     var t_stop: int = 0
@@ -3258,6 +3261,213 @@ func _m24_3d_room_checks() -> void:
     await _frames(10)
     _bind()
     _check(not Lane.full_3d and not bool(_main.get("full_3d")) and not bool(_player.get("in_3d_mode")), "the next side-view run builds the side view again")
+
+
+## 3D platformer phase 1: the PlatformerMotor moveset, measured in the movement playground.
+func _m25_moveset_checks() -> void:
+    change_scene_to_file("res://scenes/playground_3d.tscn")
+    await _frames(15)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    var motor: PlatformerMotor = p.get("motor")
+    var stations: Dictionary = room.get("stations")
+    var hp: Health = p.get("health") as Health
+
+    # Momentum: speed builds past the base run speed while running straight.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.3)
+    var early: float = Vector2(p.velocity.x, p.velocity.z).length()
+    await _seconds(1.3)
+    var late: float = Vector2(p.velocity.x, p.velocity.z).length()
+    _check(early < 9.0 and late > 10.5, "running straight builds momentum (%.1f -> %.1f m/s)" % [early, late])
+    # Skid + side flip.
+    _key(KEY_W, false)
+    _key(KEY_S, true)
+    await _seconds(0.04)
+    var skid: bool = motor.state == PlatformerMotor.State.SKID
+    var flip_rise: float = await _jump_rise(p)
+    var side_flip: bool = _last_kind(motor) == PlatformerMotor.Jump.SIDE_FLIP
+    _key(KEY_S, false)
+    _check(skid and side_flip and flip_rise > 2.7, "reversing at speed skids; jumping out of it side-flips %.2f m" % flip_rise)
+
+    # Triple jump: each chained landing-jump goes higher.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.5)
+    var rises: Array[float] = []
+    var kinds: Array[int] = []
+    for j in 3:
+        _key(KEY_SPACE, true)
+        await _seconds(0.05)
+        kinds.append(motor.jump_kind)
+        var base: float = p.global_position.y
+        var peak: float = base
+        var airborne: bool = false
+        for i in 120:
+            await physics_frame
+            peak = maxf(peak, p.global_position.y)
+            airborne = airborne or not p.is_on_floor()
+            if airborne and p.velocity.y < 0.0 and p.global_position.y < base + 0.6:
+                _key(KEY_SPACE, false)  # let go just before landing; the next press is buffered
+            if airborne and p.is_on_floor():
+                break
+        rises.append(peak - base)
+    _key(KEY_W, false)
+    _check(kinds == [PlatformerMotor.Jump.SINGLE, PlatformerMotor.Jump.DOUBLE, PlatformerMotor.Jump.TRIPLE] and rises[1] > rises[0] + 0.3 and rises[2] > rises[1] + 0.5,
+            "the triple jump chains higher each time (%.2f / %.2f / %.2f m)" % rises)
+
+    # Long jump: run, crouch, jump: low and far.
+    await _station(p, cam, stations["long"], PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.5)
+    _key(KEY_CTRL, true)
+    await _frames(2)
+    var from: Vector3 = p.global_position
+    var long_rise: float = await _jump_rise(p)
+    var long_kind: bool = _last_kind(motor) == PlatformerMotor.Jump.LONG
+    var long_dist: float = Vector2(p.global_position.x - from.x, p.global_position.z - from.z).length()
+    _key(KEY_CTRL, false)
+    _key(KEY_W, false)
+    _check(long_kind and long_dist > 8.0 and long_rise < 1.4, "a long jump flies %.1f m, only %.2f m high" % [long_dist, long_rise])
+
+    # Backflip: crouch + jump standing still: high and backwards.
+    await _station(p, cam, stations["triple"], 0.0)
+    _key(KEY_CTRL, true)
+    await _seconds(0.05)
+    from = p.global_position
+    var back_rise: float = await _jump_rise(p)
+    var backflip: bool = _last_kind(motor) == PlatformerMotor.Jump.BACKFLIP
+    _key(KEY_CTRL, false)
+    _check(backflip and back_rise > 3.2 and (p.global_position - from).dot(Vector3(0.0, 0.0, 1.0)) > 0.5, "a standing crouch-jump backflips %.2f m" % back_rise)
+
+    # Crouch: the body shrinks; a run-and-crouch slides under a 1.2 m slab.
+    await _station(p, cam, stations["tunnel"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.4)
+    _key(KEY_CTRL, true)
+    await _seconds(0.05)
+    var sliding: bool = motor.state == PlatformerMotor.State.SLIDE and motor.crouched
+    var through: bool = false
+    for i in int(PHYSICS_HZ * 4.0):
+        await physics_frame
+        if p.global_position.x > 25.5:
+            through = true
+            break
+    _key(KEY_CTRL, false)
+    await _seconds(0.3)
+    _key(KEY_W, false)
+    _check(sliding and through and not motor.crouched, "running into a crouch slides under the 1.2 m slab, then stands")
+
+    # Wall slide + wall kicks up the shaft.
+    await _station(p, cam, stations["shaft"], 0.0)
+    var best: float = p.global_position.y
+    var slid_slow: bool = true
+    var kicks: int = 0
+    _key(KEY_SPACE, true)
+    await _frames(10)
+    var side: Key = KEY_D
+    for kick in 8:
+        _key(side, true)
+        var on_wall: bool = false
+        for i in 60:
+            await physics_frame
+            best = maxf(best, p.global_position.y)
+            if motor.state == PlatformerMotor.State.WALL_SLIDE:
+                on_wall = true
+                break
+        _key(KEY_SPACE, false)
+        await _frames(4)
+        slid_slow = slid_slow and (not on_wall or p.velocity.y >= -PlatformerMotor.WALL_SLIDE_SPEED - 0.1)
+        _key(side, false)
+        if not on_wall:
+            break
+        _key(KEY_SPACE, true)
+        await _frames(3)
+        if motor.jump_kind == PlatformerMotor.Jump.WALL_KICK:
+            kicks += 1
+        side = KEY_A if side == KEY_D else KEY_D
+    _key(KEY_SPACE, false)
+    for i in 40:
+        await physics_frame
+        best = maxf(best, p.global_position.y)
+    _check(kicks >= 3 and slid_slow and best > 6.0, "wall slides are slow and %d wall kicks climb the shaft to %.1f m" % [kicks, best])
+
+    # Ledge grab: catch the 3 m wall, shimmy, pull up.
+    await _station(p, cam, stations["ledge"], 0.0)
+    _key(KEY_W, true)
+    await _frames(8)
+    _key(KEY_SPACE, true)
+    var grabbed: bool = false
+    for i in 90:
+        await physics_frame
+        if motor.state == PlatformerMotor.State.HANG:
+            grabbed = true
+            break
+    _key(KEY_W, false)
+    _key(KEY_SPACE, false)
+    await _frames(6)
+    _tap(KEY_J)  # no swings while hanging
+    await _frames(3)
+    var no_swing: bool = not (p.get("melee") as MeleeAttack).is_busy()
+    var hx: float = p.global_position.x
+    await _hold(KEY_D, 0.5)
+    var shimmied: float = p.global_position.x - hx
+    _tap(KEY_SPACE)
+    await _seconds(0.8)
+    _check(grabbed and no_swing and shimmied > 0.6 and p.is_on_floor() and p.global_position.y > 3.5,
+            "a ledge is caught, shimmied along (%.1f m) and climbed (y %.2f)" % [shimmied, p.global_position.y])
+
+    # Ground pound: smashes the cracked floor and lands in the cache below.
+    await _station(p, cam, Vector3(-20.0, 1.2, 14.0), PI * 0.5)
+    _key(KEY_SPACE, true)
+    await _frames(16)
+    _key(KEY_SPACE, false)
+    _tap(KEY_CTRL)
+    await _frames(2)
+    var spun: bool = motor.state == PlatformerMotor.State.POUND_SPIN
+    await _seconds(1.2)
+    var crack: BreakableFloor = room.get("crack")
+    _check(spun and crack.is_broken and p.global_position.y < -1.0, "a ground pound breaks the cracked floor and drops into the cache")
+    hp.restore_full()
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+
+
+## Teleports `p` to `spot`, turns the camera to `yaw` and lets everything settle.
+func _station(p: CharacterBody3D, cam: ThirdPersonCamera, spot: Vector3, yaw: float) -> void:
+    for k: Key in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_CTRL]:
+        _key(k, false)
+    p.call("teleport_to", spot)
+    cam.yaw = yaw
+    await _seconds(0.4)
+
+
+var _jump_kind_seen: int = 0
+
+
+## Presses jump (held) and returns how high the body rose before landing.
+func _jump_rise(p: CharacterBody3D) -> float:
+    var motor: PlatformerMotor = p.get("motor")
+    var base: float = p.global_position.y
+    var peak: float = base
+    _key(KEY_SPACE, true)
+    await _seconds(0.05)  # physics frames: the jump starts on the next physics step
+    _jump_kind_seen = motor.jump_kind
+    for i in 150:
+        await physics_frame
+        peak = maxf(peak, p.global_position.y)
+        if i > 4 and p.is_on_floor():
+            break
+    _key(KEY_SPACE, false)
+    return peak - base
+
+
+func _last_kind(_motor: PlatformerMotor) -> int:
+    return _jump_kind_seen
 
 
 func _m3_boss_checks() -> void:

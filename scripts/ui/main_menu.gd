@@ -90,6 +90,14 @@ func _on_start_coop() -> void:
     get_tree().change_scene_to_file(GAME_SCENE)
 
 
+## Developer shortcut: F1 on the title opens the movement playground (not shown in the menu).
+func _unhandled_key_input(event: InputEvent) -> void:
+    var key: InputEventKey = event as InputEventKey
+    if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_F1:
+        RunState.coop = false
+        get_tree().change_scene_to_file("res://scenes/playground_3d.tscn")
+
+
 func _on_settings() -> void:
     _menu.visible = false
     settings.open()

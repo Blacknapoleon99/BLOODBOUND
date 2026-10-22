@@ -40,3 +40,33 @@
 - **The air pose follows whether the hero is really airborne** (rising or falling, after a 0.08 s grace), not only falling faster than 1 m/s, and landing eases straight back into locomotion.
 - **3D run:** the side view's painted backdrop (distant silhouettes, the Reality Fracture's amber gate) is no longer built.
 - Tests 498/498; probe 12/12; build `build/windows-run19`.
+
+## DEC-049 — 3D platformer phase 1: the PlatformerMotor moveset (2026-10-22)
+
+- **Design:** `docs/superpowers/specs/2026-10-22-3d-platformer-design.md`, approved. It calls for 3D World-style stages, a Mario-style moveset, and our own climbing (phase 2).
+- **`PlatformerMotor`** (`scripts/player/platformer_motor.gd`) drives the player whenever a third-person camera does. The side-view game is unchanged.
+- **Every move is an explicit state:** GROUND, AIR, SKID, CROUCH, SLIDE, WALL_SLIDE, HANG, PULL_UP and the POUND states, each with a jump kind. Animation and tests read the state.
+- **Moves and measured numbers** (from the permanent `_m25` checks):
+
+  | Move | Measured |
+  |---|---|
+  | Momentum run | 8.5 → 11 m/s after about 1.2 s running straight |
+  | Skid on reversal at speed (+ side flip out of it) | 3.3 m |
+  | Triple jump (jump again within 0.15 s of landing while running) | 2.0 / 2.6 / 3.4 m in the test; about 2.2 / 2.8 / 3.7 m held |
+  | Long jump (run, Ctrl, Space) | 9.1 m far, 1.05 m high |
+  | Backflip (stand, Ctrl, Space) | 3.7 m |
+  | Crouch | collider 1.7 → 1.0 m; won't stand up under a ceiling |
+  | Slide | passes under a 1.2 m slab |
+  | Wall slide, then wall kick | slide capped at 3.5 m/s; 6 kicks climb a 10 m shaft |
+  | Ledge grab (hang, shimmy, pull up / drop) | grabs only static geometry; pull-up checks for standing room |
+  | Ground pound (Ctrl in the air) | 0.28 s spin, then a slam: a 2 m area hit, and it smashes cracked floors outright |
+- **The dash stays.** No swings while hanging, wall-sliding or pounding. Swinging or dashing stands you up.
+- **Controls:**
+  - Crouch is new: Ctrl or C, gamepad LB, P2 numpad 0.
+- **Procedural poses** (placeholder until real clips), built on the model's rest transform with the pivot at the body's centre:
+  - the triple jump and pound flip forward, the backflip flips back, the side flip rolls;
+  - the long jump dives forward;
+  - the skid and slide lean back, the crouch squashes.
+- **Movement playground** (`scenes/playground_3d.tscn`, F1 on the title screen; developer shortcut, not in the menu). One station each: momentum strip, 3.4 m tower, 8 m long-jump gap, wall-kick shaft, ledge wall, slide tunnel, pound floor.
+- The old "reversal ≤ 0.20 s" check becomes "a reversal skids and relaunches ≤ 0.30 s": the skid is the design.
+- **Not done:** real animation clips (the hang has its arms down), climbing (phase 2), and stages built for the moves (phases 3–4).

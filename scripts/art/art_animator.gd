@@ -37,6 +37,11 @@ var _velocity: Vector3
 var _speed_smoothed: float = 0.0
 var _air: float = 0.0
 var _airtime: float = 0.0
+## The model's rest transform from ArtSwap (scale and feet offset); poses are built on it.
+var _base_scale: Vector3 = Vector3.ONE
+var _base_origin: Vector3 = Vector3.ZERO
+var _yaw: float = 0.0
+var _squash: float = 1.0
 var _state_move: bool = false
 var _has_upper: bool = false
 var _queued: Dictionary = {}  # an action to fire when the current one ends (draw -> swing)
@@ -63,6 +68,9 @@ static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringN
     animator.steer_facing = steer
     animator.move_clip = moving
     animator.size_scale = maxf(0.3, height / 1.8)
+    animator._base_scale = art.scale
+    animator._base_origin = art.position
+    animator._yaw = art.rotation.y
     animator._last_pos = owner_body.global_position if owner_body.is_inside_tree() else owner_body.position
     for clip: StringName in animator.player.get_animation_list():
         var anim: Animation = animator.player.get_animation(clip)
@@ -416,6 +424,57 @@ func _moving() -> bool:
     return Vector2(_velocity.x, _velocity.z).length() > 1.0
 
 
+# --- Procedural moveset poses (placeholder until real clips) ----------------------------------
+
+## Builds the model's transform from the facing yaw plus the PlatformerMotor state: the triple
+## jump and ground pound flip forward, the backflip flips back, the side flip rolls, the long jump
+## dives forward, the skid and slide lean back, the crouch squashes down. Rotations pivot at the
+## body's centre (the player's origin), squash at the feet.
+func _apply_pose(delta: float) -> void:
+    var pitch: float = 0.0  # + leans/flips forward
+    var roll: float = 0.0
+    var squash: float = 1.0
+    var motor: PlatformerMotor = body.get("motor") as PlatformerMotor if body.get("view_camera") != null else null
+    if motor != null:
+        var t: float = motor.state_time
+        match motor.state:
+            PlatformerMotor.State.AIR:
+                match motor.jump_kind:
+                    PlatformerMotor.Jump.TRIPLE:
+                        pitch = TAU * smoothstep(0.0, 0.55, t)
+                    PlatformerMotor.Jump.BACKFLIP:
+                        pitch = -TAU * smoothstep(0.0, 0.6, t)
+                    PlatformerMotor.Jump.SIDE_FLIP:
+                        roll = TAU * smoothstep(0.0, 0.5, t)
+                    PlatformerMotor.Jump.LONG:
+                        pitch = deg_to_rad(55.0) * smoothstep(0.0, 0.12, t)
+                    PlatformerMotor.Jump.WALL_KICK:
+                        pitch = -deg_to_rad(15.0) * (1.0 - smoothstep(0.0, 0.3, t))
+            PlatformerMotor.State.SKID:
+                pitch = -deg_to_rad(22.0)
+            PlatformerMotor.State.SLIDE:
+                pitch = -deg_to_rad(35.0)
+                squash = 0.75
+            PlatformerMotor.State.CROUCH:
+                squash = 0.68
+            PlatformerMotor.State.WALL_SLIDE:
+                pitch = -deg_to_rad(12.0)
+            PlatformerMotor.State.HANG, PlatformerMotor.State.PULL_UP:
+                pitch = deg_to_rad(8.0)
+            PlatformerMotor.State.POUND_SPIN:
+                pitch = TAU * smoothstep(0.0, PlatformerMotor.POUND_SPIN_TIME, t)
+                squash = 0.85
+            PlatformerMotor.State.POUND_FALL:
+                squash = 0.8
+            PlatformerMotor.State.POUND_LAND:
+                squash = lerpf(0.6, 1.0, smoothstep(0.0, PlatformerMotor.POUND_LAND_TIME, t))
+    _squash = lerpf(_squash, squash, 1.0 - exp(-18.0 * delta))
+    var turn: Basis = Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.BACK, roll)
+    var pivot: Vector3 = Vector3.ZERO  # the body's centre in the visual root's space
+    var origin: Vector3 = pivot + turn * (_base_origin - pivot)
+    model.transform = Transform3D(turn * Basis.from_scale(Vector3(_base_scale.x, _base_scale.y * _squash, _base_scale.z)), origin)
+
+
 # --- Per frame --------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
@@ -428,12 +487,14 @@ func _physics_process(delta: float) -> void:
     else:
         _velocity = (body.global_position - _last_pos) / maxf(delta, 0.0001)
         _last_pos = body.global_position
-    # Facing: frame-rate independent ease toward the gameplay facing (no snapping).
+    # Facing: frame-rate independent ease toward the gameplay facing (no snapping), then the
+    # moveset's procedural pose (flips, spins, crouch, leans) on top.
     if steer_facing and body.has_method(&"get_facing_vector"):
         var f: Vector3 = body.call(&"get_facing_vector")
         if f.length_squared() > 0.0001:
             var turn_rate: float = 28.0 if body.get("view_camera") != null else 20.0
-            model.rotation.y = lerp_angle(model.rotation.y, atan2(f.x, f.z), 1.0 - exp(-turn_rate * delta))
+            _yaw = lerp_angle(_yaw, atan2(f.x, f.z), 1.0 - exp(-turn_rate * delta))
+        _apply_pose(delta)
     if not _queued.is_empty() and _clock >= _queued_at:
         var next: Dictionary = _queued
         _queued = {}
