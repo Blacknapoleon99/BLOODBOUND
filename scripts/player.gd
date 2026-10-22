@@ -23,6 +23,7 @@ signal jumped
 signal blinked(from: Vector3, to: Vector3)
 signal landed
 signal dodge_started(direction: Vector3)
+signal dodge_refused
 signal attack_started(attack_id: StringName)
 signal hurt(info: DamageInfo)
 signal blocked(info: DamageInfo)
@@ -51,6 +52,8 @@ signal died
 @export var dodge_duration: float = 0.22
 @export var dodge_invulnerable_time: float = 0.28
 @export var dodge_cooldown: float = 0.4
+## Blood each dodge/dash costs (refused, with feedback, when you can't pay).
+@export var dodge_blood_cost: float = 0.6
 
 @export_group("Combat")
 @export var light_attack: AttackData
@@ -462,9 +465,14 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
         return
     if not on_floor and _air_dodge_used:
         return
-    if melee.is_busy():
-        if not melee.can_cancel_into_dodge():
+    if melee.is_busy() and not melee.can_cancel_into_dodge():
+        return
+    var cards: CardSystem = get_node_or_null("Cards") as CardSystem
+    if cards != null and cards.energy != null and dodge_blood_cost > 0.0:
+        if not cards.energy.spend(dodge_blood_cost):
+            dodge_refused.emit()  # not enough blood: no dash
             return
+    if melee.is_busy():
         melee.cancel()
     var direction: Vector3 = Vector3(input_x, 0.0, input_z)
     if direction.length_squared() < 0.01:

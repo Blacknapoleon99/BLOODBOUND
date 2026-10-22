@@ -361,3 +361,12 @@ Playtest: "rubberbandy and lagging when switching directions". Measured before t
 - **Player:** turnarounds use a dedicated rate (160 on the ground, 70 in the air) instead of the 60 used for speeding up.
 
 **After:** a turnaround takes 0.18 s; the camera leads by 0.9 m instead of trailing; aim swing is 0°. Permanent checks were added (450/450). Build `build/windows-run12/Bloodbound.exe`.
+
+## DEC-042 — Bishop arm, Bishop motion, dash cost (2026-10-22)
+
+- **Bishop arm.** The greybox SlamArm box is replaced by `ArtBoneArm`: the model's right arm is folded away by a SkeletonModifier3D, and a skeletal arm (humerus, raised elbow, radius and ulna) grows from the model's real shoulder to the slam hand.
+  - **Why not the model's own arm:** the hand travels ~28 m from the shoulder, but the arm is 8 m. Aiming and stretching the real arm (a custom modifier) was tried and measured: the bones reached the hand exactly (0 m gap). But the Tripo auto-rig skins the robe sleeve partly to the body, so a 3.5× stretch tore it into sheets.
+  - In the full-3D version the Bishop slams within its natural reach and uses its own arm.
+- **Bishop motion.** Locomotion reference speeds now scale with model size (the 30 m Bishop had been playing a human-speed walk 1.8× too fast). Its tracking eases (accelerates and settles) instead of starting and stopping instantly. The animation speed input is smoothed exponentially.
+- **Dash costs blood.** A dodge/dash costs 0.6 blood (`Player.dodge_blood_cost`). Without enough blood it is refused (sound plus HUD message) and nothing is spent.
+- **Results:** 452/452. Build `build/windows-run13/Bloodbound.exe`.

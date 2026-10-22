@@ -81,8 +81,9 @@ static func apply(level: Node3D) -> int:
     if bishop_art != null:
         swapped += 1
         bishop_art.transform = Transform3D(Basis.from_scale(Vector3.ONE * BISHOP_HEIGHT), Vector3(0.0, BISHOP_HEM_Y, 0.0))
-        if ArtAnimator.attach(bishop, bishop_art, false, &"walk") == null:
+        if ArtAnimator.attach(bishop, bishop_art, false, &"walk", BISHOP_HEIGHT) == null:
             play_loop(bishop_art, &"idle")
+        ArtBoneArm.attach(bishop, bishop_art)  # a real bone arm instead of the greybox box
         var hand: Node3D = bishop.get("hand") as Node3D
         if hand != null and dress(hand, HAND_PARTS, BISHOP_HAND_PATH) != null:
             swapped += 1
@@ -159,7 +160,7 @@ static func _dress_enemy(enemy: Node, cfg: Dictionary) -> void:
     if cfg.has("weapon"):
         weapon = ArtWeapon.attach(enemy as Node3D, art, load(cfg["weapon"]) as PackedScene, h)
     ArtCloth.attach(art)
-    var animator: ArtAnimator = ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk")) if enemy is CharacterBody3D else null
+    var animator: ArtAnimator = ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk"), float(cfg.get("height", 1.8))) if enemy is CharacterBody3D else null
     if weapon != null:
         if animator != null:
             animator.weapon = weapon

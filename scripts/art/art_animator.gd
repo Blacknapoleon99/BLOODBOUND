@@ -42,11 +42,13 @@ var _queued: Dictionary = {}  # an action to fire when the current one ends (dra
 var _queued_at: float = -1.0
 var _clock: float = 0.0
 var _loco_points: Array[float] = []
+## Model height / 1.8 m: reference stride speeds scale with size (the 30 m Bishop).
+var size_scale: float = 1.0
 ## Cached busiest-window start per Animation resource.
 static var _window_cache: Dictionary = {}
 
 
-static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringName) -> ArtAnimator:
+static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringName, height: float = 1.8) -> ArtAnimator:
     var players: Array[Node] = art.find_children("*", "AnimationPlayer", true, false)
     if players.is_empty():
         return null
@@ -57,6 +59,7 @@ static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringN
     animator.player = players[0] as AnimationPlayer
     animator.steer_facing = steer
     animator.move_clip = moving
+    animator.size_scale = maxf(0.3, height / 1.8)
     animator._last_pos = owner_body.global_position if owner_body.is_inside_tree() else owner_body.position
     for clip: StringName in animator.player.get_animation_list():
         var anim: Animation = animator.player.get_animation(clip)
@@ -79,8 +82,8 @@ func _build_tree() -> void:
 
     var loco: AnimationNodeBlendSpace1D = AnimationNodeBlendSpace1D.new()
     loco.min_space = 0.0
-    loco.max_space = RUN_REF
-    for entry: Array in [[&"idle", 0.0], [&"walk", WALK_REF], [&"run", RUN_REF]]:
+    loco.max_space = RUN_REF * size_scale
+    for entry: Array in [[&"idle", 0.0], [&"walk", WALK_REF * size_scale], [&"run", RUN_REF * size_scale]]:
         if player.has_animation(entry[0]) and (entry[0] != &"run" or move_clip == &"run"):
             var clip: AnimationNodeAnimation = AnimationNodeAnimation.new()
             clip.animation = entry[0]
@@ -355,8 +358,8 @@ func _physics_process(delta: float) -> void:
     # Locomotion: smoothed ground speed drives the blend; faster than the run clip speeds it up.
     var ground: float = Vector2(_velocity.x, _velocity.z).length()
     if _state_move:
-        ground = maxf(ground, RUN_REF)
-    _speed_smoothed = move_toward(_speed_smoothed, ground, 40.0 * delta)
+        ground = maxf(ground, RUN_REF * size_scale)
+    _speed_smoothed = lerpf(_speed_smoothed, ground, 1.0 - exp(-10.0 * delta))
     var top: float = _loco_points.max()
     tree.set("parameters/loco/blend_position", minf(_speed_smoothed, top) if top > 0.0 else 0.0)
     var over: float = _speed_smoothed / top if top > 0.0 else 1.0

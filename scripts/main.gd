@@ -884,6 +884,9 @@ func _connect_audio() -> void:
     for p: CharacterBody3D in players:
         p.connect("attack_started", _on_player_attack_audio)
         p.connect("dodge_started", func(_d: Vector3) -> void: Audio.sfx(&"dodge"))
+        p.connect("dodge_refused", func() -> void:
+            Audio.sfx(&"card_refused", 0.0)
+            _flash("Not enough blood to dash (%.1f needed)." % float(p.get("dodge_blood_cost")), 1.2))
         p.connect("jumped", func() -> void: Audio.sfx(&"jump", 0.1, -6.0))
         p.connect("landed", func() -> void: Audio.sfx(&"land", 0.1, -8.0))
         p.connect("hurt", func(_i: DamageInfo) -> void: Audio.sfx(&"player_hurt"))

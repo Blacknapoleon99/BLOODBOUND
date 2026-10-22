@@ -2774,6 +2774,32 @@ func _m21_feel_checks() -> void:
     _check(absf(lag) < 1.2, "the camera keeps up with a full run (%.2f m behind)" % lag)
     _check(max_yaw < 0.5, "the camera slides and never swivels when you turn (%.2f deg)" % max_yaw)
     await _seconds(0.5)
+    # The dash costs blood, and is refused (no dodge, nothing spent) without it. Fresh level, so
+    # no earlier check can leave the player stunned.
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    _enemy.set_ai_enabled(false)
+    await _seconds(1.0)
+    var energy: BloodEnergy = _energy()
+    energy.regen_per_second = 0.0
+    energy.set_amount(2.0)
+    _key(KEY_K, false)  # make sure the next tap is a fresh press
+    await physics_frame
+    _key(KEY_K, true)
+    for i in 3:
+        await physics_frame  # physics frames: the dodge happens on the physics tick
+    _key(KEY_K, false)
+    _check(absf(energy.current - (2.0 - float(_player.get("dodge_blood_cost")))) < 0.01, "a dash costs %.1f blood (blood now %.2f)" % [float(_player.get("dodge_blood_cost")), energy.current])
+    await _seconds(0.8)
+    energy.set_amount(0.3)
+    _key(KEY_K, true)
+    for i in 3:
+        await physics_frame
+    _key(KEY_K, false)
+    _check(not bool(_player.call("is_dodging")) and is_equal_approx(energy.current, 0.3), "without enough blood the dash is refused and nothing is spent")
+    energy.regen_per_second = 0.25
 
 
 func _m3_boss_checks() -> void:

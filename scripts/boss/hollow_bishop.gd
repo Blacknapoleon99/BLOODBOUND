@@ -114,6 +114,7 @@ var _chain_from: Vector3
 var _chain_window: float = 3.0
 var _actor: Node3D
 var _secondary: Node3D
+var _track_velocity: float = 0.0
 var _secondary_cooldown: float = 1.5
 var _secondary_index: int = 0
 var secondary_attacks_started: int = 0
@@ -280,7 +281,14 @@ func _physics_process(delta: float) -> void:
 
     var player: Node3D = _engaged_player()
     if player != null and not is_attacking():
-        position.x = move_toward(position.x, clampf(player.global_position.x, min_x, max_x), track_speed * delta)
+        # Eased tracking: accelerate toward the player's x and settle, never start/stop instantly.
+        var gap: float = clampf(player.global_position.x, min_x, max_x) - position.x
+        var desired: float = clampf(gap * 1.5, -track_speed, track_speed)
+        _track_velocity = move_toward(_track_velocity, desired, track_speed * 2.0 * delta)
+        position.x += _track_velocity * delta
+    else:
+        _track_velocity = move_toward(_track_velocity, 0.0, track_speed * 3.0 * delta)
+        position.x += _track_velocity * delta
 
     if is_attacking():
         if _attack == &"slam" or _attack == &"sunder":
