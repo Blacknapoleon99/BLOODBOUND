@@ -36,6 +36,7 @@ var _last_pos: Vector3
 var _velocity: Vector3
 var _speed_smoothed: float = 0.0
 var _air: float = 0.0
+var _airtime: float = 0.0
 var _state_move: bool = false
 var _has_upper: bool = false
 var _queued: Dictionary = {}  # an action to fire when the current one ends (draw -> swing)
@@ -46,6 +47,8 @@ var _loco_points: Array[float] = []
 var size_scale: float = 1.0
 ## Cached busiest-window start per Animation resource.
 static var _window_cache: Dictionary = {}
+## Cached [start, length] spans found from the hips' height (see _hips_span).
+static var _span_cache: Dictionary = {}
 
 
 static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringName, height: float = 1.8) -> ArtAnimator:
@@ -100,6 +103,16 @@ func _build_tree() -> void:
 
     var fall: AnimationNodeAnimation = AnimationNodeAnimation.new()
     fall.animation = &"fall" if player.has_animation(&"fall") else _loco_anim_name(0)
+    if player.has_animation(&"fall"):
+        # Loop only the airborne stretch: the clip ends collapsing onto the ground, which looped
+        # in mid-air read as the character dropping dead or getting stuck.
+        var span: Array = _hips_span(player.get_animation(&"fall"), &"fall")
+        if not span.is_empty():
+            fall.use_custom_timeline = true
+            fall.start_offset = span[0]
+            fall.timeline_length = span[1]
+            fall.stretch_time_scale = false
+            fall.loop_mode = Animation.LOOP_LINEAR
     root.add_node(&"fall", fall)
     root.add_node(&"air", AnimationNodeBlend2.new())
     root.connect_node(&"air", 0, &"loco_speed")
@@ -170,6 +183,13 @@ func act(clip: StringName, duration: float, kind: StringName, upper: bool) -> bo
     var start: float = clampf(_busiest_start(anim, window), 0.0, maxf(0.0, anim.length - window))
     if kind == &"hit":
         start = 0.0  # reactions read best from their first frame
+    if kind == &"jump" or kind == &"dive":
+        # The takeoff of one hop / the leap of the dive, never the landing or lying on the floor:
+        # the air pose and locomotion take over from there, driven by the real jump.
+        var span: Array = _hips_span(anim, kind)
+        if not span.is_empty():
+            start = span[0]
+            window = span[1]
     var layer: StringName = &"upper" if upper and _has_upper else &"full"
     var root: AnimationNodeBlendTree = tree.tree_root as AnimationNodeBlendTree
     var shot: AnimationNodeAnimation = root.get_node(StringName("%s_clip" % layer)) as AnimationNodeAnimation
@@ -226,6 +246,68 @@ static func _busiest_start(anim: Animation, window: float) -> float:
     return start
 
 
+## [start, length] of a phase of `anim` read from the hips' height (cached), or [] if the rig
+## has no hips track:
+## - &"fall": from the start until the hips drop below 90% of their height (the clip collapsing
+##   onto the ground);
+## - &"jump": one hop's takeoff, from the first low point to the next high point;
+## - &"dive": from the high point before the lowest point to halfway down (the leap, not the
+##   faceplant).
+static func _hips_span(anim: Animation, phase: StringName) -> Array:
+    var key: String = "%d:%s" % [anim.get_instance_id(), phase]
+    if _span_cache.has(key):
+        return _span_cache[key]
+    var track: int = -1
+    for t in anim.get_track_count():
+        if anim.track_get_type(t) == Animation.TYPE_POSITION_3D and String(anim.track_get_path(t)).ends_with("Hips"):
+            track = t
+            break
+    var span: Array = []
+    if track >= 0:
+        var step: float = 1.0 / 30.0
+        var ys: PackedFloat32Array = PackedFloat32Array()
+        var n: int = int(anim.length / step) + 1
+        for i in n:
+            ys.append(anim.position_track_interpolate(track, i * step).y)
+        match phase:
+            &"fall":
+                var end: int = n - 1
+                for i in n:
+                    if ys[i] < ys[0] * 0.9:
+                        end = i
+                        break
+                if end > 6:
+                    span = [0.0, (end - 3) * step]
+            &"jump":
+                var low: int = 0
+                while low + 1 < n and ys[low + 1] >= ys[low]:  # skip a first rise
+                    low += 1
+                while low + 1 < n and ys[low + 1] <= ys[low]:  # down into the crouch
+                    low += 1
+                var high: int = low
+                while high + 1 < n and ys[high + 1] >= ys[high]:  # up to the peak of the hop
+                    high += 1
+                if high > low:
+                    var from: int = maxi(0, low - 3)
+                    span = [from * step, (high - from) * step]
+            &"dive":
+                var lowest: int = 0
+                for i in n:
+                    if ys[i] < ys[lowest]:
+                        lowest = i
+                var peak: int = lowest
+                while peak > 0 and ys[peak - 1] >= ys[peak]:
+                    peak -= 1
+                var halfway: int = peak
+                while halfway < lowest and ys[halfway] > (ys[peak] + ys[lowest]) * 0.5:
+                    halfway += 1
+                if halfway > peak:
+                    var from2: int = maxi(0, peak - 6)
+                    span = [from2 * step, (halfway - from2) * step]
+    _span_cache[key] = span
+    return span
+
+
 # --- Gameplay hooks ---------------------------------------------------------------------------
 
 func _connect_gameplay_signals() -> void:
@@ -236,7 +318,7 @@ func _connect_gameplay_signals() -> void:
         _hook(body, &"attack_started", _on_named_attack)  # the Bishop's attack names
     _hook(body, &"phase_changed", func(_phase: Variant = null) -> void: act(&"angry_01", 1.2, &"cast", false))
     _hook(body, &"dodge_started", _on_dodge)
-    _hook(body, &"jumped", func() -> void: act(&"jump", 0.45, &"jump", false))
+    _hook(body, &"jumped", func() -> void: act(&"jump", 0.22, &"jump", false))  # the takeoff only
     _hook(body, &"hurt", func(_info: Variant = null) -> void: act(&"hit_to_body_01", 0.35, &"hit", true))
     _hook(body, &"died", _on_died)
     _hook(body, &"defeated", _on_died)
@@ -365,7 +447,10 @@ func _physics_process(delta: float) -> void:
     tree.set("parameters/loco/blend_position", minf(_speed_smoothed, top) if top > 0.0 else 0.0)
     var over: float = _speed_smoothed / top if top > 0.0 else 1.0
     tree.set("parameters/loco_speed/scale", clampf(over, 1.0, 1.8) if _loco_points.size() > 1 else clampf(over, 0.25, 1.8))
-    # Air: ease into the fall clip while descending.
-    var falling: bool = character != null and not character.is_on_floor() and _velocity.y < -1.0
-    _air = move_toward(_air, 1.0 if falling else 0.0, 6.0 * delta)
+    # Air: the air pose whenever really airborne (rising or falling); a short grace keeps steps
+    # and slope lips from flickering it; landing eases straight back into locomotion.
+    var grounded: bool = character == null or character.is_on_floor()
+    _airtime = 0.0 if grounded else _airtime + delta
+    var airborne: bool = _airtime > 0.08
+    _air = move_toward(_air, 1.0 if airborne else 0.0, (7.0 if airborne else 10.0) * delta)
     tree.set("parameters/air/blend_amount", _air)

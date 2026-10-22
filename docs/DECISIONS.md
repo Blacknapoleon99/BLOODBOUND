@@ -26,3 +26,17 @@
 - **Co-op** still runs on the side-view build: 3D co-op (one shared camera plus online) waits until the game is complete.
 - The side-view build stays in the code: co-op and the Bishop (until phase 4) still use it, and so do the scripted checks.
 - The export probe's movement check now accepts movement in any direction (in 3D, D strafes). Tests 497/497; probe 12/12; build `build/windows-run18`.
+
+## DEC-048 — Hero animation follows the real jump; no side-view backdrop in 3D (2026-10-22)
+
+- **Playtest:** "the character gets stuck in animations sometimes". Measured from a scripted 3D run (animation state logged every 3 frames). The causes are the clips:
+  - Tripo's `fall` ends with the body collapsing onto the ground (hips 0.53 → 0.16 m after 1.2 s). Looped as the air pose, it dropped the hero into a lying pose in mid-air.
+  - `jump` is four hops in a row. A 0.6 s slice played in 0.45 s, so a landing showed in mid-air.
+  - `dive` (the dodge) ends face-down on the floor.
+- **Fix:** `ArtAnimator._hips_span` reads each clip's phases from the hips' height:
+  - the fall loop plays only its airborne first 1.13 s;
+  - the jump plays one hop's takeoff in 0.22 s;
+  - the dodge plays the dive's leap, not the faceplant.
+- **The air pose follows whether the hero is really airborne** (rising or falling, after a 0.08 s grace), not only falling faster than 1 m/s, and landing eases straight back into locomotion.
+- **3D run:** the side view's painted backdrop (distant silhouettes, the Reality Fracture's amber gate) is no longer built.
+- Tests 498/498; probe 12/12; build `build/windows-run19`.

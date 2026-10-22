@@ -3174,6 +3174,29 @@ func _m24_3d_room_checks() -> void:
             landed_all = false
             bad_room = room.title
     _check(landed_all, "every 3D room's entry stands on solid floor across its depth (bad: %s)" % bad_room)
+    # Animation follows the real jump: the air pose while rising and falling, a fall loop that
+    # never collapses onto the floor, and locomotion again on landing.
+    var animator: ArtAnimator = _player.find_child("ArtAnimator", true, false) as ArtAnimator
+    if animator != null:
+        var fall_node: AnimationNodeAnimation = (animator.tree.tree_root as AnimationNodeBlendTree).get_node(&"fall") as AnimationNodeAnimation
+        var fall_len: float = animator.player.get_animation(&"fall").length if animator.player.has_animation(&"fall") else 0.0
+        _player.call("teleport_to", (sections[0] as LevelSection).checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
+        await _seconds(0.4)
+        _key(KEY_SPACE, true)
+        await _seconds(0.25)
+        var rising_air: float = float(animator.tree.get("parameters/air/blend_amount"))
+        var rising: bool = _player.velocity.y > 0.0
+        _key(KEY_SPACE, false)
+        var landed: bool = false
+        for i in int(PHYSICS_HZ * 2.0):
+            await physics_frame
+            if _player.is_on_floor():
+                landed = true
+                break
+        await _seconds(0.35)
+        var after_air: float = float(animator.tree.get("parameters/air/blend_amount"))
+        _check(rising and rising_air > 0.5 and landed and after_air < 0.05 and fall_node.use_custom_timeline and fall_node.timeline_length < fall_len * 0.5,
+                "the hero's air pose follows the jump (rising %.2f, landed %.2f) and the fall loop skips the clip's collapse (%.2f of %.2f s)" % [rising_air, after_air, fall_node.timeline_length, fall_len])
     # The hall walls: running sideways stops at the wall, never off the edge.
     var first: LevelSection = sections[0]
     _player.call("teleport_to", first.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))

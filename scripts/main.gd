@@ -1163,10 +1163,11 @@ func _build_greybox() -> void:
     _make_solid("Raised step", Vector3(0.0, 1.15, -0.2), Vector3(2.0, 0.3, 2.6), Color(0.31, 0.27, 0.29))
     _add_trap(SpikeTrap.create("Spike trap: causeway", -10.5, 0.0, 2.0, 0.0))
 
-    # Far background silhouette: visual decoration only, NOT implemented boss AI.
-    _make_visual("Distant Gothic silhouette (decorative only)", Vector3(5.0, 6.0, -22.0), Vector3(3.0, 12.0, 2.8), Color(0.10, 0.065, 0.09))
-    _make_visual("Left tower", Vector3(-12.0, 5.0, -18.0), Vector3(3.5, 10.0, 3.0), Color(0.07, 0.085, 0.12))
-    _make_visual("Distant tower", Vector3(11.0, 7.0, -26.0), Vector3(3.5, 14.0, 3.0), Color(0.055, 0.071, 0.09))
+    if not full_3d:  # the side view's painted-on backdrop; the 3D run has no backdrop
+        # Far background silhouette: visual decoration only, NOT implemented boss AI.
+        _make_visual("Distant Gothic silhouette (decorative only)", Vector3(5.0, 6.0, -22.0), Vector3(3.0, 12.0, 2.8), Color(0.10, 0.065, 0.09))
+        _make_visual("Left tower", Vector3(-12.0, 5.0, -18.0), Vector3(3.5, 10.0, 3.0), Color(0.07, 0.085, 0.12))
+        _make_visual("Distant tower", Vector3(11.0, 7.0, -26.0), Vector3(3.5, 14.0, 3.0), Color(0.055, 0.071, 0.09))
 
     checkpoint = Checkpoint.create(CHECKPOINT_POSITION)
     checkpoint.activated.connect(_on_checkpoint_activated)
@@ -1180,7 +1181,8 @@ func _build_greybox() -> void:
     enemy.defeated.connect(_on_enemy_defeated)
     add_child(enemy)
 
-    _make_visual("Arena entry — amber", Vector3(13.0, 2.0, -0.5), Vector3(0.45, 4.0, 0.55), Color(0.95, 0.54, 0.12))
+    if not full_3d:  # the Reality Fracture's gate (closed in the 3D run)
+        _make_visual("Arena entry — amber", Vector3(13.0, 2.0, -0.5), Vector3(0.45, 4.0, 0.55), Color(0.95, 0.54, 0.12))
 
     # Portcullis: sealed until the soldier dies, so the boss is always met in order.
     portcullis = StaticBody3D.new()
