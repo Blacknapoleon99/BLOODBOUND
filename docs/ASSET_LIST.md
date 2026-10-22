@@ -103,6 +103,33 @@ the mesh to Adobe, which counts as a third-party upload and needs the user's OK.
 Telegraph plates and lines (`SlamTelegraph`, lane, band and ring markers) **stay code-driven
 unshaded red**. They are never replaced by art.
 
+## Player hero: Bone Revenant (chosen 2026-10-22)
+
+- **Concept:** `assets/concepts/player_variants/c_bone_revenant.png`.
+- **Turnaround:** `assets/concepts/refs/revenant_tpose.png`. It is a T-pose with the sword sheathed on the back in every view, and short cloth so the joints read.
+- The Blood Knight stays in the game as a placeholder until the Revenant replaces it.
+
+### Mesh and rig options (researched; nothing spent)
+
+| Option | Credits | For an animated hero |
+|---|---|---|
+| **H3.1 HD Model (multiview), private** | **30** | Proven here: 5 humanoids generated and auto-rigged cleanly from T- or A-pose sheets. About 28k tris, 2k PBR, GLB. |
+| Smart Mesh P2.0 (quad) | 100–130 | A Preview model. Studio shows it as "Sharing Only", which means public, not private. Quads force FBX (Godot imports FBX, but our pipeline is GLB). Tripo claims joint edge loops; an independent review finds no proof. No built-in rig. |
+| Generate in Parts | +20 | Forces textures off; parts come back as separate meshes. That helps rigid props, but skinned characters get seams at the joints. **Not for the hero.** |
+| Quad remesh / Smart low-poly | +5 / +10 | Topology cleanup only. Godot triangulates anyway, and good deformation comes from skin weights more than quads at 25k tris. |
+| Tripo Auto Rig (Mixamo skeleton) + presets | 20; presets free | Worked for the knight (T-pose), Soldier, Archer, Shield Knight, Gravewarden and Bishop. Clips import into Godot's AnimationPlayer with "stay in place" (no root motion). |
+| Mixamo rig instead | free | Better weights and a huge animation library, but it uploads the mesh to Adobe, so it needs the user's OK. Use only if Tripo's weights deform badly at the elbows or knees. |
+| Blender Rigify | free | Full control, but hours of manual weight painting. Use as a last resort. |
+
+**Recommendation:**
+
+1. Generate H3.1 HD multiview from the T-pose sheet (30 credits).
+2. Run Tripo Auto Rig (20 credits).
+3. Apply the same 11 free presets as the knight.
+4. In Blender: cut the sheathed sword off as its own prop (the hand sword is a separate attachment), decimate to about 25k tris, and keep 2k textures.
+
+The test costs **50 credits**. If the elbows or knees deform badly, fall back to Mixamo weights (free, with your OK) before spending on Smart Mesh.
+
 ## Animation wiring (2026-10-22)
 
 `scripts/art/art_animator.gd` (visual-only) drives every rigged model from gameplay:
