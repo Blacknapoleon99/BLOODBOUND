@@ -14,7 +14,8 @@ var _shape: CollisionShape3D
 
 
 ## `lever_at` world position of the lever; the bridge spans x0..x1 (world) with its top at `top`.
-static func create(lever_at: Vector3, x0: float, x1: float, top: float) -> LeverShortcut:
+## `z`/`depth`: where the bridge runs in depth and how wide it is (open 3D courses).
+static func create(lever_at: Vector3, x0: float, x1: float, top: float, z: float = 0.0, depth: float = 2.4) -> LeverShortcut:
     var s: LeverShortcut = LeverShortcut.new()
     s.name = "Shortcut"
     s.add_to_group(&"shortcut")
@@ -35,10 +36,10 @@ static func create(lever_at: Vector3, x0: float, x1: float, top: float) -> Lever
     s.lever.add_child(post)
     s.add_child(s.lever)
     s.bridge = StaticBody3D.new()
-    s.bridge.position = Vector3((x0 + x1) * 0.5, top - 0.2, 0.0)
+    s.bridge.position = Vector3((x0 + x1) * 0.5, top - 0.2, z)
     s._shape = CollisionShape3D.new()
     var box: BoxShape3D = BoxShape3D.new()
-    box.size = Vector3(x1 - x0, 0.4, 2.4)
+    box.size = Vector3(x1 - x0, 0.4, depth)
     s._shape.shape = box
     s._shape.disabled = true
     s.bridge.add_child(s._shape)

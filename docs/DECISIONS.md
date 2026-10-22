@@ -126,3 +126,23 @@
   - `_m25` shaft: "≥ 3 kicks" became "≥ 2": two kicks now reach the 10 m tops, where the hero catches the wall top as a ledge; before, six kicks reached 9.1 m.
   - Long jump now 10.2 m (was 9.1).
 - **Not done:** real hang/climb/slide clips (the held-clip rows are placeholders); SM64 step-up and edge climb-down; dive/rollout; ground-pound rise; level geometry tagged with `surface`.
+
+## DEC-052 — Open courses in the 3D run (2026-10-22)
+
+- **User direction:** "an open world platformer that's not streamlined", as "open courses in the run". The roguelike run stays (acts, seeded shuffled rooms, elite, merchant, the Bishop last); each 3D room becomes an open SM64-style course.
+- **One design per view.** Each room keeps its side-view `_design()` (co-op, the Bishop hand-off and the scripted side checks still use it) and gains a `_course()` the 3D run builds instead. The side view is unchanged.
+- **Course shape:** 44–64 m long (the merchant's 30 m), 24–39 m across, 5–13 m of height, no walls, floating in the void. Rooms still chain along X: an 8 m-deep entry pad (local x 0–10) and exit pad (last 8–12 m, with a glowing exit arch), tops at y = 0. Everything else spreads out in depth, kept clear of the pads' first 10 m.
+- **Three routes per room** (36 in all), e.g. ground / high / climb, ferry / carousel / tower, fight / rim / gallows. At least one is basic-jumps-only in every room (most have two or three), and the climb and kick routes are the shortcuts. Side areas hold ground-pound cellars, perches and loose Bone Shards.
+- **Course kit** in `LevelSection`: `pads`, `plat`, `pillar`, `wall3`, `climb` (ClimbWall), `kick_shaft`, `lift` (3D or rising mover), `orbit` (new `OrbitingPlatform`), `crumble`, `cellar` (6×6 dais over a pound-able niche), `shard` (new `ShardPickup`), `spike_bed`, `blade` (sized/rotated pendulum), `foe`, `arena`, `lever`, `hint`, and `route(tag)`.
+- **Validator** (a graph over platforms with x, z and top): the exit must be reachable with basic jumps alone (the existing 2.3 m / 0.43 s / 0.27 s jump at 75% safety). Each declared route must reach it on its own platforms plus the pads, with advanced moves allowed: climbs, kick shafts, triple jump or ledge grab ≤ 3 m up, long jump ≤ 7 m. The pads alone must never connect (no single corridor), and every shard and reliquary must stand on a reachable platform.
+- **Ambushes become arena rings** (12+ bone wall segments round the fight) instead of two walls across a hall. Ring foes are leashed to the ring's centre within the arena floor. The elite's ring is wider than its floor, so every approach seals the fight; the Gravewarden's reliquary rises on its floor.
+- **Foes stay on their platforms:** `foe()` leashes each one inside its platform (wraiths fly: 10 m).
+- **Falls:** in the 3D run you land back on the last **safe ground** for 1 HP. Safe ground is flat, static, not crumbling, breakable, moving or spiked, 1 m from every edge, and sampled 4×/s. With a fight in progress, no safe spot yet, or in the side view, the checkpoint respawn applies as before.
+- **The opening:** no side walls. `OpeningGrounds` floats 7 practice stations off the causeway, each with a carved hint and a reward: jump, triple jump, long jump, ledge grab, climb, ground pound, wall kick. They are kept away from the portcullis.
+- **Merchant** is 30 m wide in 3D (26 m in the side view).
+- **Tests** (523/523): 11 new open-course checks:
+  - routes, no corridor, size, reachable rewards, foes on their platforms, rings;
+  - the opening, the E1 ring, shard pickup, safe-ground rule, fall to safe ground.
+
+  Updated: the 3D "zig-zag ledges" check is now "completable and over 24 m across"; "floor spikes span the hall" is now "spike beds lie on their walkway"; the 3D ambush is now entered at its ring.
+- **Dev tools:** `tools/dev/room_stats.gd` prints every course's validator view; `tools/dev/shot_courses.gd` captures overviews (visible window).

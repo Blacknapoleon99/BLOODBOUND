@@ -189,6 +189,7 @@ func _run() -> void:
     await _m22_3d_core_checks()
     await _m23_3d_enemy_checks()
     await _m24_3d_room_checks()
+    await _open_course_checks()  # DEC-052: the rooms as open 3D courses
     await _m25_moveset_checks()
     await _m26_climb_checks()
     await _m27_motor_contract_checks()
@@ -3147,17 +3148,18 @@ func _m24_3d_room_checks() -> void:
     all_rooms.append_array(LevelLayout.ACT2)
     all_rooms.append(LevelLayout.ELITE)
     all_rooms.append(LevelLayout.MERCHANT)
+    # DEC-052: the 10 m-deep halls (zig-zag ledges) became open courses; the open-course checks
+    # (routes, width, rewards) live in _open_course_checks.
     var broken: Array[String] = []
-    var zigzag: bool = false
+    var open: bool = true
     for script: Script in all_rooms:
         var room: LevelSection = script.new() as LevelSection
         holder.add_child(room)
         room.build(1000.0)
         if not room.is_completable():
             broken.append(room.title)
-        if room.id == &"wraith_belfry":
-            zigzag = room.platform_z[1].x > 0.0 and room.platform_z[2].y < 0.0  # beams sway right, then left
-    _check(broken.is_empty() and zigzag, "all %d rooms are completable in 3D, floating ledges zig-zag in depth (failing: %s)" % [all_rooms.size(), broken])
+        open = open and room.footprint().size.y >= 24.0
+    _check(broken.is_empty() and open, "all %d rooms are completable in 3D with basic jumps, each an open course over 24 m across (failing: %s)" % [all_rooms.size(), broken])
     holder.queue_free()
     Lane.full_3d = false
     await _frames(2)
@@ -3224,16 +3226,16 @@ func _m24_3d_room_checks() -> void:
     _check(walls == 0 and max_z > Lane.half() + 0.3, "no hall wall: running sideways goes past the open edge (walls %d, furthest z %.2f)" % [walls, max_z])
     _player.call("teleport_to", first.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
     await _seconds(0.3)
-    # Hazards span the hall.
-    var deep_spikes: bool = true
+    # Hazards sit on their course (DEC-052: spike beds cover their walkway, not a 10 m hall).
+    var placed_spikes: bool = true
     var spike_count: int = 0
-    for node: Node in get_nodes_in_group(&"spike_trap"):
-        var trap: SpikeTrap = node as SpikeTrap
-        if trap.global_position.x > 18.0 and trap.global_position.x < 18.2 + float(_main.get("map_offset")) and absf(trap.global_position.y) < 0.01:
-            spike_count += 1
-            deep_spikes = deep_spikes and trap.depth >= Lane.DEPTH_3D - 0.5
-    _check(spike_count == 0 or deep_spikes, "floor spikes span the whole hall in 3D (%d strips)" % spike_count)
-    # A 3D ambush: walls across the hall, foes spread in depth.
+    for room: LevelSection in sections:
+        for trap: Node3D in room.traps:
+            if trap is SpikeTrap:
+                spike_count += 1
+                placed_spikes = placed_spikes and room.platform_under(trap.global_position.x - room.origin_x, trap.global_position.z, trap.global_position.y) >= 0
+    _check(placed_spikes, "every spike bed in the 3D rooms lies on its course's walkway (%d beds)" % spike_count)
+    # A 3D ambush: an arena ring of bone walls, foes spread round it.
     var hall: LevelSection = (load("res://scripts/level/sections/ossuary_ambush.gd") as Script).new() as LevelSection
     _main.add_child(hall)
     hall.build(-300.0)  # before the opening: past the Approach would hand the run to the side view
@@ -3241,7 +3243,7 @@ func _m24_3d_room_checks() -> void:
     var trap_room: Ambush = hall.ambushes[0]
     _player.call("teleport_to", Vector3(hall.gx(6.0), 1.2, 0.0))
     await _seconds(0.3)
-    _player.call("teleport_to", Vector3(hall.gx(14.0), 1.2, 1.0))
+    _player.call("teleport_to", Vector3(trap_room.ring_center.x - 2.0, 1.2, trap_room.ring_center.y + 1.0))
     await _seconds(0.4)
     var zs: Dictionary = {}
     var all_free: bool = true
@@ -3249,7 +3251,7 @@ func _m24_3d_room_checks() -> void:
         zs[snappedf(e.global_position.z, 0.5)] = true
         all_free = all_free and not bool(e.get("plane_locked"))
     _check(trap_room.is_active() and trap_room.wall_collision_enabled() and all_free and zs.size() >= 2,
-            "a 3D ambush seals the hall and its foes come at you across its depth (%d lanes)" % zs.size())
+            "a 3D ambush seals an arena ring and its foes come at you across its depth (%d lanes)" % zs.size())
     for e: Node3D in trap_room.enemies:
         var eh: Health = e.get("health") as Health
         if eh != null:
@@ -3278,6 +3280,128 @@ func _m24_3d_room_checks() -> void:
     await _frames(10)
     _bind()
     _check(not Lane.full_3d and not bool(_main.get("full_3d")) and not bool(_player.get("in_3d_mode")), "the next side-view run builds the side view again")
+
+
+## DEC-052: every room of the 3D run is an open course: several real routes and no single
+## corridor, wide and tall, rewards in reach, foes leashed to their platforms, arena rings for
+## ambushes; the opening's practice grounds; loose shards; a fall lands you on safe ground.
+func _open_course_checks() -> void:
+    Lane.full_3d = true
+    EnemyFactory.full_3d = true
+    var holder: Node3D = Node3D.new()
+    root.add_child(holder)
+    var all_rooms: Array[Script] = []
+    all_rooms.append_array(LevelLayout.ACT1)
+    all_rooms.append_array(LevelLayout.ACT2)
+    all_rooms.append(LevelLayout.ELITE)
+    all_rooms.append(LevelLayout.MERCHANT)
+    var short: Array[String] = []
+    var corridors: Array[String] = []
+    var narrow: Array[String] = []
+    var unreachable: Array[String] = []
+    var off_platform: Array[String] = []
+    var total_routes: int = 0
+    var rings_ok: bool = true
+    var elite_ok: bool = false
+    var x: float = 2000.0
+    for script: Script in all_rooms:
+        var room: LevelSection = script.new() as LevelSection
+        holder.add_child(room)
+        room.build(x)
+        x += room.width + 20.0
+        var working: Array[StringName] = room.working_routes()
+        total_routes += working.size()
+        if working.size() < 2 or room.basic_routes().is_empty():
+            short.append("%s %s" % [room.id, working])
+        if room.is_corridor():
+            corridors.append(room.title)
+        var fp: Rect2 = room.footprint()
+        var heights: Vector2 = room.height_range()
+        if fp.size.x < 30.0 or fp.size.y < 24.0 or heights.y - heights.x < 5.0:
+            narrow.append("%s %.0fx%.0f" % [room.id, fp.size.x, fp.size.y])
+        if not room.unreachable_rewards().is_empty() or (room.pickups.is_empty() and room.caches.is_empty()):
+            unreachable.append(room.title)
+        for e: Node3D in room.enemies:
+            if e is FlyingWraith or not ("leash_radius" in e):
+                continue
+            var lx: float = e.global_position.x - room.origin_x
+            var at: Vector3 = e.global_position
+            var i: int = room.platform_under(lx, at.z, at.y - 1.0)
+            var leash: float = float(e.get("leash_radius"))
+            var inside: bool = i >= 0 and lx - leash >= room.platforms[i].position.x and lx + leash <= room.platforms[i].end.x \
+                    and at.z - leash >= room.platform_z[i].x and at.z + leash <= room.platform_z[i].y
+            if not inside:
+                off_platform.append("%s %s" % [room.id, e.name])
+        for a: Ambush in room.ambushes:
+            var round_walls: bool = a.ring and a.wall_count() >= 12
+            for wall: Node in a.get_children():
+                if wall is StaticBody3D:
+                    var w: Vector3 = (wall as StaticBody3D).global_position
+                    round_walls = round_walls and absf(Vector2(w.x - a.ring_center.x, w.z - a.ring_center.y).length() - a.ring_radius) < 0.05
+            rings_ok = rings_ok and round_walls
+        if room.id == &"gravewarden_hall":
+            var hall: Ambush = room.get("hall")
+            var floor_i: int = room.platform_under(hall.ring_center.x - room.origin_x, hall.ring_center.y, 0.0)
+            var half: Vector2 = Vector2(room.platforms[floor_i].size.x, room.platform_z[floor_i].y - room.platform_z[floor_i].x) * 0.5
+            elite_ok = hall.ring_radius >= half.length() and hall.spawn_leash > 0.0 and hall.spawn_leash <= minf(half.x, half.y)
+    _check(short.is_empty(), "every 3D room offers 2+ working routes to its exit, at least one on basic jumps (%d routes over %d rooms; short: %s)" % [total_routes, all_rooms.size(), short])
+    _check(corridors.is_empty(), "no 3D room is a single corridor: the entry and exit pads alone never connect (%s)" % [corridors])
+    _check(narrow.is_empty(), "every 3D course is at least 30 m long, 24 m across and 5 m tall (%s)" % [narrow])
+    _check(unreachable.is_empty(), "every room hides rewards, and every shard and reliquary can be reached (%s)" % [unreachable])
+    _check(off_platform.is_empty(), "every course foe is leashed inside its own platform (%s)" % [off_platform])
+    _check(rings_ok and elite_ok, "3D ambushes are arena rings of bone walls; the elite's ring encloses its whole floor and leashes the warden on it")
+    holder.queue_free()
+    Lane.full_3d = false
+    EnemyFactory.full_3d = false
+    await _frames(2)
+
+    # In a 3D run: the opening's practice grounds, the gate ossuary ring, shards, safe ground.
+    LevelLayout.classic = false
+    RunState.full_3d = true
+    RunState.new_run(77)
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(12)
+    _bind()
+    _enemy.set_ai_enabled(false)
+    var grounds: OpeningGrounds = _main.get("opening")
+    var signs: int = grounds.find_children("*", "Label3D", true, false).size() if grounds != null else 0
+    var walls: int = _main.find_children("Opening wall*", "", true, false).size()
+    _check(grounds != null and signs >= 7 and walls == 0 and grounds.unreachable_rewards().is_empty() and grounds.climb_walls.size() == 1 and grounds.secrets.size() == 1,
+            "the 3D opening is open (no side walls) with 7 practice stations and reachable rewards (%d hints)" % signs)
+    var gate_ring: bool = false
+    for a: Ambush in _main.get("ambushes"):
+        if is_equal_approx(a.trigger_x, 10.0):  # the gate ossuary (E1)
+            gate_ring = a.ring and a.three_d and a.wall_count() >= 12
+    _check(gate_ring, "the opening's gate ossuary is an arena ring in 3D")
+    var sections: Array = _main.get("sections")
+    var room: LevelSection = sections[0]
+    var pickup: ShardPickup = room.pickups[0]
+    var shards0: int = RunState.shards
+    _player.call("teleport_to", pickup.global_position)
+    await _frames(6)
+    _check(pickup.taken and not pickup.visible and RunState.shards == shards0 + pickup.amount, "a loose Bone Shard is collected by touch (+%d)" % pickup.amount)
+    var health: Health = _player.get("health") as Health
+    health.restore_full()
+    var spot: Vector3 = Vector3(room.gx(6.0), 1.2, 0.0)
+    _player.call("teleport_to", spot)
+    await _seconds(0.7)
+    var safe_here: bool = _main.call("is_safe_ground", Vector3(room.gx(6.0), 0.85, 0.0), _player)
+    var safe_edge: bool = _main.call("is_safe_ground", Vector3(room.gx(6.0), 0.85, 3.6), _player)
+    _check(safe_here and not safe_edge, "safe ground means at least 1 m clear of every edge")
+    var hp0: int = health.current
+    _player.call("teleport_to", Vector3(room.gx(6.0), -10.0, 25.0))
+    await _seconds(0.5)
+    var back: Vector3 = _player.global_position
+    _check(_player.is_on_floor() and Vector2(back.x - spot.x, back.z - spot.z).length() < 1.0 and health.current == hp0 - 1,
+            "falling off an open course lands you back on the last safe ground for 1 HP (%.1f, %.1f, %.1f)" % [back.x, back.y, back.z])
+    health.restore_full()
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    LevelLayout.classic = true
+    RunState.full_3d = false
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
 
 
 ## 3D platformer phase 1: the PlatformerMotor moveset, measured in the movement playground.
