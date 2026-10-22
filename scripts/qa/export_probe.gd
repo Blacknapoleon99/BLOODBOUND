@@ -57,12 +57,13 @@ func _run() -> void:
     for i in 60:
         await tree.physics_frame
     _check(player.is_on_floor(), "player lands on the causeway")
-    var x0: float = player.global_position.x
-    _key(KEY_D, true)
+    var p0: Vector3 = player.global_position
+    _key(KEY_D, true)  # side view: right; 3D run: strafe right of the camera
     for i in 30:
         await tree.physics_frame
     _key(KEY_D, false)
-    _check(player.global_position.x > x0 + 1.0, "D moves the player (dx=%.2f)" % (player.global_position.x - x0))
+    var moved: float = Vector2(player.global_position.x - p0.x, player.global_position.z - p0.z).length()
+    _check(moved > 1.0, "D moves the player (%.2f m)" % moved)
     var y0: float = player.global_position.y
     _key(KEY_SPACE, true)
     var peak: float = y0

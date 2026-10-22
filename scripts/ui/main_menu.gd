@@ -7,8 +7,6 @@ const GAME_SCENE: String = "res://scenes/armory.tscn"
 
 var start_button: Button
 var coop_button: Button
-var run3d_button: Button
-var proto_button: Button
 var settings_button: Button
 var quit_button: Button
 var settings: SettingsPanel
@@ -47,22 +45,17 @@ func _ready() -> void:
     spacer.custom_minimum_size = Vector2(0, 24)
     column.add_child(spacer)
 
-    start_button = _add_button(column, "Start", "Start")
+    start_button = _add_button(column, "Play", "Start")
     start_button.pressed.connect(_on_start)
-    run3d_button = _add_button(column, "Start 3D Run (rooms in 3D, Bishop in side view)", "Start3D")
-    run3d_button.pressed.connect(_on_start_3d)
-    coop_button = _add_button(column, "Start Co-op (2 players)", "StartCoop")
+    coop_button = _add_button(column, "Co-op (2 players)", "StartCoop")
     coop_button.pressed.connect(_on_start_coop)
-    proto_button = _add_button(column, "3D Prototype (phase 2: enemies)", "Proto3D")
-    proto_button.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/proto_3d.tscn"))
     settings_button = _add_button(column, "Settings", "Settings")
     settings_button.pressed.connect(_on_settings)
     quit_button = _add_button(column, "Quit", "Quit")
     quit_button.pressed.connect(func() -> void: get_tree().quit())
     quit_button.visible = not OS.has_feature("web")
 
-    column.add_child(MenuStyle.label("A/D move · Space jump · left/right click attack · Shift dodge · 1-3 cards · E interact · Esc pause
-Co-op player 2: gamepad, or arrows + numpad (4 light, 5 heavy, 6 dodge, 1-3 cards, Enter interact)", 14, Color(0.6, 0.56, 0.52)))
+    column.add_child(MenuStyle.label("WASD move · mouse look · Space jump · left/right click attack · Shift dodge · Q lock on · 1-3 cards · E interact · Esc pause", 14, Color(0.6, 0.56, 0.52)))
 
     settings = SettingsPanel.create()
     settings.visible = false
@@ -81,9 +74,10 @@ func _add_button(parent: Control, text: String, node_name: String) -> Button:
     return b
 
 
+## Play: the solo run in full 3D (the side-view build is no longer offered to players).
 func _on_start() -> void:
     RunState.coop = false
-    RunState.full_3d = false
+    RunState.full_3d = true
     RunState.end_run()
     get_tree().change_scene_to_file(GAME_SCENE)
 
@@ -92,14 +86,6 @@ func _on_start() -> void:
 func _on_start_coop() -> void:
     RunState.coop = true
     RunState.full_3d = false
-
-
-## The 3D run: the same draft and map, rooms built as 3D halls (third-person camera, lock-on).
-func _on_start_3d() -> void:
-    RunState.coop = false
-    RunState.full_3d = true
-    RunState.end_run()
-    get_tree().change_scene_to_file(GAME_SCENE)
     RunState.end_run()
     get_tree().change_scene_to_file(GAME_SCENE)
 

@@ -18,3 +18,11 @@
   - later enemies spawn plane-locked.
 - **Art:** the 4 m causeway floor tiles would cover only part of a 10 m hall, so the 3D run keeps greybox floors for now.
 - **Tests:** 12 new `_m24` checks (495/495). **Build:** `build/windows-run17/Bloodbound.exe`.
+
+## DEC-047 — One title menu: Play and Co-op (2026-10-22)
+
+- **Playtest:** the menu had too many confusing entries. The title now offers only **Play**, **Co-op (2 players)**, **Settings** and **Quit**.
+- **Play** starts the solo run in full 3D (`RunState.full_3d`). The side-view solo start and the 3D prototype room are no longer offered to players.
+- **Co-op** still runs on the side-view build: 3D co-op (one shared camera plus online) waits until the game is complete.
+- The side-view build stays in the code: co-op and the Bishop (until phase 4) still use it, and so do the scripted checks.
+- The export probe's movement check now accepts movement in any direction (in 3D, D strafes). Tests 497/497; probe 12/12; build `build/windows-run18`.

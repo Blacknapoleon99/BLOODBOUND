@@ -322,6 +322,7 @@ func _test_defaults() -> void:
     Profile.reset()  # starter gear only (no stats): equipment has its own checks
     LevelLayout.classic = true  # the original short layout; the full map has its own checks
     RunState.coop = false  # solo; co-op has its own checks
+    RunState.full_3d = false  # the side-view build; the 3D run has its own checks
     PendulumBlade.enabled = false
 
 
@@ -1073,6 +1074,11 @@ func _m6_menu_checks() -> void:
     var settings_button: Button = menu.get("settings_button")
     var quit: Button = menu.get("quit_button")
     _check(start != null and start.has_focus() and settings_button != null and quit.visible, "title screen shows Start (focused) / Settings / Quit")
+    var labels: Array[String] = []
+    for b: Node in menu.find_children("*", "Button", true, false):
+        if (b as Button).is_visible_in_tree():
+            labels.append((b as Button).text)
+    _check(labels == ["Play", "Co-op (2 players)", "Settings", "Quit"], "the title menu offers only Play / Co-op / Settings / Quit (%s)" % ", ".join(labels))
     await _shot("00_title")
     settings_button.pressed.emit()
     await _frames(2)
@@ -1099,7 +1105,7 @@ func _m6_menu_checks() -> void:
     start.grab_focus()
     _tap(KEY_ENTER)
     await _frames(12)
-    _check(current_scene.scene_file_path == "res://scenes/armory.tscn", "Enter on Start opens the Armory")
+    _check(current_scene.scene_file_path == "res://scenes/armory.tscn" and RunState.full_3d and not RunState.coop, "Enter on Play opens the Armory for a solo 3D run")
     _tap(KEY_ENTER)  # Continue is focused
     await _frames(12)
     _check(current_scene.scene_file_path == "res://scenes/draft.tscn" and RunState.active, "Continue in the Armory opens the card draft for a new run")
@@ -1115,7 +1121,10 @@ func _m6_menu_checks() -> void:
         want.append(String(id))
     want.sort()
     _check(hand == want, "the drafted cards are the starting hand (%s)" % [hand])
-    # The rest of the suite runs on the default deck for deterministic checks.
+    _check(bool(_main.get("full_3d")) and _main.get("cam3d") != null, "Play builds the run in 3D")
+    # The rest of the suite runs on the default deck for deterministic checks, and in the
+    # side-view build (still the engine for co-op and the Bishop) unless a check asks for 3D.
+    RunState.full_3d = false
     RunState.end_run()
     change_scene_to_file("res://scenes/main.tscn")
     await _frames(10)
