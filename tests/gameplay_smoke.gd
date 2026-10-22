@@ -191,6 +191,7 @@ func _run() -> void:
     await _m24_3d_room_checks()
     await _m25_moveset_checks()
     await _m26_climb_checks()
+    await _m27_motor_contract_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2847,24 +2848,28 @@ func _m22_3d_core_checks() -> void:
     while Vector2(p.velocity.x, p.velocity.z).length() < top * 0.95 and t_full < 60:
         await physics_frame
         t_full += 1
-    _check(t_full / PHYSICS_HZ <= 0.12, "full speed from a standstill in %.2f s (<= 0.12)" % (t_full / PHYSICS_HZ))
+    # DEC-051 (SM64 feel): an instant first step, then a drag-limited climb (was <= 0.12 s).
+    _check(t_full / PHYSICS_HZ >= 0.5 and t_full / PHYSICS_HZ <= 1.2, "the run builds to %.1f m/s in %.2f s (0.5-1.2, SM64 curve)" % [top, t_full / PHYSICS_HZ])
     _key(KEY_D, true)
     _key(KEY_W, false)
     var t_turn: int = 0
     while Vector2(p.velocity.x, p.velocity.z).normalized().dot(Vector2(1.0, 0.0)) < 0.98 and t_turn < 60:
         await physics_frame
         t_turn += 1
-    _check(t_turn / PHYSICS_HZ <= 0.12, "a 90-degree turn completes in %.2f s (<= 0.12), no rubbery arc" % (t_turn / PHYSICS_HZ))
+    # DEC-051: the facing turns at ~340 deg/s and the run follows it (was <= 0.12 s).
+    _check(t_turn / PHYSICS_HZ <= 0.36, "a 90-degree turn completes in %.2f s (<= 0.36), turning at the facing rate" % (t_turn / PHYSICS_HZ))
     await _seconds(0.3)
     _key(KEY_D, false)
     _key(KEY_A, true)
     var t_rev: int = 0
     var skidded: bool = false
-    while p.velocity.x > -top * 0.95 and t_rev < 60:
+    while p.velocity.x > -2.5 and t_rev < 60:
         await physics_frame
         t_rev += 1
         skidded = skidded or (p.get("motor") as PlatformerMotor).state == PlatformerMotor.State.SKID
-    _check(t_rev / PHYSICS_HZ <= 0.3 and skidded, "a full reversal skids and relaunches in %.2f s (<= 0.30)" % (t_rev / PHYSICS_HZ))
+    # DEC-051: the turnaround skid brakes at 40.5 m/s² and walks off the new way at 2.7 m/s
+    # (was: relaunch to full speed in <= 0.30 s).
+    _check(t_rev / PHYSICS_HZ <= 0.45 and skidded, "a full reversal skids and walks off the other way in %.2f s (<= 0.45)" % (t_rev / PHYSICS_HZ))
     _key(KEY_A, false)
     var stop_from: Vector3 = p.global_position
     var t_stop: int = 0
@@ -2872,7 +2877,8 @@ func _m22_3d_core_checks() -> void:
         await physics_frame
         t_stop += 1
     var slide: float = (p.global_position - stop_from).length()
-    _check(slide <= 0.5, "releasing the stick stops you in %.2f m (<= 0.5), no ice-skating" % slide)
+    # DEC-051: letting go brakes (40.5 m/s² at a run) or decelerates (10 m/s² at a walk); was <= 0.5 m.
+    _check(slide <= 1.6, "releasing the stick stops you in %.2f m (<= 1.6), braking, no ice-skating" % slide)
     await _seconds(0.3)
     var y0: float = p.global_position.y
     var apex: float = y0
@@ -3403,7 +3409,9 @@ func _m25_moveset_checks() -> void:
     for i in 40:
         await physics_frame
         best = maxf(best, p.global_position.y)
-    _check(kicks >= 3 and slid_slow and best > 6.0, "wall slides are slow and %d wall kicks climb the shaft to %.1f m" % [kicks, best])
+    # DEC-051: kicks keep their full launch now (committed air), so 2 kicks can already reach the
+    # walls' 10 m tops (the hero then catches the top as a ledge); before, 6 kicks reached 9.1 m.
+    _check(kicks >= 2 and slid_slow and best > 6.0, "wall slides are slow and %d wall kicks climb the shaft to %.1f m" % [kicks, best])
 
     # Ledge grab: catch the 3 m wall, shimmy, pull up.
     await _station(p, cam, stations["ledge"], 0.0)
@@ -3558,6 +3566,357 @@ func _m26_climb_checks() -> void:
     change_scene_to_file("res://scenes/main.tscn")
     await _frames(10)
     _bind()
+
+
+## Movement rework (DEC-051): the "stuck in a pose and sliding" regressions (one per cause in
+## docs/superpowers/specs/2026-10-22-movement-reference-spec.md section 5.3) and the SM64-style
+## feel (facing-led run, squared stick, accel curve, brake/decel/land, committed air, bonk,
+## chain window, slopes). States are compared by NAME so the block parses against any motor.
+func _m27_motor_contract_checks() -> void:
+    change_scene_to_file("res://scenes/playground_3d.tscn")
+    await _frames(15)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    var motor: PlatformerMotor = p.get("motor")
+    var stations: Dictionary = room.get("stations")
+    var hurtbox: Hurtbox = p.get("hurtbox") as Hurtbox
+    var animator: ArtAnimator = p.find_child("ArtAnimator", true, false) as ArtAnimator
+    var collision: CollisionShape3D = p.get_node("BodyCollision") as CollisionShape3D
+    var st: Callable = func() -> String: return String(PlatformerMotor.State.keys()[motor.state])
+    var pose: Callable = func() -> String: return String(animator.get("pose")) if animator != null and animator.get("pose") != null else ""
+    var hit: Callable = func(knock: Vector3) -> void:
+        var info: DamageInfo = DamageInfo.new()
+        info.knockback = knock
+        info.hitstun = 0.3
+        hurtbox.hit_received.emit(info)
+    _check(animator != null, "the playground hero has an ArtAnimator (rigged model)")
+
+    # Cause 1a: a hit mid-backflip ends the flip: the motor enters a knockback state and the
+    # model is upright again instead of frozen mid-rotation while the body slides.
+    await _station(p, cam, stations["triple"], 0.0)
+    _key(KEY_CTRL, true)
+    await _seconds(0.05)
+    _key(KEY_SPACE, true)
+    await _seconds(0.2)
+    _key(KEY_CTRL, false)
+    _key(KEY_SPACE, false)
+    var flipping: bool = motor.jump_kind == PlatformerMotor.Jump.BACKFLIP
+    hit.call(Vector3(0.0, 2.0, 5.0))
+    await _seconds(0.12)
+    var knocked: bool = st.call() == "KNOCKBACK"
+    var upright: float = 1.0
+    if animator != null:
+        upright = animator.model.transform.basis.y.normalized().dot(Vector3.UP)
+    await _seconds(1.0)
+    _check(flipping and knocked and upright > 0.9 and st.call() in ["GROUND", "LAND", "DECEL", "BRAKE"],
+            "a hit mid-backflip enters KNOCKBACK, the model is upright (%.2f) and it ends on the ground (%s)" % [upright, st.call()])
+
+    # Cause 1b: a hit while hanging lets go: no hanging frozen in mid-air after the stun.
+    await _station(p, cam, stations["ledge"], 0.0)
+    _key(KEY_W, true)
+    await _frames(8)
+    _key(KEY_SPACE, true)
+    var hung: bool = false
+    for i in 90:
+        await physics_frame
+        if st.call() == "HANG":
+            hung = true
+            break
+    _key(KEY_W, false)
+    _key(KEY_SPACE, false)
+    await _frames(4)
+    hit.call(Vector3(0.0, 0.0, 4.0))
+    await _seconds(1.2)
+    _check(hung and p.is_on_floor() and p.global_position.y < 1.5 and st.call() in ["GROUND", "LAND", "DECEL", "BRAKE"],
+            "a hit while hanging lets go and you stand on the floor (y %.2f, %s)" % [p.global_position.y, st.call()])
+
+    # Cause 1c: a hit mid pull-up restores the collision (no falling through the floor later).
+    await _station(p, cam, stations["ledge"], 0.0)
+    _key(KEY_W, true)
+    await _frames(8)
+    _key(KEY_SPACE, true)
+    for i in 90:
+        await physics_frame
+        if st.call() == "HANG":
+            break
+    _key(KEY_W, false)
+    _key(KEY_SPACE, false)
+    await _seconds(0.3)
+    _tap(KEY_SPACE)
+    var pulling: bool = false
+    for i in 10:
+        await physics_frame
+        if st.call() == "PULL_UP":
+            pulling = true
+            break
+    hit.call(Vector3(0.0, 0.0, 3.0))
+    await _seconds(1.0)
+    _check(pulling and not collision.disabled and p.is_on_floor(), "a hit mid pull-up re-enables the collision and you stand (pulling %s, disabled %s, %s)" % [pulling, collision.disabled, st.call()])
+
+    # Cause 2: the pose comes from the motor, not is_on_floor(): hanging and climbing never show
+    # the fall loop.
+    await _station(p, cam, stations["ledge"], 0.0)
+    _key(KEY_W, true)
+    await _frames(8)
+    _key(KEY_SPACE, true)
+    for i in 90:
+        await physics_frame
+        if st.call() == "HANG":
+            break
+    _key(KEY_W, false)
+    _key(KEY_SPACE, false)
+    await _seconds(0.4)
+    var hang_air: float = float(animator.tree.get("parameters/air/blend_amount")) if animator != null else 1.0
+    var hang_pose: String = pose.call()
+    # Cause 4: shimmying (position-driven) advances the pose's progress instead of idling.
+    var hold0: float = float(animator.get("hold_time")) if animator != null and animator.get("hold_time") != null else 0.0
+    await _hold(KEY_D, 0.4)
+    var hold1: float = float(animator.get("hold_time")) if animator != null and animator.get("hold_time") != null else 0.0
+    _check(st.call() == "HANG" and hang_air < 0.1 and hang_pose == "hang", "hanging shows the hang pose, not the fall loop (air %.2f, pose '%s')" % [hang_air, hang_pose])
+    _check(absf(hold1 - hold0) > 0.05 and pose.call() == "shimmy", "shimmying drives the pose's progress (%.2f -> %.2f, pose '%s')" % [hold0, hold1, pose.call()])
+    await _station(p, cam, stations["climb"], 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.1)
+    _key(KEY_SPACE, true)
+    await _seconds(0.07)
+    _key(KEY_SPACE, false)
+    await _seconds(0.5)
+    var climb_air: float = float(animator.tree.get("parameters/air/blend_amount")) if animator != null else 1.0
+    _key(KEY_W, false)
+    var climbing: bool = st.call() == "CLIMB"
+    _check(climbing and climb_air < 0.1 and pose.call() == "climb", "climbing shows the climb pose, not the fall loop (%s, air %.2f, pose '%s')" % [st.call(), climb_air, pose.call()])
+    # Cause 8: a climb with no wall left under the hands lets go instead of floating.
+    var wall: CollisionObject3D = room.find_child("Climb tower", true, false) as CollisionObject3D
+    var layer: int = wall.collision_layer
+    wall.collision_layer = 0
+    await _seconds(0.3)
+    var floated: bool = st.call() == "CLIMB"
+    wall.collision_layer = layer
+    await _seconds(1.5)
+    _check(climbing and not floated and p.is_on_floor(), "a climb with no wall found lets go (%s) instead of floating" % st.call())
+
+    # Cause 3 + 5: in a slide the legs don't run and the body faces the way it slides, even
+    # when the stick steers sideways.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.9)
+    _key(KEY_CTRL, true)
+    await _frames(3)
+    _key(KEY_W, false)
+    _key(KEY_A, true)
+    var worst_slide: float = 0.0
+    var slide_pose: bool = true
+    for i in 12:
+        await physics_frame
+        if st.call() == "SLIDE":
+            var v: Vector3 = Vector3(p.velocity.x, 0.0, p.velocity.z)
+            var f: Vector3 = p.call("get_facing_vector")
+            if v.length() > 1.0:
+                worst_slide = maxf(worst_slide, rad_to_deg(f.angle_to(v)))
+            slide_pose = slide_pose and pose.call() == "slide"
+    _key(KEY_A, false)
+    _key(KEY_CTRL, false)
+    _check(worst_slide < 12.0 and slide_pose, "a steered slide faces the way it slides (worst %.1f deg) in the slide pose" % worst_slide)
+    # A hit during a slide ends it (no slide lean while being knocked back).
+    _key(KEY_W, true)
+    await _seconds(0.9)
+    _key(KEY_CTRL, true)
+    await _frames(3)
+    hit.call(Vector3(-4.0, 1.0, 0.0))
+    await _frames(3)
+    _key(KEY_CTRL, false)
+    _key(KEY_W, false)
+    _check(st.call() == "KNOCKBACK" and pose.call() == "knockback" and not motor.crouched, "a hit mid-slide is a knockback (%s, pose '%s')" % [st.call(), pose.call()])
+    await _seconds(0.6)
+
+    # Cause 5: on the ground the facing turns at a fixed rate and the body always moves the way
+    # it faces (no moonwalk); a 90-degree turn takes about a quarter second.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(1.0)
+    _key(KEY_W, false)
+    _key(KEY_A, true)  # +X -> -Z
+    var worst_turn: float = 0.0
+    var t_turn: int = 0
+    for i in 40:
+        await physics_frame
+        var v2: Vector3 = Vector3(p.velocity.x, 0.0, p.velocity.z)
+        var f2: Vector3 = p.call("get_facing_vector")
+        if v2.length() > 1.0:
+            worst_turn = maxf(worst_turn, rad_to_deg(f2.angle_to(v2)))
+        if t_turn == 0 and f2.dot(Vector3(0.0, 0.0, -1.0)) > 0.996:
+            t_turn = i + 1
+    _key(KEY_A, false)
+    var turn_s: float = t_turn / PHYSICS_HZ
+    _check(t_turn > 0 and turn_s > 0.18 and turn_s < 0.36 and worst_turn < 5.0,
+            "a 90-degree turn takes %.2f s (about 340 deg/s) and velocity follows the facing (worst %.1f deg)" % [turn_s, worst_turn])
+
+    # Squared stick: half tilt runs at about a quarter of full speed.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    Input.action_press(&"move_forward", 0.5)
+    await _seconds(1.5)
+    var half: float = Vector2(p.velocity.x, p.velocity.z).length()
+    Input.action_release(&"move_forward")
+    _check(half > 2.2 and half < 3.3, "half tilt walks at %.2f m/s (squared stick: ~2.7)" % half)
+
+    # Accel curve: an instant first step, then a drag-limited climb to the 10.8 m/s run.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    var first: float = 0.0
+    for i in 10:
+        await physics_frame
+        first = Vector2(p.velocity.x, p.velocity.z).length()
+        if first > 0.1:
+            break
+    var t95: int = 0
+    for i in 150:
+        await physics_frame
+        if Vector2(p.velocity.x, p.velocity.z).length() >= PlatformerMotor.RUN_SPEED * 0.95:
+            t95 = i + 1
+            break
+    # Brake: letting go at a run brakes in a skid pose, then stops.
+    await _seconds(0.3)
+    _key(KEY_W, false)
+    var stop_from: Vector3 = p.global_position
+    var braking: bool = false
+    for i in 6:
+        await physics_frame
+        braking = braking or (st.call() == "BRAKE" and pose.call() == "brake")
+    var t_stop: int = 0
+    while Vector2(p.velocity.x, p.velocity.z).length() > 0.05 and t_stop < 90:
+        await physics_frame
+        t_stop += 1
+    var brake_dist: float = (p.global_position - stop_from).length()
+    _check(first > 2.0 and first < 4.0 and t95 / PHYSICS_HZ > 0.9 and t95 / PHYSICS_HZ < 2.0,
+            "running starts at %.1f m/s and reaches 95%% of 10.8 m/s in %.2f s" % [first, t95 / PHYSICS_HZ])
+    _check(braking and brake_dist < 1.8 and t_stop / PHYSICS_HZ < 0.45, "letting go at a run brakes (BRAKE) to a stop in %.2f m, %.2f s" % [brake_dist, t_stop / PHYSICS_HZ])
+    # Decelerate: letting go at a walk glides to a stop on a slowing walk cycle.
+    Input.action_press(&"move_forward", 0.6)
+    await _seconds(1.2)
+    Input.action_release(&"move_forward")
+    await physics_frame
+    await physics_frame
+    _check(st.call() == "DECEL" and pose.call() == "walk", "letting go at a walk decelerates (%s, pose '%s')" % [st.call(), pose.call()])
+    await _seconds(0.5)
+
+    # Landing is a state (with a pose), and the chain window is 0.25 s.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(1.0)
+    _key(KEY_SPACE, true)
+    await _seconds(0.1)
+    _key(KEY_SPACE, false)
+    var landed_state: String = ""
+    for i in 90:
+        await physics_frame
+        if p.is_on_floor() and motor.jump_kind == PlatformerMotor.Jump.NONE:
+            landed_state = st.call()
+            break
+    await _seconds(0.2)  # later than the old 0.15 s window
+    _key(KEY_SPACE, true)
+    await _seconds(0.05)
+    var chained: bool = motor.jump_kind == PlatformerMotor.Jump.DOUBLE
+    _key(KEY_SPACE, false)
+    _check(landed_state == "LAND" and chained, "a landing is a LAND state (%s) and a jump 0.2 s after it still chains the double jump" % landed_state)
+    for i in 90:
+        await physics_frame
+        if p.is_on_floor():
+            break
+    _key(KEY_W, false)
+    await _seconds(0.5)
+
+    # Air: the facing stays put and the stick can't U-turn a jump.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(1.0)
+    _key(KEY_SPACE, true)
+    for i in 20:
+        await physics_frame
+        if not p.is_on_floor():
+            break
+    _key(KEY_W, false)
+    _key(KEY_S, true)
+    var air_face: float = 1.0
+    var min_vx: float = 99.0
+    for i in 90:
+        await physics_frame
+        if p.is_on_floor():
+            break
+        var f3: Vector3 = p.call("get_facing_vector")
+        air_face = minf(air_face, f3.dot(Vector3(1.0, 0.0, 0.0)))
+        min_vx = minf(min_vx, p.velocity.x)
+    _key(KEY_S, false)
+    _key(KEY_SPACE, false)
+    _check(air_face > 0.99 and min_vx > -5.6, "holding back in a jump keeps the facing (%.2f) and only slows it (min vx %.1f)" % [air_face, min_vx])
+    await _seconds(0.5)
+
+    # Bonk: a head-on jump into a tall wall without pushing into it bounces you back.
+    await _station(p, cam, stations["bonk"], -PI * 0.5)
+    _key(KEY_W, true)
+    var bonked: bool = false
+    var bounced: bool = false
+    for i in int(PHYSICS_HZ * 3.0):
+        await physics_frame
+        if p.global_position.x > 45.0 and p.is_on_floor() and motor.jump_kind == PlatformerMotor.Jump.NONE:
+            _key(KEY_SPACE, true)
+        if p.global_position.x > 48.5:
+            _key(KEY_W, false)
+        if st.call() == "BONK":
+            bonked = true
+            bounced = bounced or p.velocity.x < -1.0
+        if bonked and p.is_on_floor():
+            break
+    _key(KEY_W, false)
+    _key(KEY_SPACE, false)
+    _check(bonked and bounced, "jumping head-on into a wall without pushing bonks you back")
+    await _seconds(0.5)
+
+    # Cause 6: a face too steep to be a floor: you slide down it in the slide pose (never the
+    # fall loop), and land; a ground pound onto it ends too.
+    var face_seen: Dictionary = await _drop_on(p, stations["face60_top"], st, false)
+    _check(face_seen["slid"] and face_seen["air_on_face"] < 0.15 and face_seen["landed"],
+            "a 60-degree face slides you down it (no fall pose for %.2f s) and you land" % face_seen["air_on_face"])
+    var pound_seen: Dictionary = await _drop_on(p, stations["face60_top"] + Vector3(0.0, 1.5, 0.0), st, true)
+    _check(pound_seen["pounded"] and pound_seen["slid"] and pound_seen["air_on_face"] < 0.15 and pound_seen["landed"],
+            "a ground pound onto a steep face turns into a slide (pound pose on the face %.2f s) and lands" % pound_seen["air_on_face"])
+    # A 45-degree floor (default class) is too steep to stand on: it forces a slide.
+    var ramp_seen: Dictionary = await _drop_on(p, stations["ramp45_top"], st, false)
+    _check(ramp_seen["slid"] and ramp_seen["landed"], "a 45-degree default slope forces a slide down to the floor")
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+
+
+## Drops `p` at `spot` (optionally ground-pounding) and watches it for 4 s: whether it slid
+## (SLOPE_SLIDE), how long it showed AIR while touching a steep face, and whether it landed.
+func _drop_on(p: CharacterBody3D, spot: Vector3, st: Callable, pound: bool) -> Dictionary:
+    for k: Key in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_CTRL]:
+        _key(k, false)
+    p.call("teleport_to", spot)
+    var seen: Dictionary = {"slid": false, "air_on_face": 0.0, "landed": false, "pounded": false}
+    var air_on_face: float = 0.0
+    if pound:
+        await physics_frame
+        _tap(KEY_CTRL)
+    for i in int(PHYSICS_HZ * 4.0):
+        await physics_frame
+        var s: String = st.call()
+        seen["pounded"] = seen["pounded"] or s.begins_with("POUND")
+        if s == "SLOPE_SLIDE":
+            seen["slid"] = true
+        var on_face: bool = p.is_on_wall() and p.get_wall_normal().y > 0.3
+        if on_face and s in ["AIR", "POUND_FALL"]:
+            air_on_face += 1.0 / PHYSICS_HZ
+        seen["air_on_face"] = maxf(float(seen["air_on_face"]), air_on_face)
+        if not on_face:
+            air_on_face = 0.0
+        if p.is_on_floor() and p.get_floor_normal().y > 0.95 and s in ["GROUND", "LAND", "DECEL", "BRAKE", "POUND_LAND", "CROUCH"]:
+            seen["landed"] = true
+            break
+    await _seconds(0.3)
+    return seen
 
 
 ## Teleports `p` to `spot`, turns the camera to `yaw` and lets everything settle.

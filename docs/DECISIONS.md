@@ -87,3 +87,42 @@
 - **Pose (placeholder):** the hero faces the wall, leans in, and sways hand over hand with the distance climbed.
 - **Playground:** an 8 m climb tower with a top, a 3 m handhold wall for parkour-up, and a plain 8 m wall beside them that doesn't climb.
 - **Tests:** 5 new `_m26` checks (512/512): climb and mantle onto the 8 m top; across 2.3 m, leap 2.1 m, kick off; crouch lets go; the plain wall doesn't climb; parkour-up onto the 3 m wall. Probe 12/12; build `build/windows-run21`.
+
+## DEC-051 — 3D movement: no more stuck poses; Super Mario 64 feel (2026-10-22)
+
+- **Playtest:** "the character still gets stuck in a pose and slides". Written from the prose spec `docs/superpowers/specs/2026-10-22-movement-reference-spec.md` only (clean room, DEC-044); each cause in its §5.3 got a failing check first.
+- **The contract:** the hero is always in exactly one motor state, and nothing moves the body unless the motor is in a state that represents it.
+  - **Hits are a state.** `KNOCKBACK` ends any flip, slide, hang, climb or pull-up. It always restores collision, and a pull-up hit finishes on top. It decays the knock (6 m/s² while stunned, then 40.5 m/s² to a stand) and exits to ground or air.
+  - **The dash and swings are states** (`DASH`, `ATTACK`). The player still drives their velocity, but `state_time` keeps ticking, so a pose can never freeze.
+  - **The animator plays only `motor.anim_state()`.** Every state names a pose, and `ArtAnimator.HERO_POSES` maps each pose to locomotion, the air loop, or a held clip scrubbed by the move's own progress (metres shimmied or climbed, pull-up 0..1, seconds of knockback).
+    - Hanging, climbing and pull-ups no longer show the fall loop; slides and skids no longer run their legs.
+    - The takeoff clip no longer fights the flips.
+    - The playback cap is now 3× (was 1.8×).
+    - Enemies and the side view keep the old velocity path.
+  - **Steep faces:** a face too steep to be a floor (50–73°), or a default floor above 38°, is a `SLOPE_SLIDE` instead of an endless AIR or POUND_FALL pose.
+  - **Climbing** lets go when no climbable wall is left under the hands.
+- **SM64 feel** (hero-scaled numbers, all named consts in `PlatformerMotor`):
+  - **The run follows the facing.** A forward speed runs along a facing that turns at 6 rad/s (344°/s). A 90° turn takes 0.27 s, and velocity stays within 0° of the facing; it was up to 71° before. From a standstill the hero faces the stick at once.
+  - **Squared stick:** half tilt walks at 2.70 m/s (it was 4.25).
+  - **Acceleration curve:** an instant 2.8 m/s first step, then 11.1 − 0.8·v m/s². That gives 8.5 m/s in 0.83 s and 95% of the new 10.8 m/s top in 1.40 s. The 8.5 → 11 boost is gone; the curve's slow tail replaces it.
+  - **New states:**
+    - `BRAKE` (stick released at ≥ 5.4 m/s: 40.5 m/s², stops in 1.53 m / 0.27 s from 10.8);
+    - `DECEL` (slower: 10 m/s², walk cycle winding down);
+    - `LAND` (0.13 s; 0.2 s after a long jump; 0.3 s after a bonk; skipped for step-downs under 0.1 s of air).
+  - **Turnaround skid** at > 100° and ≥ 5.4 m/s: it brakes at 40.5 m/s² and walks off at 2.7 m/s. Side flip 3.33 m.
+  - **Jump chain window 0.25 s** (was 0.15). The triple needs > 6.75 m/s. Jumps keep 80% of forward speed.
+  - **Air control:** the facing stays fixed in the air. The stick changes forward speed at 15.2 m/s² (drag 3.5 m/s²). Pulling back stops at −5.4 m/s at most; holding back measured −3.5 m/s, so no U-turns. Sideways drift is at most 3.4 m/s and doesn't accumulate.
+  - **Bonk:** hitting a wall head-on (±45°) faster than 5.4 m/s without pushing into it, or during a long jump, bounces you back 2.7 m/s. A jump within 0.17 s still kicks off the wall. Pushing into a wall still wall-slides.
+  - **No ledge grab out of the triple jump or the backflip.** A slow climb-up by stick toward the wall takes 0.8 s (allowed after 0.33 s of hanging); a jump climbs up in 0.3 s.
+  - **Slope classes** come from collider metadata `surface` (`grip` / `default` / `slide` / `ice`; untagged means default).
+    - Walking on a slope gains or loses 15 m/s² × sin(slope).
+    - A slide gains 70 m/s² × sin(slope), with friction 0.92–0.98 per 1/30 s.
+    - A jump off a slide is a weaker one, aimed downhill.
+  - **Lock-on keeps the old vector steering** (strafing). A swing snaps the facing to the stick, so combat stays snappy.
+  - Run lean and turn roll (up to 30°), eased at 170°/s.
+- **Playground:** two new stations, a slope station (25° / 45° / 60°) and a bonk wall. The climb and parkour spots are closer, because the run now builds speed. Signs and HUD were updated, and the HUD shows the pose.
+- **Tests:** 21 new `_m27` checks.
+  - Changed on purpose (spec): `_m22` "full speed ≤ 0.12 s" became 0.5–1.2 s (measured 0.83); "90° turn ≤ 0.12 s" became ≤ 0.36 s; "reversal relaunch ≤ 0.30 s" became "walks off the other way ≤ 0.45 s"; "stop ≤ 0.5 m" became ≤ 1.6 m.
+  - `_m25` shaft: "≥ 3 kicks" became "≥ 2": two kicks now reach the 10 m tops, where the hero catches the wall top as a ledge; before, six kicks reached 9.1 m.
+  - Long jump now 10.2 m (was 9.1).
+- **Not done:** real hang/climb/slide clips (the held-clip rows are placeholders); SM64 step-up and edge climb-down; dive/rollout; ground-pound rise; level geometry tagged with `surface`.

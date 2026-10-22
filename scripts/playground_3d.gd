@@ -5,7 +5,7 @@ extends Node3D
 ## Co-op). Esc pauses.
 ##
 ## Stations (all reachable from the start pad, x grows to the right of the spawn):
-##   Momentum strip   60 m straight run: speed builds to 11 m/s.
+##   Momentum strip   60 m straight run: speed builds to 10.8 m/s over ~1.5 s (SM64 curve).
 ##   Triple tower     a 3.4 m ledge: out of reach of a single jump; triple jump or backflip.
 ##   Long-jump gap    an 8 m gap over the abyss.
 ##   Wall-jump shaft  two walls 3 m apart, 10 m tall, a ledge on top.
@@ -14,6 +14,9 @@ extends Node3D
 ##   Pound floor      a cracked slab over a shard cache: ground pound through it.
 ##   Climb tower      (phase 2) an 8 m climbable tower, a 3 m climbable wall to run up
 ##                    ("parkour up"), and a plain 8 m wall beside it that does NOT climb.
+##   Slopes           (DEC-051) a 25° ramp to walk, a 45° ramp that slides you down, and a
+##                    60° face that is no floor at all (the steep-face fallback).
+##   Bonk wall        (DEC-051) a run-up into a tall wall: jump into it and let go to bonk.
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/player.tscn")
 const SPAWN: Vector3 = Vector3(0.0, 1.2, 0.0)
@@ -63,13 +66,14 @@ func _process(_delta: float) -> void:
         player.call("teleport_to", SPAWN)
     var motor: PlatformerMotor = player.get("motor")
     var speed: float = Vector2(player.velocity.x, player.velocity.z).length()
-    hud.text = "MOVEMENT PLAYGROUND (3D platformer phase 1)\n" \
-        + "WASD move · mouse look · Space jump (hold = higher) · Ctrl/C crouch · Shift dash · Esc pause\n" \
-        + "Triple jump: jump again right as you land, running · Long jump: run, Ctrl, Space · Backflip: stand, Ctrl, Space\n" \
+    hud.text = "MOVEMENT PLAYGROUND (3D platformer, SM64-style feel)\n" \
+        + "WASD move (the hero turns toward the stick; speed builds) · mouse look · Space jump (hold = higher) · Ctrl/C crouch · Shift dash · Esc pause\n" \
+        + "Triple jump: jump again within 0.25 s of landing, running fast · Long jump: run, Ctrl, Space · Backflip: stand, Ctrl, Space\n" \
         + "Side flip: reverse hard while running, Space · Wall kick: push into a wall in the air, Space · Ground pound: Ctrl in the air\n" \
+        + "Jumps keep their facing (the stick only trims the arc) · Let go at a run: brake · Jump into a wall without pushing: bonk\n" \
         + "Climb: jump into a wall with bone handholds · W/S up/down · A/D across · Space leap · back+Space jump off · Ctrl let go\n" \
-        + "state %s · jump %s · speed %.1f m/s · last %s" % [
-            PlatformerMotor.State.keys()[motor.state], PlatformerMotor.Jump.keys()[motor.jump_kind], speed, _last_event]
+        + "state %s · jump %s · pose %s · speed %.1f m/s · last %s" % [
+            PlatformerMotor.State.keys()[motor.state], PlatformerMotor.Jump.keys()[motor.jump_kind], motor.anim_state()["pose"], speed, _last_event]
 
 
 func _environment() -> void:
@@ -96,7 +100,7 @@ func _build() -> void:
     # Start pad and the momentum strip (+X).
     _solid("Start pad", Vector3(0.0, -0.5, 0.0), Vector3(12.0, 1.0, 12.0), stone)
     _solid("Momentum strip", Vector3(36.0, -0.5, 0.0), Vector3(60.0, 1.0, 5.0), stone.darkened(0.1))
-    _sign("MOMENTUM RUN  →\nrun straight: speed builds", Vector3(7.0, 2.6, -2.0))
+    _sign("MOMENTUM RUN  →\nrun straight: speed builds to 10.8 m/s\nlet go: brake · reverse: skid", Vector3(7.0, 2.6, -2.0))
     stations["momentum"] = Vector3(6.0, 1.2, 0.0)
     # Triple tower (-Z side of the pad): a 3.4 m ledge.
     _solid("Triple ground", Vector3(0.0, -0.5, -16.0), Vector3(12.0, 1.0, 20.0), stone)
@@ -144,9 +148,27 @@ func _build() -> void:
     add_child(ClimbWall.create("Parkour step", Vector3(-15.0, 1.5, -22.0), Vector3(4.0, 3.0, 3.0)))
     _solid("Plain wall", Vector3(-28.5, 4.0, -22.0), Vector3(3.0, 8.0, 3.0), accent.darkened(0.25))
     _sign("CLIMBING\nbone handholds climb: jump in to grab,\nWASD climb, Space leap, back+Space jump off, Ctrl let go", Vector3(-20.0, 3.0, -12.0))
-    stations["climb"] = Vector3(-22.0, 1.2, -17.0)
-    stations["parkour"] = Vector3(-15.0, 1.2, -15.0)
+    # A short run-up: the run builds speed over ~1.5 s now (DEC-051), so stand close.
+    stations["climb"] = Vector3(-22.0, 1.2, -19.0)
+    stations["parkour"] = Vector3(-15.0, 1.2, -18.0)
     stations["plain"] = Vector3(-28.5, 1.2, -17.0)
+    # Slopes (+X, far -Z): a 25° ramp you can walk (it speeds you up downhill, slows you uphill),
+    # a 45° ramp too steep to stand on (forced slide), and a 60° face that is not a floor at all
+    # (the steep-face fallback: you slide down it in the slide pose, never stuck in the fall pose).
+    _solid("Slope ground", Vector3(40.0, -0.5, -20.0), Vector3(24.0, 1.0, 22.0), stone)
+    _ramp("Ramp 25", Vector3(40.0, 0.0, -13.0), 25.0, 8.0, stone.lightened(0.08))
+    _ramp("Ramp 45", Vector3(40.0, 0.0, -20.0), 45.0, 5.0, accent)
+    _ramp("Face 60", Vector3(40.0, 0.0, -27.0), 60.0, 5.0, accent.darkened(0.2))
+    _sign("SLOPES\n25° walk · 45° slides you down · 60° is a face, not a floor", Vector3(32.0, 3.0, -20.0))
+    stations["slope"] = Vector3(33.0, 1.2, -20.0)
+    stations["ramp45_top"] = _ramp_drop_point(Vector3(40.0, 0.0, -20.0), 45.0, 5.0)
+    stations["face60_top"] = _ramp_drop_point(Vector3(40.0, 0.0, -27.0), 60.0, 5.0)
+    # Bonk wall (+X, +Z): a run-up into a tall wall. Jumping into it head-on without pushing into
+    # it bonks you back; pushing into it wall-slides (and you can kick).
+    _solid("Bonk run-up", Vector3(42.0, -0.5, 10.0), Vector3(18.0, 1.0, 6.0), stone)
+    _solid("Bonk wall", Vector3(51.5, 3.0, 10.0), Vector3(1.0, 6.0, 6.0), accent)
+    _sign("BONK WALL\njump into it head-on and let go: bonk", Vector3(38.0, 2.6, 7.5))
+    stations["bonk"] = Vector3(36.0, 1.2, 10.0)
 
 
 func _solid(label: String, center: Vector3, size: Vector3, color: Color) -> StaticBody3D:
@@ -169,6 +191,26 @@ func _solid(label: String, center: Vector3, size: Vector3, color: Color) -> Stat
     body.add_child(mesh_node)
     add_child(body)
     return body
+
+
+## A ramp rising toward +X from `foot` (its low edge on the ground) at `angle_deg`, `length` m
+## along its surface, 5 m wide.
+func _ramp(label: String, foot: Vector3, angle_deg: float, length: float, color: Color) -> StaticBody3D:
+    var angle: float = deg_to_rad(angle_deg)
+    var thickness: float = 0.5
+    var up: Vector3 = Vector3(-sin(angle), cos(angle), 0.0)  # the surface normal
+    var along: Vector3 = Vector3(cos(angle), sin(angle), 0.0)
+    var center: Vector3 = foot + along * (length * 0.5) - up * (thickness * 0.5)
+    var body: StaticBody3D = _solid(label, center, Vector3(length, thickness, 5.0), color)
+    body.rotation.z = angle
+    return body
+
+
+## A spot 1.2 m above the middle of a ramp built by _ramp (tests drop the hero here).
+func _ramp_drop_point(foot: Vector3, angle_deg: float, length: float) -> Vector3:
+    var angle: float = deg_to_rad(angle_deg)
+    var along: Vector3 = Vector3(cos(angle), sin(angle), 0.0)
+    return foot + along * (length * 0.55) + Vector3(-sin(angle), cos(angle), 0.0) * 1.2
 
 
 func _sign(text: String, at: Vector3) -> void:

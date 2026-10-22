@@ -113,6 +113,8 @@ var view_camera: Node3D
 var lock_target: Node3D
 ## The full-3D platformer moveset; drives movement whenever a third-person camera is assigned.
 var motor: PlatformerMotor
+## Full-3D: the camera-relative stick this frame (the motor turns the facing toward it).
+var _wish_3d: Vector2 = Vector2.ZERO
 var _haste_left: float = 0.0
 var _haste_mult: float = 1.0
 var _invulnerable_left: float = 0.0
@@ -244,6 +246,8 @@ func blink(distance: float, iframes: float, direction: Vector3 = Vector3.ZERO, r
     velocity.x = 0.0
     velocity.z = 0.0
     velocity.y = maxf(velocity.y, 0.0)
+    if _full_3d():
+        motor.reset()  # the blink stops the run: no speed left over along the facing
     _invulnerable_left = maxf(_invulnerable_left, iframes)
     melee.cancel()
     _queued_attack = null
@@ -319,7 +323,13 @@ func _physics_process(delta: float) -> void:
             var world: Vector3 = (view_camera.call("flat_basis") as Basis) * Vector3(input_x, 0.0, input_z)
             input_x = world.x
             input_z = world.z
-    if not melee.is_busy() and not (_full_3d() and motor.locks_facing()):
+    if _full_3d():
+        # The motor owns the facing (it turns toward the stick at a fixed rate, DEC-051); a lock-on
+        # target only turns you where the motor allows strafing.
+        _wish_3d = Vector2(input_x, input_z)
+        if not melee.is_busy() and motor.allows_lock_facing():
+            _face_lock_target()
+    elif not melee.is_busy():
         _update_facing(input_x, input_z)
         _face_lock_target()
 
@@ -342,14 +352,24 @@ func _physics_process(delta: float) -> void:
         velocity.x = _dodge_direction.x * dodge_speed
         velocity.z = _dodge_direction.z * dodge_speed
         velocity.y = 0.0
+        if _full_3d():
+            motor.hold_external(PlatformerMotor.State.DASH, delta)
     elif is_stunned():
-        # Knockback carries; only gravity and gentle friction act.
-        velocity.x = move_toward(velocity.x, 0.0, 6.0 * delta)
-        velocity.z = move_toward(velocity.z, 0.0, 6.0 * delta)
-        _apply_gravity(on_floor, delta)
+        if _full_3d():
+            # The motor's KNOCKBACK state carries the hit (friction, gravity, its pose).
+            if motor.state != PlatformerMotor.State.KNOCKBACK:
+                motor.knockback()
+            motor.step(Vector2.ZERO, on_floor, delta)
+        else:
+            # Knockback carries; only gravity and gentle friction act.
+            velocity.x = move_toward(velocity.x, 0.0, 6.0 * delta)
+            velocity.z = move_toward(velocity.z, 0.0, 6.0 * delta)
+            _apply_gravity(on_floor, delta)
     elif melee.is_busy():
         _apply_attack_motion(input_x, input_z, on_floor, delta)
         _apply_gravity(on_floor, delta)
+        if _full_3d():
+            motor.hold_external(PlatformerMotor.State.ATTACK, delta)
     elif _full_3d():
         motor.step(Vector2(input_x, input_z), on_floor, delta)
     else:
@@ -574,7 +594,10 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
     if not on_floor:
         _air_dodge_used = true
     if _full_3d():
-        motor.reset()  # the dash cancels a slide, crouch or wall slide
+        # The dash cancels a slide, crouch or wall slide; it is the motor's DASH state while it
+        # lasts, and the hero faces the way it dashes.
+        _facing_3d = _dodge_direction
+        motor.begin_external(PlatformerMotor.State.DASH)
     dodge_started.emit(_dodge_direction)
 
 
@@ -636,12 +659,18 @@ func _try_attack(data: AttackData) -> void:
         _queued_attack = data
         _queued_left = attack_buffer_time
         return
+    if _full_3d() and _wish_3d.length() > 0.2 and (lock_target == null or not is_instance_valid(lock_target)):
+        # Combat stays snappy: a swing goes where the stick points, not where the run has turned.
+        _facing_3d = Vector3(_wish_3d.x, 0.0, _wish_3d.y).normalized()
+        if absf(_facing_3d.x) > 0.01:
+            facing_direction = signf(_facing_3d.x)
     if in_3d_mode:
         _soft_lock_facing()
     if melee.start(data, get_facing_vector()):
         _buffer_left = 0.0
         if _full_3d():
-            motor.reset()  # swinging stands you up out of a crouch or slide
+            # Swinging stands you up out of a crouch or slide; it is the motor's ATTACK state.
+            motor.begin_external(PlatformerMotor.State.ATTACK)
         attack_started.emit(data.id)
 
 
@@ -657,6 +686,8 @@ func _on_hit_received(info: DamageInfo) -> void:
     _invulnerable_left = hurt_invulnerable_time
     _hurt_flash_left = 0.18
     _combo_prev = null
+    if _full_3d():
+        motor.knockback()  # a hit ends any flip, slide, hang, climb or pull-up (DEC-051)
     hurt.emit(info)
 
 
