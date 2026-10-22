@@ -130,6 +130,41 @@ unshaded red**. They are never replaced by art.
 
 The test costs **50 credits**. If the elbows or knees deform badly, fall back to Mixamo weights (free, with your OK) before spending on Smart Mesh.
 
+### Revised hero pipeline: separate sword, draw/sheathe, cloth physics (2026-10-22, nothing spent)
+
+**References:**
+- **Body:** `assets/concepts/refs/revenant_tpose_v2.png`. Empty hands, an empty scabbard strapped diagonally on the back (it reads side-on whichever way he faces), and cloth as separate panels with gaps: a hood tail, 2 front and 2 back belt panels above the knees, and shoulder rags.
+- **Sword:** `assets/concepts/refs/revenant_sword.png`, a 1.1 m bone-and-iron sword shown front and edge-on.
+
+**Steps:**
+
+| # | Step | Where | Credits |
+|---|---|---|---|
+| 1 | Body: H3.1 HD multiview from the v2 sheet (private) | Tripo Studio | 30 |
+| 2 | Body: Tripo auto-rig (Mixamo skeleton) + free presets (idle, run, walk, jump, fall, slash, chop, dive, hit, defeat, cast) | Tripo Studio | 20 |
+| 3 | Sword: HD model from the front and side views (a separate asset, never cut out of the body) | Tripo Studio | 30 |
+| 4 | Blender (scripted through the MCP): <br>• a 3–5 bone chain down each cloth panel and the hood tail, with the panel vertices weighted to it <br>• a `Sheath` bone on the upper spine at the scabbard <br>• `draw` and `sheathe` clips keyframed on the right arm (reach over the shoulder, about 0.3 s each) <br>• decimate to about 25k tris, 2k textures | Blender | 0 |
+| 5 | Godot, art layer only (`scripts/art/`): <br>• `BoneAttachment3D` sockets **WeaponHand** (`mixamorig:RightHand`) and **WeaponSheath** (`Sheath`) <br>• a sword controller that reparents the sword between them <br>• `SpringBoneSimulator3D` on the cloth chains, with `SpringBoneCollisionCapsule3D` on the thighs, hips and spine (verified in Godot 4.7.2) <br>• an `AnimationTree` with an upper-body blend, so draw and sheathe play while running | Godot | 0 |
+| — | Optional: draw and sheathe from Tripo text-to-motion, if the Blender-keyed clips look stiff | Tripo Studio | 40 |
+| — | Optional: Mixamo draw/sheathe clips | Mixamo | 0, but uploads the mesh to Adobe; needs OK |
+
+**Total: 80 credits (120 with Tripo motions). Balance is 1,955.**
+
+**Draw and sheathe behaviour** (visual only; it reads gameplay signals and changes nothing else):
+
+- The sword stays sheathed when idle or exploring.
+- On the first `attack_started`, the right arm snaps into a fast draw and the sword moves to WeaponHand on the grab frame, so the swing continues straight on. Hit timing is unchanged, because hitboxes stay in code.
+- The sword auto-sheathes after about 4 s with no attack and no node in the `enemies` group within about 8 m.
+- Card casting uses the free left hand (the `cast_a_spell` clip).
+
+**Risks:**
+
+- Tripo may still fuse a cloth panel to a leg. Fix: separate it in Blender (free).
+- Spring-bone cloth needs tuning (stiffness and drag per chain).
+- The front view doesn't show the scabbard strap, so the generated strap may come out simplified.
+
+**First test, 50 credits:** steps 1 and 2. Check the rig, joint deformation and whether the cloth panels separate. Only then run the sword (step 3) and the Blender/Godot work.
+
 ## Animation wiring (2026-10-22)
 
 `scripts/art/art_animator.gd` (visual-only) drives every rigged model from gameplay:
