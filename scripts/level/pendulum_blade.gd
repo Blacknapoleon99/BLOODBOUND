@@ -10,13 +10,16 @@ var arm_length: float = 5.0
 var max_angle: float = 1.05  # radians either side of straight down
 var period: float = 2.2  # seconds for a full back-and-forth
 var phase_offset: float = 0.0
+## Blade width across the swing (m); -1 = the default (the hall's depth in 3D, thin in the side view).
+var blade_span: float = -1.0
 var hitbox: Hitbox
 var _t: float = 0.0
 var _arm: Node3D
 
 
-static func create(label: String, pivot: Vector3, length: float, offset: float = 0.0) -> PendulumBlade:
+static func create(label: String, pivot: Vector3, length: float, offset: float = 0.0, span: float = -1.0) -> PendulumBlade:
     var blade: PendulumBlade = PendulumBlade.new()
+    blade.blade_span = span
     blade.name = label
     blade.add_to_group(&"pendulum")
     blade.position = pivot
@@ -56,6 +59,8 @@ func _build() -> void:
     var blade: MeshInstance3D = MeshInstance3D.new()
     var blade_mesh: BoxMesh = BoxMesh.new()
     var span: float = Lane.depth() - 1.0 if Lane.full_3d else 0.15  # 3D: no walking round it
+    if blade_span > 0.0:
+        span = blade_span  # open 3D courses size each blade to the walkway it guards
     blade_mesh.size = Vector3(1.6, 0.5, span)
     blade.mesh = blade_mesh
     var edge: StandardMaterial3D = StandardMaterial3D.new()

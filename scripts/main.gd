@@ -54,6 +54,8 @@ var _reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var ambushes: Array[Ambush] = []
 ## The run's shuffled rooms (LevelLayout), between the opening and the Bishop's approach.
 var sections: Array[LevelSection] = []
+## The 3D run's practice stations round the opening causeway (DEC-052; null in the side view).
+var opening: OpeningGrounds
 var map_offset: float = 0.0
 var traps: Array[Node3D] = []  # SpikeTrap and PendulumBlade hazards
 var respawn_point: Vector3 = SPAWN_POSITION
@@ -200,7 +202,7 @@ func _ready() -> void:
     offer_overlay.resolved.connect(_on_offer_resolved)
     add_child(offer_overlay)
     if full_3d:
-        _flash("3D RUN: cross the halls, defeat the plagued soldier, and reach the cathedral. Q locks on.", 7.0)
+        _flash("3D RUN: cross the open courses (your own way: every room has several routes), defeat the plagued soldier, and reach the cathedral. Q locks on.", 7.0)
     else:
         _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
 
@@ -234,9 +236,11 @@ func _process(delta: float) -> void:
     elif not _fall_screamed and player.global_position.y < -1.5 and player.velocity.y < -7.0:
         _fall_screamed = true
         Audio.sfx(&"player_fall", 0.03)  # falling into the abyss
+    if cam3d != null:
+        _track_safe_ground(delta)
     for p: CharacterBody3D in players.duplicate():
         if p.global_position.y < -9.0:
-            _respawn(p)
+            _fall_respawn(p)
     _tick_revives(delta)
     var lead: Node3D = Players.leader()
 
@@ -1127,6 +1131,67 @@ func _respawn(who: CharacterBody3D = null) -> void:
         _flash("Fell into the abyss — returned to the safe start.", 3.5)
 
 
+## Open 3D courses (DEC-052): where each player last stood on SAFE ground — flat, static,
+## not crumbling, breakable or moving, not on a spike bed, at least 1 m from every edge —
+## sampled 4 times a second while the third-person camera drives the run.
+var safe_ground: Dictionary = {}  # player -> Vector3
+var _safe_clock: float = 0.0
+const SAFE_EDGE: float = 1.0
+
+
+func _track_safe_ground(delta: float) -> void:
+    _safe_clock -= delta
+    if _safe_clock > 0.0:
+        return
+    _safe_clock = 0.25
+    for p: CharacterBody3D in players:
+        if p.is_on_floor() and Players.is_standing(p) and is_safe_ground(p.global_position, p):
+            safe_ground[p] = p.global_position
+
+
+## True if a body standing at `at` (its centre) is on safe ground (see `safe_ground`).
+func is_safe_ground(at: Vector3, who: CharacterBody3D = null) -> bool:
+    var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+    var exclude: Array[RID] = []
+    if who != null:
+        exclude.append(who.get_rid())
+    var floor_y: float = NAN
+    for offset: Vector3 in [Vector3.ZERO, Vector3(SAFE_EDGE, 0, 0), Vector3(-SAFE_EDGE, 0, 0), Vector3(0, 0, SAFE_EDGE), Vector3(0, 0, -SAFE_EDGE)]:
+        var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(at + offset + Vector3.UP * 0.2, at + offset + Vector3.DOWN * 1.6)
+        query.exclude = exclude
+        var hit: Dictionary = space.intersect_ray(query)
+        if hit.is_empty():
+            return false
+        var body: Object = hit["collider"]
+        if not (body is StaticBody3D) or body is CollapsingSlab or body is BreakableFloor or (hit["normal"] as Vector3).y < 0.94:
+            return false
+        var y: float = (hit["position"] as Vector3).y
+        if is_nan(floor_y):
+            floor_y = y
+        elif absf(y - floor_y) > 0.3:
+            return false
+    for node: Node in get_tree().get_nodes_in_group(&"spike_trap"):
+        var trap: SpikeTrap = node as SpikeTrap
+        var local: Vector3 = trap.global_position - at
+        if absf(local.x) < trap.width * 0.5 + 1.0 and absf(local.z) < trap.depth * 0.5 + 1.0 and absf(local.y + 0.85) < 1.0:
+            return false
+    return true
+
+
+## Falling below the course: in the open 3D run you land back on the last safe ground for
+## 1 HP (the spec's death plane); otherwise (side view, co-op, a fight in progress, no safe
+## spot yet) the checkpoint respawn as before.
+func _fall_respawn(who: CharacterBody3D) -> void:
+    if cam3d != null and safe_ground.has(who) and _active_ambush() == null and not in_fracture(who):
+        who.call("teleport_to", (safe_ground[who] as Vector3) + Vector3(0.0, 0.2, 0.0))
+        for slab: CollapsingSlab in collapsing_slabs:
+            slab.restore()
+        (who.get("health") as Health).apply_damage(1)
+        _flash("Fell into the abyss — back on solid ground (-1 HP).", 2.5)
+        return
+    _respawn(who)
+
+
 func _on_checkpoint_activated(reached: Checkpoint) -> void:
     respawn_point = reached.respawn_position
     _flash("Checkpoint reached.", 2.5)
@@ -1198,9 +1263,13 @@ func _build_greybox() -> void:
 
     _build_sections()
     if full_3d:
-        for side: float in [-1.0, 1.0]:  # the opening's hall walls (each room builds its own)
-            _make_solid("Opening wall", Vector3((-19.0 + APPROACH_START_X) * 0.5, -1.0, side * (Lane.half() + 0.3)), Vector3(APPROACH_START_X + 19.0, 26.0, 0.6), Color(0.1, 0.1, 0.13))
+        # Open courses (DEC-052): no side walls; the cathedral's back wall stays behind the
+        # start, and practice stations float off both sides of the causeway.
         _make_solid("Opening back wall", Vector3(-19.3, -1.0, 0.0), Vector3(0.6, 26.0, Lane.DEPTH_3D + 1.2), Color(0.1, 0.1, 0.13))
+        opening = OpeningGrounds.new()
+        add_child(opening)
+        opening.build_grounds()
+        _wire_course(opening)
     _build_approach()
     # Ambushes: E1 after the soldier (its altar is the reward), E2 on the landing mid-pursuit.
     var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"hound", "x": 16.0}, {"type": &"archer", "x": 17.5}]
@@ -1287,16 +1356,24 @@ func _build_sections() -> void:
         add_child(section)
         section.build(x)
         sections.append(section)
-        altars.append_array(section.altars)
-        for ambush: Ambush in section.ambushes:
-            ambush.started.connect(_on_ambush_started)
-            ambush.cleared.connect(_on_ambush_cleared)
-            ambushes.append(ambush)
-        traps.append_array(section.traps)
-        collapsing_slabs.append_array(section.slabs)
+        _wire_course(section)
         section.checkpoint.activated.connect(_on_checkpoint_activated)
         x += section.width
     map_offset = x - APPROACH_START_X
+
+
+## Hooks a built room (or the opening's practice grounds) into the level's rules: altars,
+## ambushes, hazards reset on a fall, crumbling slabs, loose Bone Shards.
+func _wire_course(section: LevelSection) -> void:
+    altars.append_array(section.altars)
+    for ambush: Ambush in section.ambushes:
+        ambush.started.connect(_on_ambush_started)
+        ambush.cleared.connect(_on_ambush_cleared)
+        ambushes.append(ambush)
+    traps.append_array(section.traps)
+    collapsing_slabs.append_array(section.slabs)
+    for pickup: ShardPickup in section.pickups:
+        pickup.collected.connect(add_shards)
 
 
 ## 3D run → side view at the Pursuit Approach (until phase 4 rebuilds the Bishop in 3D): the
