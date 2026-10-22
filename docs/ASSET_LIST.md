@@ -154,7 +154,7 @@ The test costs **50 credits**. If the elbows or knees deform badly, fall back to
 
 - The sword stays sheathed when idle or exploring.
 - On the first `attack_started`, the right arm snaps into a fast draw and the sword moves to WeaponHand on the grab frame, so the swing continues straight on. Hit timing is unchanged, because hitboxes stay in code.
-- The sword auto-sheathes after about 4 s with no attack and no node in the `enemies` group within about 8 m.
+- The sword auto-sheathes after about 4 s with no attack and no living node in the `enemy` group (dead ones skipped via `is_dead()`) within about 8 m of that sword's own player. In co-op each player is checked separately.
 - Card casting uses the free left hand (the `cast_a_spell` clip).
 
 **Risks:**
