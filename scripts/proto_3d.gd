@@ -25,6 +25,8 @@ func _ready() -> void:
     add_child(player)
     player.global_position = SPAWN
     player.set("in_3d_mode", true)
+    player.floor_snap_length = 0.35  # hug slopes and stair noses instead of hopping off them
+    player.floor_max_angle = deg_to_rad(50.0)
     player.connect("died", func() -> void: player.call_deferred("revive_at", SPAWN), CONNECT_DEFERRED)
     cam = ThirdPersonCamera.create(player)
     add_child(cam)

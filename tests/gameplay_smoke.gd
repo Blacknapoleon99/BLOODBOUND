@@ -2823,6 +2823,55 @@ func _m22_3d_core_checks() -> void:
     _check(moved.x < -2.0 and absf(moved.z) < 0.6, "W runs away from the camera (moved %s)" % moved.snapped(Vector3.ONE * 0.1))
     var facing: Vector3 = p.call("get_facing_vector")
     _check(facing.x < -0.9, "the player turns to face the way it runs (%s)" % facing.snapped(Vector3.ONE * 0.01))
+    # Movement feel (measured): start, 90-degree turn, reversal, stop, jump arc.
+    await _seconds(0.6)
+    p.call("teleport_to", Vector3(0.0, 1.0, 6.0))
+    cam.yaw = 0.0
+    await _seconds(0.4)
+    var top: float = float(p.get("move_speed"))
+    _key(KEY_W, true)
+    var t_full: int = 0
+    while Vector2(p.velocity.x, p.velocity.z).length() < top * 0.95 and t_full < 60:
+        await physics_frame
+        t_full += 1
+    _check(t_full / PHYSICS_HZ <= 0.12, "full speed from a standstill in %.2f s (<= 0.12)" % (t_full / PHYSICS_HZ))
+    _key(KEY_D, true)
+    _key(KEY_W, false)
+    var t_turn: int = 0
+    while Vector2(p.velocity.x, p.velocity.z).normalized().dot(Vector2(1.0, 0.0)) < 0.98 and t_turn < 60:
+        await physics_frame
+        t_turn += 1
+    _check(t_turn / PHYSICS_HZ <= 0.12, "a 90-degree turn completes in %.2f s (<= 0.12), no rubbery arc" % (t_turn / PHYSICS_HZ))
+    await _seconds(0.3)
+    _key(KEY_D, false)
+    _key(KEY_A, true)
+    var t_rev: int = 0
+    while p.velocity.x > -top * 0.95 and t_rev < 60:
+        await physics_frame
+        t_rev += 1
+    _check(t_rev / PHYSICS_HZ <= 0.2, "a full reversal takes %.2f s (<= 0.20)" % (t_rev / PHYSICS_HZ))
+    _key(KEY_A, false)
+    var stop_from: Vector3 = p.global_position
+    var t_stop: int = 0
+    while Vector2(p.velocity.x, p.velocity.z).length() > 0.05 and t_stop < 60:
+        await physics_frame
+        t_stop += 1
+    var slide: float = (p.global_position - stop_from).length()
+    _check(slide <= 0.5, "releasing the stick stops you in %.2f m (<= 0.5), no ice-skating" % slide)
+    await _seconds(0.3)
+    var y0: float = p.global_position.y
+    var apex: float = y0
+    var t_apex: int = 0
+    _key(KEY_SPACE, true)
+    for i in 60:
+        await physics_frame
+        if p.global_position.y > apex:
+            apex = p.global_position.y
+            t_apex = i + 1
+    _key(KEY_SPACE, false)
+    var rise: float = apex - y0
+    _check(absf(rise - float(p.get("jump_height3d"))) < 0.3 and absf(t_apex / PHYSICS_HZ - 0.4) < 0.12, "a held jump peaks at %.2f m after %.2f s (designed %.1f m)" % [rise, t_apex / PHYSICS_HZ, float(p.get("jump_height3d"))])
+    await _seconds(0.6)
     # Right stick turns the camera.
     var yaw0: float = cam.yaw
     Input.action_press(&"look_right", 1.0)

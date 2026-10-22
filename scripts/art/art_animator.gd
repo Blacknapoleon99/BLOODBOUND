@@ -350,7 +350,8 @@ func _physics_process(delta: float) -> void:
     if steer_facing and body.has_method(&"get_facing_vector"):
         var f: Vector3 = body.call(&"get_facing_vector")
         if f.length_squared() > 0.0001:
-            model.rotation.y = lerp_angle(model.rotation.y, atan2(f.x, f.z), 1.0 - exp(-20.0 * delta))
+            var turn_rate: float = 28.0 if body.get("view_camera") != null else 20.0
+            model.rotation.y = lerp_angle(model.rotation.y, atan2(f.x, f.z), 1.0 - exp(-turn_rate * delta))
     if not _queued.is_empty() and _clock >= _queued_at:
         var next: Dictionary = _queued
         _queued = {}

@@ -47,6 +47,26 @@ signal died
 @export var coyote_time: float = 0.1
 @export var jump_buffer_time: float = 0.12
 
+@export_group("Full 3D motor")
+## Used only in full 3D (a ThirdPersonCamera assigned); the side-view game keeps the values above.
+## Ground: speed changes at `accel3d`, direction ROTATES toward the stick at `turn_rate3d`
+## (rad/s) instead of each axis catching up separately; a reversal brakes at `brake3d` and
+## pivots; from a standstill you start at `start_speed3d` at once.
+@export var accel3d: float = 70.0
+@export var decel3d: float = 90.0
+@export var brake3d: float = 140.0
+@export var turn_rate3d: float = 20.0
+@export var start_speed3d: float = 3.5
+@export var air_accel3d: float = 30.0
+@export var air_turn_rate3d: float = 6.0
+## Jump designed by shape (apex height in metres, seconds to reach it, seconds to fall back),
+## after the GDC "Building a Better Jump" method; gravity and launch speed are derived.
+@export var jump_height3d: float = 2.3
+@export var jump_rise_time3d: float = 0.36
+@export var jump_fall_time3d: float = 0.27
+## Near the apex (|vy| below this) with jump held, gravity halves: a brief hang for precision.
+@export var apex_hang_speed3d: float = 1.6
+
 @export_group("Dodge")
 @export var dodge_speed: float = 17.0
 @export var dodge_duration: float = 0.22
@@ -322,6 +342,9 @@ func _physics_process(delta: float) -> void:
     elif melee.is_busy():
         _apply_attack_motion(input_x, input_z, on_floor, delta)
         _apply_gravity(on_floor, delta)
+    elif _full_3d():
+        _apply_run_3d(input_x, input_z, on_floor, delta)
+        _apply_jump_and_gravity(on_floor, delta)
     else:
         _apply_run(input_x, input_z, on_floor, delta)
         _apply_jump_and_gravity(on_floor, delta)
@@ -427,6 +450,42 @@ func _apply_run(input_x: float, input_z: float, on_floor: bool, delta: float) ->
         velocity.z = move_toward(velocity.z, target.y, rate * delta)
 
 
+## Full 3D (a third-person camera drives the input).
+func _full_3d() -> bool:
+    return in_3d_mode and view_camera != null
+
+
+## Full-3D ground/air movement on the XZ plane as ONE vector: the speed eases toward the
+## target, the direction rotates toward the stick (sharp, readable turns), a reversal brakes
+## and pivots, and a standing start gets an instant kick.
+func _apply_run_3d(input_x: float, input_z: float, on_floor: bool, delta: float) -> void:
+    var wish: Vector2 = Vector2(input_x, input_z).limit_length(1.0)
+    var top: float = move_speed * (_haste_mult if _haste_left > 0.0 else 1.0)
+    var planar: Vector2 = Vector2(velocity.x, velocity.z)
+    var speed: float = planar.length()
+    if wish.length() < 0.05:
+        speed = move_toward(speed, 0.0, (decel3d if on_floor else air_accel3d * 0.3) * delta)
+        planar = planar.normalized() * speed if speed > 0.0 else Vector2.ZERO
+    else:
+        var want_dir: Vector2 = wish.normalized()
+        var want_speed: float = top * wish.length()
+        var dir: Vector2 = planar / speed if speed > 0.3 else want_dir
+        var angle: float = absf(dir.angle_to(want_dir))
+        if on_floor and angle > deg_to_rad(150.0) and speed > 2.0:
+            speed = move_toward(speed, 0.0, brake3d * delta)  # reversal: brake, then pivot
+            if speed <= 2.0:
+                dir = want_dir
+        else:
+            var turn: float = (turn_rate3d if on_floor else air_turn_rate3d) * delta
+            dir = dir.rotated(clampf(dir.angle_to(want_dir), -turn, turn))
+            if on_floor and speed < start_speed3d:
+                speed = minf(start_speed3d, want_speed)  # instant first step
+            speed = move_toward(speed, want_speed, (accel3d if on_floor else air_accel3d) * delta)
+        planar = dir * speed
+    velocity.x = planar.x
+    velocity.z = planar.y
+
+
 func _apply_attack_motion(input_x: float, input_z: float, on_floor: bool, delta: float) -> void:
     var data: AttackData = melee.current
     # Plant your feet when already in reach: lunging into an enemy's body only earns you its
@@ -439,6 +498,11 @@ func _apply_attack_motion(input_x: float, input_z: float, on_floor: bool, delta:
         return
     var target: Vector2 = Vector2(input_x, input_z).limit_length(1.0) * move_speed * data.move_multiplier
     var rate: float = ground_deceleration if on_floor else air_acceleration
+    if _full_3d():
+        var planar: Vector2 = Vector2(velocity.x, velocity.z).move_toward(target, decel3d * delta)
+        velocity.x = planar.x
+        velocity.z = planar.y
+        return
     velocity.x = move_toward(velocity.x, target.x, rate * delta)
     if in_3d_mode:
         velocity.z = move_toward(velocity.z, target.y, rate * delta)
@@ -446,7 +510,7 @@ func _apply_attack_motion(input_x: float, input_z: float, on_floor: bool, delta:
 
 func _apply_jump_and_gravity(on_floor: bool, delta: float) -> void:
     if _buffer_left > 0.0 and _coyote_left > 0.0:
-        velocity.y = jump_speed
+        velocity.y = 2.0 * jump_height3d / jump_rise_time3d if _full_3d() else jump_speed
         _buffer_left = 0.0
         _coyote_left = 0.0
         _jump_rising = true
@@ -467,7 +531,13 @@ func _apply_gravity(on_floor: bool, delta: float) -> void:
             velocity.y = 0.0
     else:
         var g: float = rise_gravity if velocity.y > 0.0 else fall_gravity
-        velocity.y = maxf(velocity.y - g * delta, -max_fall_speed)
+        if _full_3d():
+            var rise_g: float = 2.0 * jump_height3d / (jump_rise_time3d * jump_rise_time3d)
+            var fall_g: float = 2.0 * jump_height3d / (jump_fall_time3d * jump_fall_time3d)
+            g = rise_g if velocity.y > 0.0 else fall_g
+            if absf(velocity.y) < apex_hang_speed3d and Input.is_action_pressed(act(&"jump")):
+                g *= 0.5  # apex hang
+        velocity.y = maxf(velocity.y - g * delta, -max_fall_speed * (1.5 if _full_3d() else 1.0))
 
 
 func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:

@@ -388,3 +388,16 @@ The user chose to rebuild the game as a full 3D action platformer with a third-p
 - **Menus:** the pause menu and reward overlays free the mouse and restore it on close.
 - **Test room:** "3D Prototype (phase 1)" in the main menu is a test room with stairs, a raised platform, a pit with floating platforms, pillars and three Plagued Soldiers fighting in 3D. The side-scroller game is unchanged.
 - **Results:** 12 new checks (camera-relative run, facing, stick orbit, lock, camera framing, cycle, cards aim at the lock, lock break, release, spring arm), 464/464. Build `build/windows-run14/Bloodbound.exe`.
+
+## DEC-044 — A real 3D movement controller (2026-10-22)
+
+- **Playtest:** "still feels super clunky and rubbery". The user asked about lifting the movement code from a decompiled commercial platformer. Declined: that code is the studio's copyright. The controller is instead built from publicly documented techniques (GDC "Building a Better Jump"; developers' published movement write-ups; open-source controllers such as bevy-tnua, MIT) and written fresh here.
+- **Cause:** in 3D, X and Z each eased toward the target at 60 m/s², so every turn bent through a long arc. The turnaround fix only covered X reversals.
+- **Full-3D motor** (only when a ThirdPersonCamera is assigned; the side-view game is unchanged). Planar velocity is one vector:
+  - speed eases at 70 (decel 90); direction rotates toward the stick at 20 rad/s on the ground (6 in the air);
+  - a reversal over 150° brakes at 140 and pivots; a standing start kicks straight to 3.5 m/s;
+  - attack movement also eases as a vector.
+- **Jump by design:** a 2.3 m apex reached in 0.36 s, falling in 0.27 s (gravity and launch speed derived), plus a half-gravity apex hang while held. Terminal fall speed is ×1.5.
+- **Other:** floor snap 0.35, max floor angle 50°, and the model turns faster (28/s).
+- **Measured:** full speed in 0.08 s; a 90° turn in 0.10 s; reversal in 0.13 s; stop within 0.48 m; jump peak 2.44 m at 0.43 s. These are permanent checks (469/469).
+- **Build:** `build/windows-run15/Bloodbound.exe`.
