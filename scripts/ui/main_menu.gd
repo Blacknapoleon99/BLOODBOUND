@@ -7,6 +7,7 @@ const GAME_SCENE: String = "res://scenes/armory.tscn"
 
 var start_button: Button
 var coop_button: Button
+var run3d_button: Button
 var proto_button: Button
 var settings_button: Button
 var quit_button: Button
@@ -48,6 +49,8 @@ func _ready() -> void:
 
     start_button = _add_button(column, "Start", "Start")
     start_button.pressed.connect(_on_start)
+    run3d_button = _add_button(column, "Start 3D Run (rooms in 3D, Bishop in side view)", "Start3D")
+    run3d_button.pressed.connect(_on_start_3d)
     coop_button = _add_button(column, "Start Co-op (2 players)", "StartCoop")
     coop_button.pressed.connect(_on_start_coop)
     proto_button = _add_button(column, "3D Prototype (phase 2: enemies)", "Proto3D")
@@ -80,6 +83,7 @@ func _add_button(parent: Control, text: String, node_name: String) -> Button:
 
 func _on_start() -> void:
     RunState.coop = false
+    RunState.full_3d = false
     RunState.end_run()
     get_tree().change_scene_to_file(GAME_SCENE)
 
@@ -87,6 +91,15 @@ func _on_start() -> void:
 ## Local co-op: P1 keyboard + mouse, P2 the first gamepad (or arrows + numpad).
 func _on_start_coop() -> void:
     RunState.coop = true
+    RunState.full_3d = false
+
+
+## The 3D run: the same draft and map, rooms built as 3D halls (third-person camera, lock-on).
+func _on_start_3d() -> void:
+    RunState.coop = false
+    RunState.full_3d = true
+    RunState.end_run()
+    get_tree().change_scene_to_file(GAME_SCENE)
     RunState.end_run()
     get_tree().change_scene_to_file(GAME_SCENE)
 

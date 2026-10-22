@@ -12,6 +12,9 @@ static var seed_value: int = 0
 static var deck: Array[CardData] = []
 ## Local co-op (set by the main menu; survives end_run so the Armory → draft flow keeps it).
 static var coop: bool = false
+## The 3D run (main menu "Start 3D Run"): rooms are built as walled 3D halls and played with
+## the third-person camera. Survives end_run like `coop`.
+static var full_3d: bool = false
 ## Player 2's drafted deck in co-op.
 static var deck_p2: Array[CardData] = []
 ## Passive relics taken this run (see RelicPool). Also used, and cleared per level load, when no

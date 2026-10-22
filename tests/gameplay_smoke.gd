@@ -188,6 +188,7 @@ func _run() -> void:
     await _m21_feel_checks()
     await _m22_3d_core_checks()
     await _m23_3d_enemy_checks()
+    await _m24_3d_room_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -3111,6 +3112,120 @@ func _m23_3d_enemy_checks() -> void:
     await _frames(10)
     _check(not EnemyFactory.full_3d, "leaving the 3D room puts the factory back to side-view enemies")
     _bind()
+
+
+## Full-3D phase 3: the map's rooms as 3D halls (RunState.full_3d), then the side-view handoff.
+func _m24_3d_room_checks() -> void:
+    # The validator in 3D: planar gaps, and every room still completable with the 3D jump.
+    Lane.full_3d = true
+    _check(LevelSection.can_jump(Rect2(0, 0, 4, 0), Rect2(6, 0, 4, 0), Vector2(0, 4), Vector2(0, 4))
+            and not LevelSection.can_jump(Rect2(0, 0, 4, 0), Rect2(6, 0, 4, 0), Vector2(0, 4), Vector2(-9, -5)),
+            "3D validator: a 2 m gap is jumpable, the same gap 5 m off to the side is not")
+    var holder: Node3D = Node3D.new()
+    root.add_child(holder)
+    var all_rooms: Array[Script] = []
+    all_rooms.append_array(LevelLayout.ACT1)
+    all_rooms.append_array(LevelLayout.ACT2)
+    all_rooms.append(LevelLayout.ELITE)
+    all_rooms.append(LevelLayout.MERCHANT)
+    var broken: Array[String] = []
+    var zigzag: bool = false
+    for script: Script in all_rooms:
+        var room: LevelSection = script.new() as LevelSection
+        holder.add_child(room)
+        room.build(1000.0)
+        if not room.is_completable():
+            broken.append(room.title)
+        if room.id == &"wraith_belfry":
+            zigzag = room.platform_z[1].x > 0.0 and room.platform_z[2].y < 0.0  # beams sway right, then left
+    _check(broken.is_empty() and zigzag, "all %d rooms are completable in 3D, floating ledges zig-zag in depth (failing: %s)" % [all_rooms.size(), broken])
+    holder.queue_free()
+    Lane.full_3d = false
+    await _frames(2)
+
+    # A 3D run of the full map.
+    LevelLayout.classic = false
+    RunState.full_3d = true
+    RunState.new_run(77)
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(12)
+    _bind()
+    var cam: ThirdPersonCamera = _main.get("cam3d")
+    var sections: Array = _main.get("sections")
+    _check(bool(_main.get("full_3d")) and cam != null and cam.camera.current and bool(_player.get("in_3d_mode")) and sections.size() == 8,
+            "a 3D run builds the map as halls with the third-person camera (%d rooms)" % sections.size())
+    _check(not _enemy.plane_locked, "the opening's plagued soldier fights in 3D")
+    _enemy.set_ai_enabled(false)
+    var landed_all: bool = true
+    var bad_room: String = ""
+    for room: LevelSection in sections:
+        _player.call("teleport_to", room.checkpoint.global_position + Vector3(0.0, 0.3, 2.5))
+        await _seconds(0.4)
+        if not (_player.is_on_floor() and absf(_player.global_position.y - 0.85) < 0.2):
+            landed_all = false
+            bad_room = room.title
+    _check(landed_all, "every 3D room's entry stands on solid floor across its depth (bad: %s)" % bad_room)
+    # The hall walls: running sideways stops at the wall, never off the edge.
+    var first: LevelSection = sections[0]
+    _player.call("teleport_to", first.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
+    cam.yaw = -PI * 0.5  # looking down the hall (+X): D runs toward +Z
+    await _seconds(0.3)
+    await _hold(KEY_D, 1.2)
+    _check(_player.global_position.z > 3.5 and _player.global_position.z < Lane.half() and _player.is_on_floor(), "a hall wall stops you at the side (z %.2f)" % _player.global_position.z)
+    # Hazards span the hall.
+    var deep_spikes: bool = true
+    var spike_count: int = 0
+    for node: Node in get_nodes_in_group(&"spike_trap"):
+        var trap: SpikeTrap = node as SpikeTrap
+        if trap.global_position.x > 18.0 and trap.global_position.x < 18.2 + float(_main.get("map_offset")) and absf(trap.global_position.y) < 0.01:
+            spike_count += 1
+            deep_spikes = deep_spikes and trap.depth >= Lane.DEPTH_3D - 0.5
+    _check(spike_count == 0 or deep_spikes, "floor spikes span the whole hall in 3D (%d strips)" % spike_count)
+    # A 3D ambush: walls across the hall, foes spread in depth.
+    var hall: LevelSection = (load("res://scripts/level/sections/ossuary_ambush.gd") as Script).new() as LevelSection
+    _main.add_child(hall)
+    hall.build(-300.0)  # before the opening: past the Approach would hand the run to the side view
+    Ambush.enabled = true
+    var trap_room: Ambush = hall.ambushes[0]
+    _player.call("teleport_to", Vector3(hall.gx(6.0), 1.2, 0.0))
+    await _seconds(0.3)
+    _player.call("teleport_to", Vector3(hall.gx(14.0), 1.2, 1.0))
+    await _seconds(0.4)
+    var zs: Dictionary = {}
+    var all_free: bool = true
+    for e: Node3D in trap_room.enemies:
+        zs[snappedf(e.global_position.z, 0.5)] = true
+        all_free = all_free and not bool(e.get("plane_locked"))
+    _check(trap_room.is_active() and trap_room.wall_collision_enabled() and all_free and zs.size() >= 2,
+            "a 3D ambush seals the hall and its foes come at you across its depth (%d lanes)" % zs.size())
+    for e: Node3D in trap_room.enemies:
+        var eh: Health = e.get("health") as Health
+        if eh != null:
+            eh.apply_damage(99)
+    await _seconds(1.0)
+    _check(trap_room.state == Ambush.State.CLEARED, "clearing the 3D ambush drops its walls")
+    Ambush.enabled = false
+    hall.queue_free()
+    (_player.get("health") as Health).restore_full()
+    # The handoff: at the Pursuit Approach the run returns to the side view for the Bishop.
+    var approach_x: float = 18.2 + float(_main.get("map_offset"))
+    _player.call("teleport_to", Vector3(approach_x - 2.0, 1.2, 2.0))
+    await _seconds(0.3)
+    _player.call("teleport_to", Vector3(approach_x + 1.5, 1.2, 2.0))
+    await _frames(6)
+    var side_cam: Camera3D = _main.get("camera")
+    _check(_main.get("cam3d") == null and side_cam.current and not bool(_player.get("in_3d_mode")) and absf(_player.global_position.z) < 0.01,
+            "reaching the Pursuit Approach hands the 3D run to the side view (z %.2f)" % _player.global_position.z)
+    _check(_main.get("_rear_gate") != null and not EnemyFactory.full_3d and (_main.get("targeting") as CardTargeting).camera == side_cam,
+            "a gate seals the halls behind you; new foes and card aim use the side view")
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    LevelLayout.classic = true
+    RunState.full_3d = false
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+    _check(not Lane.full_3d and not bool(_main.get("full_3d")) and not bool(_player.get("in_3d_mode")), "the next side-view run builds the side view again")
 
 
 func _m3_boss_checks() -> void:

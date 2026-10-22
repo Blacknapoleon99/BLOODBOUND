@@ -72,7 +72,9 @@ static func apply(level: Node3D) -> int:
         push_warning("ArtSwap: %s missing, keeping greybox" % CAUSEWAY_SEGMENT_PATH)
         return 0
     var swapped: int = 0
-    for label: String in CAUSEWAY_SOLIDS:
+    # The causeway tiles are 4 m deep: on a 3D run's 10 m halls they would leave the floor half
+    # bare, so the 3D run keeps the greybox floors until hall-sized floor art exists.
+    for label: String in ([] as Array[String]) if Lane.full_3d else CAUSEWAY_SOLIDS:
         var body: Node3D = level.get_node_or_null(NodePath(label)) as Node3D
         if body != null and tile_box(body, label + " appearance", segment, CAUSEWAY_SEGMENT_LENGTH):
             swapped += 1

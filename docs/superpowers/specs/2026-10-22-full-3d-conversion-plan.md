@@ -45,6 +45,7 @@ Inventory (2026-10-22, ~13k lines of GDScript plus ~3k of tests):
    - the LevelSection 3D helpers and a 3D reachability validator;
    - rebuild the opening plus the 10 rooms, the elite hall and the merchant as 3D spaces;
    - hazards, secrets, shortcuts and ambushes in 3D.
+   **Done 2026-10-22 as walled halls from the same room scripts (DEC-046, build run17). The Bishop is still reached in the side view until phase 4.**
 4. **The Bishop in 3D:** arena layout, slams with its real arm, attacks on the arena floor, phases, music and voice. Retune the fight.
 5. **Systems and polish:**
    - card effects in 3D;

@@ -23,6 +23,9 @@ var state: State = State.ARMED
 var enemies: Array[Node3D] = []
 var _walls: Array[StaticBody3D] = []
 var wave: int = 0
+## Built for the 3D run: triggers for a free-moving (3D) player and spreads its spawns in depth.
+## Side-view ambushes ignore a 3D player (a Reality Fracture visit) and vice versa.
+var three_d: bool = false
 ## Spawn indices already killed: a retry after a death does not bring them back.
 var _killed: Dictionary = {}
 
@@ -34,6 +37,7 @@ static func create(label: String, trigger: float, left: float, right: float, spa
     ambush.left_x = left
     ambush.right_x = right
     ambush.spawns = spawn_list
+    ambush.three_d = Lane.full_3d
     return ambush
 
 
@@ -60,7 +64,7 @@ func _physics_process(_delta: float) -> void:
     match state:
         State.ARMED:
             for player: Node3D in Players.standing():
-                if enabled and not bool(player.get("in_3d_mode")) and player.global_position.x > trigger_x \
+                if enabled and bool(player.get("in_3d_mode")) == three_d and player.global_position.x > trigger_x \
                         and player.global_position.x < right_x and absf(player.global_position.y - global_position.y) < 4.0:
                     _start()
                     break
@@ -89,7 +93,8 @@ func _spawn_wave(n: int) -> int:
         var spawn: Dictionary = spawns[index]
         if int(spawn.get("wave", 0)) != n or _killed.has(index):
             continue
-        var enemy: Node3D = EnemyFactory.spawn(spawn["type"], get_parent(), float(spawn["x"]), left_x + 0.8, right_x - 0.8, global_position.y + 1.0)
+        var z: float = [0.0, -2.5, 2.5][index % 3] if three_d else 0.0
+        var enemy: Node3D = EnemyFactory.spawn(spawn["type"], get_parent(), float(spawn["x"]), left_x + 0.8, right_x - 0.8, global_position.y + 1.0, z)
         enemy.add_to_group(&"ambush_enemy")
         enemy.connect("defeated", func() -> void: _killed[index] = true)
         enemies.append(enemy)
@@ -115,13 +120,13 @@ func _make_wall(x: float) -> StaticBody3D:
     wall.position = Vector3(x, 3.0, 0.0)
     var shape: CollisionShape3D = CollisionShape3D.new()
     var box: BoxShape3D = BoxShape3D.new()
-    box.size = Vector3(0.6, 6.0, 4.0)
+    box.size = Vector3(0.6, 6.0, Lane.DEPTH_3D if three_d else 4.0)
     shape.shape = box
     shape.disabled = true
     wall.add_child(shape)
     var mesh_node: MeshInstance3D = MeshInstance3D.new()
     var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = Vector3(0.6, 6.0, 3.0)
+    mesh.size = Vector3(0.6, 6.0, Lane.DEPTH_3D if three_d else 3.0)
     mesh_node.mesh = mesh
     var bone: StandardMaterial3D = StandardMaterial3D.new()
     bone.albedo_color = Color(0.7, 0.66, 0.56)

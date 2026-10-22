@@ -67,10 +67,20 @@ var _trauma: float = 0.0
 var hurt_vignette: ColorRect
 var phase_banner: Label
 var _banner_left: float = 0.0
+## The 3D run (RunState.full_3d, solo): rooms are 3D halls played with the third-person camera.
+## Until the Bishop is rebuilt in 3D (phase 4), the run hands over to the side view at the
+## Pursuit Approach (`enter_side_view`).
+var full_3d: bool = false
+var cam3d: ThirdPersonCamera
+var _rear_gate: StaticBody3D
+var targeting: CardTargeting
 
 
 func _ready() -> void:
     InputBindings.configure_players(RunState.coop)
+    full_3d = RunState.full_3d and not RunState.coop
+    Lane.full_3d = full_3d
+    EnemyFactory.full_3d = full_3d
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     process_physics_priority = 10  # after the players move (co-op leash)
     GameSettings.load_settings()
@@ -124,6 +134,14 @@ func _ready() -> void:
     add_child(camera)
     camera.global_position = player.global_position + Vector3(0.0, 4.8, 22.0)
     camera.look_at(player.global_position + Vector3(0.0, 1.0, 0.0), Vector3.UP)
+    if full_3d:
+        player.set("in_3d_mode", true)
+        player.floor_snap_length = 0.35
+        player.floor_max_angle = deg_to_rad(50.0)
+        cam3d = ThirdPersonCamera.create(player)
+        add_child(cam3d)
+        player.set("view_camera", cam3d)
+        cam3d.yaw = -PI * 0.5  # looking down the hall (+X)
     fracture.teleported.connect(func(_to_3d: bool) -> void: _snap_camera())
     fracture.entered.connect(_on_fracture_entered)
     fracture.exited.connect(_on_fracture_exited)
@@ -161,7 +179,7 @@ func _ready() -> void:
     boss.phase_changed.connect(_on_boss_phase_changed)
     var card_ui: CardHandUI = CardHandUI.create(card_system)
     canvas.add_child(card_ui)
-    var targeting: CardTargeting = CardTargeting.create(card_system, card_ui, camera, boss)
+    targeting = CardTargeting.create(card_system, card_ui, cam3d.camera if full_3d else camera, boss)
     targeting.hint.connect(func(text: String) -> void: _flash(text, 2.5))
     add_child(targeting)
     card_system.card_played.connect(_on_card_played)
@@ -181,14 +199,28 @@ func _ready() -> void:
     offer_overlay = CardOfferOverlay.create()
     offer_overlay.resolved.connect(_on_offer_resolved)
     add_child(offer_overlay)
-    _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
+    if full_3d:
+        _flash("3D RUN: cross the halls, defeat the plagued soldier, and reach the cathedral. Q locks on.", 7.0)
+    else:
+        _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
+
+
+## True while `who` (default: player 1) is inside the Reality Fracture (the side view's 3D
+## detour). In the 3D run everyone is free-moving and the fracture stays closed.
+func in_fracture(who: Node = null) -> bool:
+    if who == null:
+        who = player
+    return bool(who.get("in_3d_mode")) and cam3d == null
 
 
 func _process(delta: float) -> void:
     if not is_instance_valid(player):
         return
-    var in_arena: bool = bool(player.get("in_3d_mode"))
-    _update_camera(delta)
+    var in_arena: bool = in_fracture()
+    if cam3d == null:
+        _update_camera(delta)
+    elif Players.leader().global_position.x > APPROACH_START_X + map_offset + 0.3:
+        enter_side_view()
     _apply_shake(delta)
     hurt_vignette.color.a = move_toward(hurt_vignette.color.a, 0.0, 1.4 * delta)
     if _banner_left > 0.0:
@@ -260,6 +292,10 @@ func _process(delta: float) -> void:
         if altar.player_in_reach(player) and _message == "":
             _message = "E: offer blood at the altar for a new card"
             _message_until = 0.2
+    if cam3d != null:
+        state = "3D RUN — WASD move / mouse look / SPACE jump / LEFT CLICK light / RIGHT CLICK heavy / SHIFT dodge / Q lock on / cards: 1-3 / E use"
+        if cam3d.lock_target != null:
+            state += "    LOCKED: " + String(cam3d.lock_target.name)
     hud.text = "BLOODBOUND — GREYBOX VERTICAL SLICE\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
 
@@ -310,7 +346,11 @@ func _unhandled_input(event: InputEvent) -> void:
     if RunState.coop and actor.global_position.distance_to(GATE_POSITION) < 2.7:
         _flash("The fracture admits only a lone soul (solo only, for now).", 2.0)
         return
-    if bool(player.get("in_3d_mode")):
+    if full_3d and cam3d == null:
+        _flash("The Reality Fracture is closed in the 3D run.", 2.0)
+    elif full_3d:
+        _flash("Nothing to use here.", 1.5)
+    elif in_fracture():
         if fracture.portal_open:
             _flash("Step into the burning portal to return.", 2.0)
         else:
@@ -349,7 +389,7 @@ func _on_ambush_cleared(_ambush: Ambush) -> void:
 func _on_player_died(who: CharacterBody3D = null) -> void:
     if who == null:
         who = player
-    if bool(who.get("in_3d_mode")):
+    if in_fracture(who):
         # Revived where you stand (no stray death state), then the fracture expels you.
         who.call("revive_at", who.global_position)
         fracture.fail()
@@ -1067,7 +1107,7 @@ func _apply_shake(delta: float) -> void:
 func _respawn(who: CharacterBody3D = null) -> void:
     if who == null:
         who = player
-    if bool(who.get("in_3d_mode")):
+    if in_fracture(who):
         who.call("teleport_to", fracture.spawn_point)
         _flash("Fell from the arena — returned to its centre.", 3.5)
         return
@@ -1134,6 +1174,9 @@ func _build_greybox() -> void:
 
     enemy = SOLDIER_SCENE.instantiate() as PlaguedSoldier
     enemy.position = ENEMY_POSITION
+    if full_3d:
+        enemy.plane_locked = false
+        enemy.leash_radius = 7.0
     enemy.defeated.connect(_on_enemy_defeated)
     add_child(enemy)
 
@@ -1145,13 +1188,17 @@ func _build_greybox() -> void:
     portcullis.position = Vector3(PORTCULLIS_X, 2.5, 0.0)
     var bars: CollisionShape3D = CollisionShape3D.new()
     var bars_shape: BoxShape3D = BoxShape3D.new()
-    bars_shape.size = Vector3(0.4, 5.0, 4.0)
+    bars_shape.size = Vector3(0.4, 5.0, Lane.depth())
     bars.shape = bars_shape
     portcullis.add_child(bars)
     add_child(portcullis)
-    _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, 3.6), Color(0.32, 0.3, 0.34), portcullis)
+    _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, Lane.depth(3.6)), Color(0.32, 0.3, 0.34), portcullis)
 
     _build_sections()
+    if full_3d:
+        for side: float in [-1.0, 1.0]:  # the opening's hall walls (each room builds its own)
+            _make_solid("Opening wall", Vector3((-19.0 + APPROACH_START_X) * 0.5, -1.0, side * (Lane.half() + 0.3)), Vector3(APPROACH_START_X + 19.0, 26.0, 0.6), Color(0.1, 0.1, 0.13))
+        _make_solid("Opening back wall", Vector3(-19.3, -1.0, 0.0), Vector3(0.6, 26.0, Lane.DEPTH_3D + 1.2), Color(0.1, 0.1, 0.13))
     _build_approach()
     # Ambushes: E1 after the soldier (its altar is the reward), E2 on the landing mid-pursuit.
     var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"hound", "x": 16.0}, {"type": &"archer", "x": 17.5}]
@@ -1159,6 +1206,8 @@ func _build_greybox() -> void:
     var e2_spawns: Array[Dictionary] = [{"type": &"hound", "x": 40.8 + o}, {"type": &"husk", "x": 41.6 + o}, {"type": &"archer", "x": 42.2 + o}, {"type": &"archer", "x": 43.2 + o}]
     for spec: Array in [["Ambush: Gate ossuary", 10.0, 9.3, 18.3, e1_spawns], ["Ambush: Landing", 38.6 + o, 37.8 + o, 43.8 + o, e2_spawns]]:
         var ambush: Ambush = Ambush.create(spec[0], spec[1], spec[2], spec[3], spec[4])
+        if spec[0] == "Ambush: Landing":
+            ambush.three_d = false  # the Pursuit Approach is played in the side view (phase 4 rebuilds it)
         ambush.started.connect(_on_ambush_started)
         ambush.cleared.connect(_on_ambush_cleared)
         add_child(ambush)
@@ -1248,6 +1297,37 @@ func _build_sections() -> void:
     map_offset = x - APPROACH_START_X
 
 
+## 3D run → side view at the Pursuit Approach (until phase 4 rebuilds the Bishop in 3D): the
+## player locks back to the play plane, the side camera takes over, a gate closes behind (the
+## 3D rooms' zig-zag ledges are off the z = 0 line) and new enemies spawn plane-locked.
+func enter_side_view() -> void:
+    if cam3d == null:
+        return
+    for p: CharacterBody3D in players:
+        p.set("in_3d_mode", false)
+        p.set("view_camera", null)
+        p.set("lock_target", null)
+        p.call("teleport_to", Vector3(p.global_position.x, p.global_position.y, 0.0))
+    cam3d.queue_free()
+    cam3d = null
+    targeting.camera = camera  # card aim follows the view
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    camera.current = true
+    EnemyFactory.full_3d = false
+    _snap_camera()
+    _rear_gate = StaticBody3D.new()
+    _rear_gate.name = "Cathedral rear gate"
+    _rear_gate.position = Vector3(APPROACH_START_X + map_offset - 0.4, 3.0, 0.0)
+    var shape: CollisionShape3D = CollisionShape3D.new()
+    var box: BoxShape3D = BoxShape3D.new()
+    box.size = Vector3(0.6, 8.0, Lane.depth())
+    shape.shape = box
+    _rear_gate.add_child(shape)
+    add_child(_rear_gate)
+    _make_visual("Rear gate bars", Vector3.ZERO, box.size, Color(0.3, 0.28, 0.32), _rear_gate)
+    _flash("The cathedral's causeway: the Bishop waits beyond (side view until the 3D Bishop arrives).", 4.0)
+
+
 ## The room the player is in ("" in the opening and the Bishop's approach).
 func current_section() -> LevelSection:
     var px: float = player.global_position.x
@@ -1263,6 +1343,8 @@ func _add_trap(trap: Node3D) -> void:
 
 
 func _make_solid(label: String, center: Vector3, size: Vector3, color: Color) -> void:
+    if full_3d and size.z >= 3.5:
+        size.z = Lane.DEPTH_3D  # causeways become halls
     var block: StaticBody3D = StaticBody3D.new()
     block.name = label
     block.position = center

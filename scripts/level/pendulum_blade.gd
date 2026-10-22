@@ -55,7 +55,8 @@ func _build() -> void:
     _arm.add_child(rod)
     var blade: MeshInstance3D = MeshInstance3D.new()
     var blade_mesh: BoxMesh = BoxMesh.new()
-    blade_mesh.size = Vector3(1.6, 0.5, 0.15)
+    var span: float = Lane.depth() - 1.0 if Lane.full_3d else 0.15  # 3D: no walking round it
+    blade_mesh.size = Vector3(1.6, 0.5, span)
     blade.mesh = blade_mesh
     var edge: StandardMaterial3D = StandardMaterial3D.new()
     edge.albedo_color = Color(0.75, 0.72, 0.7)
@@ -76,7 +77,7 @@ func _build() -> void:
     hitbox.rehit_interval = 1.0
     var shape: CollisionShape3D = CollisionShape3D.new()
     var box: BoxShape3D = BoxShape3D.new()
-    box.size = Vector3(1.5, 0.5, 1.6)
+    box.size = Vector3(1.5, 0.5, maxf(1.6, span))
     shape.shape = box
     shape.position.y = -arm_length
     hitbox.add_child(shape)
