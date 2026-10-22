@@ -24,7 +24,12 @@ Inventory (2026-10-22, ~13k lines of GDScript plus ~3k of tests):
 
 **Rough share:** about 60% of the code carries over unchanged or nearly unchanged, and about 40% is rewritten or reworked.
 
-## Decisions needed before starting
+## Decisions (made by the user, 2026-10-22)
+
+- **Camera: A, third-person orbit camera with lock-on.**
+- **Co-op: postponed.** Not converted in these phases. When it returns (after the game is complete) it will be **one shared camera + online co-op**. The local co-op code stays in the repo but isn't ported now.
+
+## Options that were considered
 
 1. **Camera style.** This decides the controls and level design:
    - **A. Third-person orbit camera** behind the player, mouse/right-stick look, with lock-on (Souls-like, the strongest "3D action" feel). *Recommended* for a melee/boss game.
@@ -44,7 +49,6 @@ Inventory (2026-10-22, ~13k lines of GDScript plus ~3k of tests):
 5. **Systems and polish:**
    - card effects in 3D;
    - lock-on HUD;
-   - co-op (split-screen or shared camera, per decision 2);
    - menus;
    - rewrite the remaining tests;
    - performance pass and builds.
