@@ -82,6 +82,7 @@ static func spawn(type: StringName, parent: Node, x: float, lo: float, hi: float
         _:
             e = husk(parent, x, lo, hi)
     e.global_position = Vector3(x, y, 0.0)
+    e.reset_physics_interpolation()
     if e is PlaguedSoldier:
         e.set("_home", e.position)
     return e

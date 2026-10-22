@@ -33,6 +33,9 @@ signal died
 @export var ground_acceleration: float = 60.0
 @export var ground_deceleration: float = 70.0
 @export var air_acceleration: float = 36.0
+## Used while input opposes the current velocity (a turnaround), on the ground / in the air.
+@export var turn_acceleration: float = 160.0
+@export var air_turn_acceleration: float = 70.0
 
 @export_group("Jump")
 @export var jump_speed: float = 9.5
@@ -229,6 +232,7 @@ func is_hasted() -> bool:
 ## Moves the player instantly and clears all transient motion/combat state (respawn, mode switch).
 func teleport_to(target: Vector3) -> void:
     global_position = target
+    reset_physics_interpolation()  # a teleport must not smear across the screen
     velocity = Vector3.ZERO
     _coyote_left = 0.0
     _buffer_left = 0.0
@@ -402,6 +406,9 @@ func _apply_run(input_x: float, input_z: float, on_floor: bool, delta: float) ->
     var rate: float = air_acceleration
     if on_floor:
         rate = ground_acceleration if target.length() > 0.01 else ground_deceleration
+    # Turning around: brake hard against the old direction instead of sliding through it.
+    if absf(target.x) > 0.01 and velocity.x * target.x < 0.0:
+        rate = turn_acceleration if on_floor else air_turn_acceleration
     velocity.x = move_toward(velocity.x, target.x, rate * delta)
     if in_3d_mode:
         velocity.z = move_toward(velocity.z, target.y, rate * delta)

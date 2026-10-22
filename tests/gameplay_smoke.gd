@@ -185,6 +185,7 @@ func _run() -> void:
     await _m18_gravewarden_checks()
     await _m19_merchant_secret_shortcut_checks()
     await _m20_coop_checks()
+    await _m21_feel_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2743,6 +2744,36 @@ func _m20_coop_checks() -> void:
     var xs: float = _player.global_position.x
     await _hold(KEY_RIGHT, 0.3)
     _check(_player.global_position.x > xs + 0.5, "back in solo, the arrow keys move player 1 again")
+
+
+## Movement feel (playtest: "rubberbandy when switching directions"): snappy turnarounds, a
+## camera that keeps up, never swivels, and smooth motion between physics steps.
+func _m21_feel_checks() -> void:
+    _check(bool(ProjectSettings.get_setting("physics/common/physics_interpolation")), "physics interpolation is on (smooth motion on any refresh rate)")
+    _enemy.set_ai_enabled(false)
+    var cam: Camera3D = _main.get("camera")
+    _player.call("teleport_to", Vector3(-17.5, 1.0, 0.0))
+    await _seconds(1.0)
+    _key(KEY_D, true)
+    await _seconds(0.85)
+    var lag: float = _player.global_position.x - cam.global_position.x
+    var yaw0: float = cam.global_rotation.y
+    _key(KEY_D, false)
+    _key(KEY_A, true)
+    var frames: int = 0
+    var max_yaw: float = 0.0
+    while _player.velocity.x > -float(_player.get("move_speed")) * 0.95 and frames < 120:
+        await physics_frame
+        frames += 1
+        max_yaw = maxf(max_yaw, absf(rad_to_deg(cam.global_rotation.y - yaw0)))
+    for i in 30:
+        await physics_frame
+        max_yaw = maxf(max_yaw, absf(rad_to_deg(cam.global_rotation.y - yaw0)))
+    _key(KEY_A, false)
+    _check(frames / PHYSICS_HZ <= 0.22, "a full-speed turnaround takes %.2f s (<= 0.22)" % (frames / PHYSICS_HZ))
+    _check(absf(lag) < 1.2, "the camera keeps up with a full run (%.2f m behind)" % lag)
+    _check(max_yaw < 0.5, "the camera slides and never swivels when you turn (%.2f deg)" % max_yaw)
+    await _seconds(0.5)
 
 
 func _m3_boss_checks() -> void:

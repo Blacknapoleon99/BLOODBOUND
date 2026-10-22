@@ -350,3 +350,14 @@ Design: docs/superpowers/specs/2026-10-21-coop-design.md (the user chose local-f
   - draw and swing on the upper body while running;
   - heavy attack, dodge and jump on the full body.
 - **Results:** 446/446; `build/windows-run11/Bloodbound.exe` (192 MB, models embedded); the release export probe exits 0.
+
+## DEC-041 — Movement feel: no rubber-banding (2026-10-22)
+
+Playtest: "rubberbandy and lagging when switching directions". Measured before the fixes: a full-speed turnaround took 0.30 s, the camera trailed 1.9 m behind at full run, and its aim swung about 10° on every turnaround. The aim followed the player instantly while its position lagged, so the view slid one way and swivelled back. That was the rubber band.
+
+**Fixes:**
+- **Physics interpolation** is on, so motion is smooth on any refresh rate. Teleports call `reset_physics_interpolation()`, the camera reads interpolated positions, and the camera itself is not interpolated (it moves every rendered frame).
+- **Camera:** one smoothed focus point drives both position and aim (12/s horizontally, 5/s vertically), with a 1.6 m look-ahead toward the facing side. Only the framing offset eases (arena pull-back, co-op spread). It cuts instead of sweeping after a teleport.
+- **Player:** turnarounds use a dedicated rate (160 on the ground, 70 in the air) instead of the 60 used for speeding up.
+
+**After:** a turnaround takes 0.18 s; the camera leads by 0.9 m instead of trailing; aim swing is 0°. Permanent checks were added (450/450). Build `build/windows-run12/Bloodbound.exe`.

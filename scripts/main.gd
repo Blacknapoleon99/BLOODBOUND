@@ -119,6 +119,7 @@ func _ready() -> void:
     camera.name = "SideViewOrArenaCamera"
     camera.fov = 52.0
     camera.current = true
+    camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF  # moved every rendered frame
     add_child(camera)
     camera.global_position = player.global_position + Vector3(0.0, 4.8, 22.0)
     camera.look_at(player.global_position + Vector3(0.0, 1.0, 0.0), Vector3.UP)
@@ -186,8 +187,7 @@ func _process(delta: float) -> void:
     if not is_instance_valid(player):
         return
     var in_arena: bool = bool(player.get("in_3d_mode"))
-    camera.global_position = camera.global_position.lerp(_camera_goal(), minf(1.0, 4.0 * delta))
-    camera.look_at(_camera_look_target(), Vector3.UP)
+    _update_camera(delta)
     _apply_shake(delta)
     hurt_vignette.color.a = move_toward(hurt_vignette.color.a, 0.0, 1.4 * delta)
     if _banner_left > 0.0:
@@ -735,15 +735,52 @@ func _physics_process(_delta: float) -> void:
         lead.velocity.x = 0.0
 
 
-## Midpoint of the standing players (the camera frames them all).
+## Midpoint of the standing players (the camera frames them all), at render-rate interpolated
+## positions so the camera moves as smoothly as the characters.
 func _focus() -> Vector3:
     var standing: Array[Node3D] = Players.standing()
     if standing.is_empty():
-        return player.global_position
+        return player.get_global_transform_interpolated().origin
     var sum: Vector3 = Vector3.ZERO
     for p: Node3D in standing:
-        sum += p.global_position
+        sum += p.get_global_transform_interpolated().origin
     return sum / standing.size()
+
+
+var _cam_focus: Vector3 = Vector3.INF
+var _cam_lead: float = 0.0
+var _cam_offset: Vector3 = Vector3.INF
+var _cam_aim: Vector3 = Vector3.ZERO
+## Follow rates (1/s): fast horizontally so turning never leaves the camera behind, softer
+## vertically so jumps don't bob the whole view; look-ahead eases toward the facing side.
+const CAM_FOLLOW_X: float = 12.0
+const CAM_FOLLOW_Y: float = 5.0
+const CAM_LOOK_AHEAD: float = 1.6
+const CAM_LEAD_RATE: float = 2.5
+
+
+func _update_camera(delta: float) -> void:
+    var target: Vector3 = _focus()
+    var in_3d: bool = bool(player.get("in_3d_mode"))
+    if not in_3d and players.size() == 1:
+        _cam_lead = lerpf(_cam_lead, float(player.get("facing_direction")) * CAM_LOOK_AHEAD, 1.0 - exp(-CAM_LEAD_RATE * delta))
+        target.x += _cam_lead
+    if _cam_focus == Vector3.INF or (target - _cam_focus).length() > 15.0:
+        _cam_focus = target  # first frame or a teleport/respawn: cut, don't sweep
+    _cam_focus.x = lerpf(_cam_focus.x, target.x, 1.0 - exp(-CAM_FOLLOW_X * delta))
+    _cam_focus.y = lerpf(_cam_focus.y, target.y, 1.0 - exp(-CAM_FOLLOW_Y * delta))
+    _cam_focus.z = lerpf(_cam_focus.z, target.z, 1.0 - exp(-CAM_FOLLOW_X * delta))
+    # Position and aim come from the same smoothed point, so the view slides and never swivels;
+    # only the framing offset itself eases (arena pull-back, co-op spread, 3D arena).
+    var offset: Vector3 = _camera_goal_for(_cam_focus) - _cam_focus
+    var aim: Vector3 = _camera_look_target_for(_cam_focus) - _cam_focus
+    if _cam_offset == Vector3.INF:
+        _cam_offset = offset
+        _cam_aim = aim
+    _cam_offset = _cam_offset.lerp(offset, 1.0 - exp(-4.0 * delta))
+    _cam_aim = _cam_aim.lerp(aim, 1.0 - exp(-4.0 * delta))
+    camera.global_position = _cam_focus + _cam_offset
+    camera.look_at(_cam_focus + _cam_aim, Vector3.UP)
 
 
 func _spread() -> float:
@@ -754,22 +791,32 @@ func _spread() -> float:
 
 
 func _camera_goal() -> Vector3:
+    return _camera_goal_for(_focus())
+
+
+func _camera_goal_for(focus: Vector3) -> Vector3:
     var offset: Vector3 = Vector3(0.0, 4.8, 22.0)
     if bool(player.get("in_3d_mode")):
         offset = Vector3(0.0, 5.8, 11.5)
-    elif _focus().x > APPROACH_START_X + map_offset + 0.4:
+    elif focus.x > APPROACH_START_X + map_offset + 0.4:
         offset = Vector3(0.0, 6.5, 24.0)  # pull back so the Bishop fits in frame
     offset.z += clampf(_spread() - 6.0, 0.0, 12.0) * 0.9  # pull back as co-op players spread
-    return _focus() + offset
+    return focus + offset
 
 
 func _camera_look_target() -> Vector3:
-    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and _focus().x > APPROACH_START_X + map_offset + 0.4
-    return _focus() + Vector3(0.0, 4.0 if in_boss_arena else 1.2, 0.0)
+    return _camera_look_target_for(_focus())
+
+
+func _camera_look_target_for(focus: Vector3) -> Vector3:
+    var in_boss_arena: bool = not bool(player.get("in_3d_mode")) and focus.x > APPROACH_START_X + map_offset + 0.4
+    return focus + Vector3(0.0, 4.0 if in_boss_arena else 1.2, 0.0)
 
 
 ## Called while the fracture fade is fully black: jump the camera to its new framing.
 func _snap_camera() -> void:
+    _cam_focus = Vector3.INF
+    _cam_offset = Vector3.INF
     camera.global_position = _camera_goal() + Vector3(0.0, 1.5, 3.0)  # slightly wide, then eases in
     camera.look_at(_camera_look_target(), Vector3.UP)
 

@@ -18,3 +18,4 @@ environment/defaults/default_clear_color=Color(0.022, 0.023, 0.032, 1)
 
 [physics]
 3d/default_gravity=22.0
+common/physics_interpolation=true
