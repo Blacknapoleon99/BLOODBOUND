@@ -16,6 +16,7 @@ static func create(from: Vector3, dir: Vector3) -> BoneArrow:
     arrow.top_level = true
     arrow.position = from
     arrow.direction = dir.normalized()
+    arrow.rotation.y = atan2(-arrow.direction.z, arrow.direction.x)  # the shaft points along its flight
     var shaft: MeshInstance3D = MeshInstance3D.new()
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = Vector3(0.9, 0.08, 0.08)

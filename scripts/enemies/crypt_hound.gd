@@ -25,6 +25,12 @@ enum State { RUN, CROUCH, POUNCE, RECOVER, HITSTUN, DEAD }
 
 var state: State = State.RUN
 var facing: float = -1.0
+## Full 3D (EnemyFactory.full_3d): runs and pounces on X/Z within `leash_radius` of home.
+var plane_locked: bool = true
+var leash_radius: float = 12.0
+var heading: Vector3 = Vector3(-1.0, 0.0, 0.0)
+var home: Vector3
+var _home_set: bool = false
 var health: Health
 var hurtbox: Hurtbox
 var bite: Hitbox
@@ -102,6 +108,9 @@ func silence(seconds: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if not _home_set:
+        _home_set = true
+        home = global_position
     _t += delta
     _stun_left = maxf(0.0, _stun_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
@@ -109,46 +118,49 @@ func _physics_process(delta: float) -> void:
     var target: Node3D = _target()
     match state:
         State.RUN:
-            velocity.x = 0.0
+            _set_planar(Vector3.ZERO)
             if ai_enabled and target != null:
-                var dx: float = target.global_position.x - global_position.x
-                if absf(dx) > 0.05:
-                    facing = signf(dx)
-                if absf(dx) < pounce_range and _silenced_left <= 0.0 and is_on_floor():
+                var off: Vector3 = _planar_to(target)
+                _face(off)
+                if off.length() < pounce_range and _silenced_left <= 0.0 and is_on_floor():
                     _set_state(State.CROUCH)
-                elif absf(dx) > 1.0 and _can_step(facing):
-                    velocity.x = facing * run_speed
+                elif off.length() > 1.0 and _can_step(heading):
+                    _set_planar(heading * run_speed)
         State.CROUCH:
-            velocity.x = 0.0
+            _set_planar(Vector3.ZERO)
+            if target != null:
+                _face(_planar_to(target))  # aims the leap at you until it springs
             if _t >= crouch_time:
-                velocity = Vector3(facing * pounce_speed, pounce_lift, 0.0)
+                velocity = heading * pounce_speed + Vector3(0.0, pounce_lift, 0.0)
                 bite.activate()
                 pounces += 1
                 Audio.sfx(&"hound_pounce")
                 _set_state(State.POUNCE)
         State.POUNCE:
-            if not _can_step(signf(velocity.x)):
-                velocity.x = 0.0
+            if not _can_step(Vector3(velocity.x, 0.0, velocity.z)):
+                _set_planar(Vector3.ZERO)
             if _t > 0.1 and is_on_floor():
                 bite.deactivate()
                 _set_state(State.RECOVER)
         State.RECOVER:
-            velocity.x = move_toward(velocity.x, 0.0, 30.0 * delta)
+            _brake(30.0 * delta)
             if _t >= recover_time:
                 _set_state(State.RUN)
         State.HITSTUN:
-            velocity.x = move_toward(velocity.x, 0.0, 8.0 * delta)
+            _brake(8.0 * delta)
             if _stun_left <= 0.0:
                 _set_state(State.RUN)
         State.DEAD:
-            velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
+            _brake(20.0 * delta)
     if not is_on_floor():
         velocity.y -= 26.0 * delta
     elif velocity.y < 0.0:
         velocity.y = 0.0
-    velocity.z = 0.0
+    if plane_locked:
+        velocity.z = 0.0
     move_and_slide()
-    position.z = 0.0
+    if plane_locked:
+        position.z = 0.0
     if global_position.y < -9.0 and state != State.DEAD:
         health.apply_damage(health.current)
     _update_visual()
@@ -156,19 +168,60 @@ func _physics_process(delta: float) -> void:
 
 func _target() -> Node3D:
     var player: Node3D = Players.nearest(global_position) as Node3D
-    if player == null or bool(player.get("in_3d_mode")):
+    if player == null or bool(player.get("in_3d_mode")) == plane_locked:
         return null
     var player_health: Health = player.get("health") as Health
     if player_health != null and player_health.is_dead():
         return null
-    if absf(player.global_position.x - global_position.x) > 16.0 or absf(player.global_position.y - global_position.y) > 3.0:
+    if _planar_to(player).length() > 16.0 or absf(player.global_position.y - global_position.y) > 3.0:
         return null
     return player
 
 
-func _can_step(dir: float) -> bool:
-    var next_x: float = global_position.x + dir * 0.6
-    return (next_x > min_x or dir > 0.0) and (next_x < max_x or dir < 0.0)
+func _planar_to(target: Node3D) -> Vector3:
+    var off: Vector3 = target.global_position - global_position
+    off.y = 0.0
+    if plane_locked:
+        off.z = 0.0
+    return off
+
+
+func _face(dir: Vector3) -> void:
+    dir.y = 0.0
+    if plane_locked:
+        if absf(dir.x) > 0.05:
+            facing = signf(dir.x)
+        heading = Vector3(facing, 0.0, 0.0)
+    elif dir.length_squared() > 0.0001:
+        heading = dir.normalized()
+        if absf(heading.x) > 0.01:
+            facing = signf(heading.x)
+
+
+func _set_planar(v: Vector3) -> void:
+    velocity.x = v.x
+    velocity.z = 0.0 if plane_locked else v.z
+
+
+func _brake(amount: float) -> void:
+    var planar: Vector2 = Vector2(velocity.x, velocity.z).move_toward(Vector2.ZERO, amount)
+    velocity.x = planar.x
+    velocity.z = planar.y
+
+
+## Side view: x bounds (stepping back inside is always allowed); full 3D: the home leash.
+func _can_step(dir: Vector3) -> bool:
+    if plane_locked:
+        var sx: float = signf(dir.x)
+        var next_x: float = global_position.x + sx * 0.6
+        return (next_x > min_x or sx > 0.0) and (next_x < max_x or sx < 0.0)
+    if dir.length_squared() < 0.0001:
+        return true
+    var next: Vector3 = global_position + Vector3(dir.x, 0.0, dir.z).normalized() * 0.6 - home
+    next.y = 0.0
+    var now: Vector3 = global_position - home
+    now.y = 0.0
+    return next.length() < leash_radius or next.length() < now.length()
 
 
 func _on_hit(info: DamageInfo) -> void:
@@ -229,7 +282,11 @@ func _build_visual() -> void:
 func _update_visual() -> void:
     if state == State.DEAD:
         return
-    _visual.scale.x = facing
+    if plane_locked:
+        _visual.scale.x = facing
+    else:
+        _visual.scale.x = 1.0
+        _visual.rotation.y = lerp_angle(_visual.rotation.y, atan2(-heading.z, heading.x), 0.3)
     _visual.scale.y = 0.75 if state == State.CROUCH else 1.0
     var color: Color = Color(0.62, 0.6, 0.55)
     var emission: Color = Color.BLACK

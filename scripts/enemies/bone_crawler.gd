@@ -32,17 +32,16 @@ func _build_body() -> void:
 func _tick(_delta: float, target: Node3D) -> void:
     match state:
         &"idle":
-            velocity.x = 0.0
+            stop()
             if ai_enabled and target != null:
-                var dx: float = target.global_position.x - global_position.x
-                if absf(dx) > 0.05:
-                    facing = signf(dx)
-                if absf(dx) < fuse_range and absf(target.global_position.y - global_position.y) < 1.6 and _silenced_left <= 0.0:
+                var off: Vector3 = planar_to(target)
+                face(off)
+                if off.length() < fuse_range and absf(target.global_position.y - global_position.y) < 1.6 and _silenced_left <= 0.0:
                     set_state(&"fuse")
                 else:
-                    velocity.x = facing * run_speed
+                    move_dir(chase_dir(target), run_speed)
         &"fuse":
-            velocity.x = 0.0
+            stop()
             if _t >= fuse_time:
                 _burst(0.05)
                 health.apply_damage(health.current)

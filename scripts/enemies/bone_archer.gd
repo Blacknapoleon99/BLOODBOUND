@@ -29,6 +29,12 @@ enum State { IDLE, AIM, RECOVER, HITSTUN, DEAD }
 
 var state: State = State.IDLE
 var facing: float = -1.0
+## Full 3D (EnemyFactory.full_3d): aims, hops and shoots on X/Z within `leash_radius` of home.
+var plane_locked: bool = true
+var leash_radius: float = 12.0
+var heading: Vector3 = Vector3(-1.0, 0.0, 0.0)
+var home: Vector3
+var _home_set: bool = false
 var health: Health
 var hurtbox: Hurtbox
 var poise: int = 2
@@ -95,6 +101,9 @@ func silence(seconds: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if not _home_set:
+        _home_set = true
+        home = global_position
     _t += delta
     _stun_left = maxf(0.0, _stun_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
@@ -106,84 +115,128 @@ func _physics_process(delta: float) -> void:
     match state:
         State.IDLE:
             if not _hopping:
-                velocity.x = 0.0
+                _set_planar(Vector3.ZERO)
             if ai_enabled and target != null and _silenced_left <= 0.0 and not _hopping:
-                var dx: float = target.global_position.x - global_position.x
-                facing = signf(dx) if absf(dx) > 0.01 else facing
-                if absf(dx) < retreat_distance and _can_step(-facing):
-                    if _hop_left <= 0.0 and is_on_floor() and _can_step(-facing * 3.0):
-                        velocity = Vector3(-facing * 5.5, 7.5, 0.0)  # Bone Hop
-                        _hopping = true
-                        _hop_left = hop_cooldown
+                var off: Vector3 = _planar_to(target)
+                _face(off)
+                if off.length() < retreat_distance and _can_step(-heading):
+                    if _hop_left <= 0.0 and is_on_floor() and _can_step(-heading, 3.0):
+                        _hop(-heading)  # Bone Hop
                     else:
-                        velocity.x = -facing * move_speed
+                        _set_planar(-heading * move_speed)
                 else:
                     _set_state(State.AIM)
                     Audio.sfx(&"archer_draw")
         State.AIM:
-            velocity.x = 0.0
+            _set_planar(Vector3.ZERO)
             if target != null:
-                var dx2: float = target.global_position.x - global_position.x
-                if absf(dx2) > 0.01:
-                    facing = signf(dx2)
+                _face(_planar_to(target))
             _aim_line.visible = true
-            _aim_line.position = Vector3(facing * 4.0, 0.15, 0.0)
+            _aim_line.global_position = global_position + heading * 4.0 + Vector3(0.0, 0.15, 0.0)
+            _aim_line.global_rotation = Vector3(0.0, atan2(-heading.z, heading.x), 0.0)
             if _t >= aim_time:
                 _aim_line.visible = false
                 Audio.sfx(&"arrow_release")
                 if lob_every > 0 and (arrows_fired + 1) % lob_every == 0 and target != null:
                     # Grave Arrow: lobbed out of sight, lands on the marked spot.
                     var ground_y: float = global_position.y - 0.9  # ambush floors are flat: the archer's own feet
-                    get_parent().add_child(StrikeZone.create(Vector3(target.global_position.x, ground_y, 0.0), 0.9, 1.6, 0.9, 1, &"archer_lob", &"bone"))
+                    var land_z: float = 0.0 if plane_locked else target.global_position.z
+                    get_parent().add_child(StrikeZone.create(Vector3(target.global_position.x, ground_y, land_z), 0.9, 1.6, 0.9, 1, &"archer_lob", &"bone"))
                     lobs_fired += 1
                 else:
-                    get_parent().add_child(BoneArrow.create(global_position + Vector3(facing * 0.6, 0.15, 0.0), Vector3(facing, 0.0, 0.0)))
+                    get_parent().add_child(BoneArrow.create(global_position + heading * 0.6 + Vector3(0.0, 0.15, 0.0), heading))
                 arrows_fired += 1
                 _set_state(State.RECOVER)
         State.RECOVER:
             if not _hopping:
-                velocity.x = 0.0
+                _set_planar(Vector3.ZERO)
             if ai_enabled and target != null and not _hopping and _hop_left <= 0.0 and is_on_floor():
-                var near: float = target.global_position.x - global_position.x
-                if absf(near) < retreat_distance and _can_step(-signf(near) * 3.0):
-                    facing = signf(near)
-                    velocity = Vector3(-facing * 5.5, 7.5, 0.0)  # Bone Hop out of recovery
-                    _hopping = true
-                    _hop_left = hop_cooldown
+                var near: Vector3 = _planar_to(target)
+                if near.length() < retreat_distance and _can_step(-near, 3.0):
+                    _face(near)
+                    _hop(-heading)  # Bone Hop out of recovery
             if _t >= recover_time:
                 _set_state(State.IDLE)
         State.HITSTUN:
-            velocity.x = move_toward(velocity.x, 0.0, 8.0 * delta)
+            _brake(8.0 * delta)
             if _stun_left <= 0.0:
                 _set_state(State.IDLE)
         State.DEAD:
-            velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
+            _brake(20.0 * delta)
     if not is_on_floor():
         velocity.y -= 26.0 * delta
     elif velocity.y < 0.0:
         velocity.y = 0.0
-    velocity.z = 0.0
+    if plane_locked:
+        velocity.z = 0.0
     move_and_slide()
-    position.z = 0.0
+    if plane_locked:
+        position.z = 0.0
     if global_position.y < -9.0 and state != State.DEAD:
         health.apply_damage(health.current)  # fell into the abyss
     _update_visual()
 
 
+func _hop(dir: Vector3) -> void:
+    _set_planar(dir.normalized() * 5.5)
+    velocity.y = 7.5
+    _hopping = true
+    _hop_left = hop_cooldown
+
+
 func _target() -> Node3D:
     var player: Node3D = Players.nearest(global_position) as Node3D
-    if player == null or bool(player.get("in_3d_mode")):
+    if player == null or bool(player.get("in_3d_mode")) == plane_locked:
         return null
-    if absf(player.global_position.x - global_position.x) > engage_range or absf(player.global_position.y - global_position.y) > 3.0:
+    if _planar_to(player).length() > engage_range or absf(player.global_position.y - global_position.y) > 3.0:
         return null
     return player
 
 
-func _can_step(dir: float) -> bool:
-    var next_x: float = global_position.x + dir * 0.6
-    if absf(dir) > 1.0:
-        next_x = global_position.x + dir
-    return (next_x > min_x or dir > 0.0) and (next_x < max_x or dir < 0.0)
+func _planar_to(target: Node3D) -> Vector3:
+    var off: Vector3 = target.global_position - global_position
+    off.y = 0.0
+    if plane_locked:
+        off.z = 0.0
+    return off
+
+
+func _face(dir: Vector3) -> void:
+    dir.y = 0.0
+    if plane_locked:
+        if absf(dir.x) > 0.01:
+            facing = signf(dir.x)
+        heading = Vector3(facing, 0.0, 0.0)
+    elif dir.length_squared() > 0.0001:
+        heading = dir.normalized()
+        if absf(heading.x) > 0.01:
+            facing = signf(heading.x)
+
+
+func _set_planar(v: Vector3) -> void:
+    velocity.x = v.x
+    velocity.z = 0.0 if plane_locked else v.z
+
+
+func _brake(amount: float) -> void:
+    var planar: Vector2 = Vector2(velocity.x, velocity.z).move_toward(Vector2.ZERO, amount)
+    velocity.x = planar.x
+    velocity.z = planar.y
+
+
+## True if a `step` m move along `dir` stays inside the side-view x bounds / the 3D home leash.
+func _can_step(dir: Vector3, step: float = 0.6) -> bool:
+    if plane_locked:
+        var sx: float = signf(dir.x)
+        var next_x: float = global_position.x + sx * step
+        return (next_x > min_x or sx > 0.0) and (next_x < max_x or sx < 0.0)
+    if dir.length_squared() < 0.0001:
+        return true
+    var next: Vector3 = global_position + Vector3(dir.x, 0.0, dir.z).normalized() * step - home
+    next.y = 0.0
+    var now: Vector3 = global_position - home
+    now.y = 0.0
+    return next.length() < leash_radius or next.length() < now.length()
 
 
 func _on_hit(info: DamageInfo) -> void:
@@ -206,7 +259,7 @@ func _on_died() -> void:
     hurtbox.set_enabled(false)
     set_deferred(&"collision_layer", 0)
     var tween: Tween = create_tween()
-    tween.tween_property(_visual, "rotation:z", -facing * PI * 0.5, 0.35)
+    tween.tween_property(_visual, "rotation:z", (-facing if plane_locked else -1.0) * PI * 0.5, 0.35)
     tween.tween_property(_visual, "position:y", -0.7, 0.6)
     defeated.emit()
 
@@ -253,7 +306,11 @@ func _build_visual() -> void:
 func _update_visual() -> void:
     if state == State.DEAD:
         return
-    _visual.scale.x = facing  # mirror the bow side toward the target
+    if plane_locked:
+        _visual.scale.x = facing  # mirror the bow side toward the target
+    else:
+        _visual.scale.x = 1.0
+        _visual.rotation.y = lerp_angle(_visual.rotation.y, atan2(-heading.z, heading.x), 0.3)
     var color: Color = Color(0.72, 0.68, 0.58)
     var emission: Color = Color.BLACK
     if state == State.AIM:

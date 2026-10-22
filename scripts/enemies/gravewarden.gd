@@ -72,21 +72,23 @@ func _tick(delta: float, target: Node3D) -> void:
     var speed_scale: float = 1.3 if enraged else 1.0
     match state:
         &"idle":
-            velocity.x = 0.0
+            stop()
             if not ai_enabled or target == null:
                 return
-            var dx: float = target.global_position.x - global_position.x
-            if absf(dx) > 0.05:
-                facing = signf(dx)
-            if absf(dx) > 2.5:
-                velocity.x = facing * walk_speed * speed_scale
+            var off: Vector3 = planar_to(target)
+            face(off)
+            if off.length() > 2.5:
+                move_dir(chase_dir(target), walk_speed * speed_scale)
             if _t >= rest_time / speed_scale and _silenced_left <= 0.0 and is_on_floor():
                 start_move(_rotation[_rotation_index % _rotation.size()])
                 _rotation_index += 1
         &"charge_windup":
-            velocity.x = 0.0
+            stop()
+            if target != null:
+                face(planar_to(target))  # aims until the charge commits
             _lane.visible = true
-            _lane.global_position = global_position + Vector3(facing * 6.5, -0.85, 0.0)
+            _lane.global_position = global_position + heading * 6.5 + Vector3(0.0, -0.85, 0.0)
+            _lane.rotation.y = atan2(-heading.z, heading.x)
             if _t >= charge_windup / speed_scale:
                 _lane.visible = false
                 charge_hitbox.activate()
@@ -94,16 +96,16 @@ func _tick(delta: float, target: Node3D) -> void:
                 Audio.sfx(&"soldier_lunge", 0.0, 3.0)
                 set_state(&"charging")
         &"charging":
-            velocity.x = facing * charge_speed * speed_scale
-            var blocked: bool = _hit_static_wall() or (global_position.x <= min_x + 0.4 and facing < 0.0) or (global_position.x >= max_x - 0.4 and facing > 0.0)
+            move_dir(heading, charge_speed * speed_scale)
+            var blocked: bool = _hit_static_wall() or not can_step(heading, 0.6)
             if blocked and _t > 0.1 and _charges_left > 0:
                 _charges_left -= 1
                 charge_hitbox.deactivate()
-                facing = -facing
+                face(-heading if target == null else planar_to(target))
                 set_state(&"charge_windup")  # enraged: wheel round and charge again
             elif blocked and _t > 0.1:
                 charge_hitbox.deactivate()
-                velocity.x = -facing * 3.0
+                move_dir(-heading, 3.0)
                 Audio.sfx(&"bishop_slam", 0.05, -6.0)
                 get_tree().call_group(&"camera_shaker", &"add_trauma", 0.4)
                 _stun_left = daze_time
@@ -112,16 +114,16 @@ func _tick(delta: float, target: Node3D) -> void:
                 charge_hitbox.deactivate()
                 _after_move()
         &"quake_windup":
-            velocity.x = 0.0
+            stop()
             if _t >= quake_windup / speed_scale:
                 _quake()
                 set_state(&"quake")
         &"quake":
-            velocity.x = 0.0
+            stop()
             if _t >= 0.9:
                 _after_move()
         &"summon_windup":
-            velocity.x = 0.0
+            stop()
             if _t >= summon_windup / speed_scale:
                 _summon()
                 _after_move()
@@ -145,7 +147,7 @@ func set_state(next: StringName) -> void:
 func _hit_static_wall() -> bool:
     for i in get_slide_collision_count():
         var hit: KinematicCollision3D = get_slide_collision(i)
-        if hit.get_collider() is StaticBody3D and hit.get_normal().x * facing < -0.5:
+        if hit.get_collider() is StaticBody3D and hit.get_normal().dot(heading) < -0.5:
             return true
     return false
 
@@ -166,7 +168,7 @@ func start_move(move: StringName) -> void:
 func _after_move() -> void:
     if state == &"charging" and _charges_left > 0:
         _charges_left -= 1
-        facing = -facing
+        face(-heading)
         set_state(&"charge_windup")
         return
     set_state(&"idle")
@@ -177,25 +179,36 @@ func _quake() -> void:
     get_parent().add_child(StrikeZone.create(feet, 1.6, 1.2, 0.05, 1, &"warden_quake", &"spike"))
     Audio.sfx(&"bishop_slam", 0.05)
     get_tree().call_group(&"camera_shaker", &"add_trauma", 0.5)
-    # Spike waves both ways: low spikes (0.9 m) stepping outward — jump them.
-    for side: float in [-1.0, 1.0]:
+    # Spike waves stepping outward, low (0.9 m): jump them. Side view: both ways along the line;
+    # full 3D: six radial lines.
+    var dirs: Array[Vector3] = [Vector3.LEFT, Vector3.RIGHT]
+    if not plane_locked:
+        dirs.clear()
+        for k in 6:
+            dirs.append(Vector3(cos(TAU * k / 6.0), 0.0, sin(TAU * k / 6.0)))
+    for dir: Vector3 in dirs:
         for step in range(1, 9):
-            var x: float = feet.x + side * (1.2 + step * 1.3)
-            if x < min_x - 1.0 or x > max_x + 1.0:
+            var at: Vector3 = feet + dir * (1.2 + step * 1.3)
+            if plane_locked and (at.x < min_x - 1.0 or at.x > max_x + 1.0):
                 continue
-            var wave: StrikeZone = StrikeZone.create(Vector3(x, feet.y, 0.0), 0.55, 0.9, 0.12 + step * 0.11, 1, &"warden_wave", &"wave")
+            if not plane_locked and Vector2(at.x - home.x, at.z - home.z).length() > leash_radius + 1.0:
+                continue
+            var wave: StrikeZone = StrikeZone.create(at, 0.55, 0.9, 0.12 + step * 0.11, 1, &"warden_wave", &"wave")
             get_parent().add_child(wave)
 
 
 func _summon() -> void:
     var alive: int = get_tree().get_nodes_in_group(&"warden_minion").filter(func(n: Node) -> bool: return not bool(n.call("is_dead"))).size()
+    var side_dir: Vector3 = Vector3.RIGHT if plane_locked else heading.cross(Vector3.UP).normalized()
     for side: float in [-1.0, 1.0]:
         if alive >= 2:
             break
-        var x: float = global_position.x + side * 2.5
-        if x < min_x + 0.5 or x > max_x - 0.5:
+        var at: Vector3 = global_position + side_dir * side * 2.5
+        if plane_locked and (at.x < min_x + 0.5 or at.x > max_x - 0.5):
             continue  # no room on that side: never spawn behind the hall's walls
-        var crawler: Node3D = EnemyFactory.spawn(&"crawler", get_parent(), x, min_x, max_x, global_position.y)
+        if not plane_locked and Vector2(at.x - home.x, at.z - home.z).length() > leash_radius - 0.5:
+            continue
+        var crawler: Node3D = EnemyFactory.spawn(&"crawler", get_parent(), at.x, min_x, max_x, global_position.y, at.z)
         crawler.set("shard_value", 0)  # summons are not a shard farm
         crawler.add_to_group(&"warden_minion")
         alive += 1
@@ -218,6 +231,7 @@ func _on_poise_break(info: DamageInfo) -> void:
         _stun_left = 0.8
         set_state(&"stagger")
     velocity.x = info.knockback.x * 0.2
+    velocity.z = info.knockback.z * 0.2 if not plane_locked else 0.0
 
 
 func _on_silenced() -> void:

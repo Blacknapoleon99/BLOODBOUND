@@ -27,7 +27,7 @@ static func create(at: Vector3, radius: float, height: float, wait: float, damag
     zone.top_level = true
     zone.delay = wait
     zone._style = style
-    zone.position = Vector3(at.x, at.y, 0.0)
+    zone.position = at  # side-view callers pass z = 0; full 3D keeps the spot's z
     zone._ring = MeshInstance3D.new()
     var disc: CylinderMesh = CylinderMesh.new()
     disc.top_radius = radius

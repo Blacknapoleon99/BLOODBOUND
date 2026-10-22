@@ -46,8 +46,13 @@ func is_guarding() -> bool:
 func try_block(info: DamageInfo) -> bool:
     if not is_guarding():
         return false
-    var from_x: float = info.source.global_position.x if info.source != null else info.hit_position.x
-    var from_front: bool = (from_x - global_position.x) * facing > 0.0
+    var from: Vector3 = info.source.global_position if info.source != null else info.hit_position
+    var off: Vector3 = from - global_position
+    off.y = 0.0
+    if plane_locked:
+        off.z = 0.0
+    var forward: Vector3 = Vector3(facing, 0.0, 0.0) if plane_locked else heading
+    var from_front: bool = off.dot(forward) > 0.0
     if not from_front:
         return false
     if info.category == &"heavy" or info.poise_damage >= 3 or info.attack_id == &"grave_hook":
@@ -63,28 +68,29 @@ func try_block(info: DamageInfo) -> bool:
 func _tick(delta: float, target: Node3D) -> void:
     match state:
         &"idle":
-            velocity.x = 0.0
+            stop()
             if ai_enabled and target != null:
-                var dx: float = target.global_position.x - global_position.x
-                if absf(dx) > 0.05:
-                    facing = signf(dx)
-                if absf(dx) < bash_range and _silenced_left <= 0.0 and is_on_floor():
+                var off: Vector3 = planar_to(target)
+                face(off)
+                if off.length() < bash_range and _silenced_left <= 0.0 and is_on_floor():
                     set_state(&"windup")
-                elif absf(dx) > 1.2:
-                    velocity.x = facing * walk_speed
+                elif off.length() > 1.2:
+                    move_dir(chase_dir(target), walk_speed)
         &"windup":
-            velocity.x = 0.0
+            stop()
+            if target != null:
+                face(planar_to(target))  # tracks you until the charge commits
             if _t >= bash_windup:
                 bash.activate()
                 Audio.sfx(&"soldier_lunge", 0.05)
                 set_state(&"bash")
         &"bash":
-            velocity.x = facing * bash_speed
+            move_dir(heading, bash_speed)
             if _t >= bash_time:
                 bash.deactivate()
                 set_state(&"recover")
         &"recover":
-            velocity.x = move_toward(velocity.x, 0.0, 30.0 * delta)
+            _brake(30.0 * delta)
             if _t >= recover_time:
                 set_state(&"idle")
 

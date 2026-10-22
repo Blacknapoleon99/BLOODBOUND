@@ -40,7 +40,7 @@ Inventory (2026-10-22, ~13k lines of GDScript plus ~3k of tests):
 ## Phases (each ends playable, tested and committed)
 
 1. **3D core (prototype room):** the new player controller (camera-relative run, jump, dodge, combo), third-person camera with collision, and lock-on (nearest, cycle, break). A test room with the soldier. *Goal: it feels right before anything else moves.*
-2. **Enemies in 3D:** NavigationAgent3D chase, attack arcs and spacing for all 8 types, plus the Gravewarden. Telegraphs shown as 3D ground decals.
+2. **Enemies in 3D:** NavigationAgent3D chase, attack arcs and spacing for all 8 types, plus the Gravewarden. Telegraphs shown as 3D ground decals. **Done 2026-10-22 (DEC-045, build run16).**
 3. **Rooms in 3D:**
    - the LevelSection 3D helpers and a 3D reachability validator;
    - rebuild the opening plus the 10 rooms, the elite hall and the merchant as 3D spaces;

@@ -50,7 +50,7 @@ func _ready() -> void:
     start_button.pressed.connect(_on_start)
     coop_button = _add_button(column, "Start Co-op (2 players)", "StartCoop")
     coop_button.pressed.connect(_on_start_coop)
-    proto_button = _add_button(column, "3D Prototype (phase 1)", "Proto3D")
+    proto_button = _add_button(column, "3D Prototype (phase 2: enemies)", "Proto3D")
     proto_button.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/proto_3d.tscn"))
     settings_button = _add_button(column, "Settings", "Settings")
     settings_button.pressed.connect(_on_settings)

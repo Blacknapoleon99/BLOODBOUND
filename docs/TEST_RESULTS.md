@@ -460,3 +460,18 @@
   - Feel in a playtest: cloth stiffness, and the draw's 0.13 s delay before the first swing.
   - The hood tail and shoulder rags (no chains yet; they overlap the scabbard strap).
   - Upper-body blending for drawing while running (the draw plays full-body).
+
+## Full 3D phase 2 — enemies in 3D (2026-10-22, build run16)
+
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 483/483** (469 earlier checks, all still passing, plus 14 new `_m23` checks):
+  - the 3D room bakes a navigation mesh (97 polygons) and its waves field all 7 enemy classes, none plane-locked;
+  - Husk chases along Z; the Shielded Knight paths around a pillar (reached z 3.0 from 8.0) and blocks only from its 3D front;
+  - Crypt Hound pounces along Z (10 m/s); Bone Archer arrows fly along Z, and the Grave Arrow lands on the player's x/z;
+  - Flying Wraith dives on a 3D line (dir 0, −0.63, 0.78); Bone Crawler runs the player down and bursts;
+  - Gravewarden charges 11.7 m along Z, its quake reaches 6 directions, and it summons crawlers on both sides of its heading;
+  - leaving the room resets the factory to side-view enemies.
+- Export: `build/windows-run16/Bloodbound.exe`, probe **12/12**.
+- Screenshot check (waves 2 and 3, not committed): enemies render and face the player.
+- **Not verified:**
+  - A hands-on playtest of 3D combat difficulty and spacing.
+  - The pre-existing engine message `Condition "p_elem->_root" is true` during the Reality Fracture relic pick. It also appears on the commit before this work; it is not a phase-2 regression.

@@ -187,6 +187,7 @@ func _run() -> void:
     await _m20_coop_checks()
     await _m21_feel_checks()
     await _m22_3d_core_checks()
+    await _m23_3d_enemy_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2811,8 +2812,8 @@ func _m22_3d_core_checks() -> void:
     var p: CharacterBody3D = room.get("player")
     var cam: ThirdPersonCamera = room.get("cam")
     _check(cam != null and cam.camera.current and bool(p.get("in_3d_mode")) and p.get("view_camera") == cam, "the 3D room runs the player with a third-person camera")
-    for s: Node in room.get("soldiers"):
-        (s as PlaguedSoldier).set_ai_enabled(false)
+    for s: Node in room.get("enemies"):
+        s.call("set_ai_enabled", false)
     await _seconds(0.5)
     # Camera-relative movement: turn the camera to face -X; W must run toward -X.
     cam.yaw = PI * 0.5
@@ -2922,6 +2923,193 @@ func _m22_3d_core_checks() -> void:
     RunState.end_run()
     change_scene_to_file("res://scenes/main.tscn")
     await _frames(10)
+    _bind()
+
+
+## Full-3D phase 2: every enemy type fights on X/Z (EnemyFactory.full_3d in the 3D room).
+func _m23_3d_enemy_checks() -> void:
+    change_scene_to_file("res://scenes/proto_3d.tscn")
+    await _frames(12)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var hp: Health = p.get("health") as Health
+    var region: NavigationRegion3D = room.get("nav_region")
+    _check(EnemyFactory.full_3d and region.navigation_mesh != null and region.navigation_mesh.get_polygon_count() > 10, "the 3D room bakes a navigation mesh (%d polygons)" % region.navigation_mesh.get_polygon_count())
+    var types: Dictionary = {}
+    var all_free: bool = true
+    for w in 3:
+        room.call("clear_enemies")
+        await _frames(2)
+        room.call("spawn_wave", w)
+        await _frames(2)
+        for e: Node3D in room.get("enemies"):
+            types[e.get_script().get_global_name()] = true
+            all_free = all_free and not bool(e.get("plane_locked"))
+    _check(types.size() == 7 and all_free, "the 3D waves field every enemy type, none plane-locked (%s)" % ", ".join(types.keys()))
+    room.set("auto_waves", false)
+    room.call("clear_enemies")
+    await _frames(3)
+
+    # Husk: chases straight down Z (no X in the way).
+    p.call("teleport_to", Vector3(0.0, 1.0, 0.0))
+    var husk: PlaguedSoldier = EnemyFactory.spawn(&"husk", room, 0.0, -INF, INF, 1.0, -7.0) as PlaguedSoldier
+    await _seconds(1.5)
+    _check(husk.global_position.z > -5.0 and absf(husk.global_position.x) < 1.0, "a Husk chases along Z in 3D (z %.1f)" % husk.global_position.z)
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Shielded Knight: walks around a pillar on the navigation mesh, blocks by its 3D heading.
+    p.call("teleport_to", Vector3(-8.0, 1.0, 0.0))  # the pillar (z 3.2..4.8) stands between
+    var knight: ShieldedKnight = EnemyFactory.spawn(&"knight", room, -8.0, -INF, INF, 1.0, 8.0) as ShieldedKnight
+    var passed: bool = false
+    for i in int(PHYSICS_HZ * 7.0):
+        await physics_frame
+        hp.restore_full()
+        if knight.global_position.z < 3.0:
+            passed = true
+            break
+    _check(passed, "the Shielded Knight paths around a pillar to reach you (z %.1f)" % knight.global_position.z)
+    knight.set_ai_enabled(false)
+    await _seconds(1.2)
+    knight.set_state(&"idle")
+    knight.face(Vector3(0.0, 0.0, 1.0))
+    var hit: DamageInfo = DamageInfo.new()
+    hit.category = &"melee"
+    hit.source = p
+    p.call("teleport_to", knight.global_position + Vector3(0.0, 0.0, 1.6))
+    await _frames(2)
+    var front: bool = knight.try_block(hit)
+    p.call("teleport_to", knight.global_position + Vector3(0.0, 0.0, -1.6))
+    await _frames(2)
+    var back: bool = knight.try_block(hit)
+    _check(front and not back, "the knight's shield faces its 3D heading (front %s, back %s)" % [front, back])
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Crypt Hound: pounces along Z.
+    p.call("teleport_to", Vector3(0.0, 1.0, 0.0))
+    var hound: CryptHound = EnemyFactory.spawn(&"hound", room, 0.0, -INF, INF, 1.0, -8.0) as CryptHound
+    var leap_z: float = 0.0
+    for i in int(PHYSICS_HZ * 4.0):
+        await physics_frame
+        hp.restore_full()
+        if hound.state == CryptHound.State.POUNCE:
+            leap_z = maxf(leap_z, hound.velocity.z)
+        if hound.pounces >= 1 and hound.state != CryptHound.State.POUNCE:
+            break
+    _check(hound.pounces >= 1 and leap_z > 5.0, "the Crypt Hound pounces at you along Z (%.1f m/s)" % leap_z)
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Bone Archer: arrows fly along its 3D heading; Grave Arrows land on your x/z.
+    p.call("teleport_to", Vector3(0.0, 1.0, 0.0))
+    var archer: BoneArcher = EnemyFactory.spawn(&"archer", room, 0.0, -INF, INF, 1.0, -9.0) as BoneArcher
+    archer.lob_every = 0
+    var arrow_dir: Vector3 = Vector3.ZERO
+    for i in int(PHYSICS_HZ * 3.0):
+        await physics_frame
+        hp.restore_full()
+        var arrows: Array[Node] = get_nodes_in_group(&"bone_arrow")
+        if not arrows.is_empty():
+            arrow_dir = (arrows[0] as BoneArrow).direction
+            break
+    _check(arrow_dir.z > 0.9, "the Bone Archer shoots along Z at you (dir %s)" % arrow_dir.snapped(Vector3.ONE * 0.01))
+    p.call("teleport_to", Vector3(3.0, 1.0, -2.0))
+    archer.lob_every = 1
+    var lobs0: int = archer.lobs_fired
+    var lob_at: Vector3 = Vector3(99.0, 0.0, 99.0)
+    for i in int(PHYSICS_HZ * 4.0):
+        await physics_frame
+        hp.restore_full()
+        if archer.lobs_fired > lobs0:
+            for child: Node in room.get_children():
+                if child is StrikeZone and (child as StrikeZone).hitbox.attack_id == &"archer_lob":
+                    lob_at = (child as Node3D).global_position
+            break
+    _check(Vector2(lob_at.x - 3.0, lob_at.z + 2.0).length() < 1.0, "a Grave Arrow lands on your x/z in 3D (%s)" % lob_at.snapped(Vector3.ONE * 0.1))
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Flying Wraith: dives at you along a 3D line.
+    p.call("teleport_to", Vector3(0.0, 1.0, 0.0))
+    var wraith: FlyingWraith = EnemyFactory.spawn(&"wraith", room, 0.0, -INF, INF, 1.0, -8.0) as FlyingWraith
+    for i in int(PHYSICS_HZ * 6.0):
+        await physics_frame
+        hp.restore_full()
+        if wraith.dives >= 1:
+            break
+    var dive: Vector3 = wraith.get("_dive_dir")
+    _check(wraith.dives >= 1 and dive.z > 0.4, "the Flying Wraith dives at you in 3D (dir %s)" % dive.snapped(Vector3.ONE * 0.01))
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Bone Crawler: runs down Z and bursts at you.
+    p.call("teleport_to", Vector3(0.0, 1.0, 0.0))
+    var crawler: BoneCrawler = EnemyFactory.spawn(&"crawler", room, 0.0, -INF, INF, 1.0, -8.0) as BoneCrawler
+    for i in int(PHYSICS_HZ * 4.0):
+        await physics_frame
+        hp.restore_full()
+        if crawler.burst_spawned:
+            break
+    _check(crawler.burst_spawned and crawler.global_position.z > -2.5, "a Bone Crawler runs you down along Z and bursts (z %.1f)" % crawler.global_position.z)
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Gravewarden: charges along Z, quakes in six radial lines, summons beside its heading.
+    p.call("teleport_to", Vector3(0.0, 1.0, -1.0))
+    var warden: Gravewarden = EnemyFactory.spawn(&"gravewarden", room, 0.0, -INF, INF, 1.0, -10.0) as Gravewarden
+    await _seconds(0.3)
+    warden.set_ai_enabled(false)
+    var z0: float = warden.global_position.z
+    warden.start_move(&"charge")
+    var max_z: float = z0
+    for i in int(PHYSICS_HZ * 2.4):
+        await physics_frame
+        hp.restore_full()
+        max_z = maxf(max_z, warden.global_position.z)
+    _check(max_z - z0 > 4.0 and absf(warden.global_position.x) < 1.0, "the Gravewarden charges along Z (%.1f m)" % (max_z - z0))
+    await _seconds(1.6)
+    warden.global_position = warden.home  # back inside its leash for the quake and summons
+    p.call("teleport_to", warden.home + Vector3(0.0, 0.0, 6.0))
+    await _frames(3)
+    warden.set_state(&"idle")
+    warden.start_move(&"quake")
+    var quadrants: Dictionary = {}
+    for i in int(PHYSICS_HZ * 1.3):
+        await physics_frame
+        hp.restore_full()
+        for child: Node in room.get_children():
+            if child is StrikeZone and (child as StrikeZone).hitbox.attack_id == &"warden_wave":
+                var off: Vector3 = (child as Node3D).global_position - warden.global_position
+                quadrants[Vector2i(signi(roundi(off.x)), signi(roundi(off.z)))] = true
+    _check(quadrants.size() >= 5, "the quake sends spike waves out in every direction (%d directions)" % quadrants.size())
+    await _seconds(1.5)
+    warden.set_state(&"idle")
+    warden.face(Vector3(0.0, 0.0, 1.0))
+    warden.start_move(&"summon")
+    var minions: Array[Node] = []
+    for i in int(PHYSICS_HZ * 1.5):
+        await physics_frame
+        minions = get_nodes_in_group(&"warden_minion")
+        if minions.size() >= 2:
+            break  # read where they rise, before they scuttle off
+    var beside: bool = minions.size() == 2
+    for m: Node in minions:
+        var off2: Vector3 = (m as Node3D).global_position - warden.global_position
+        beside = beside and absf(off2.x) > 1.5 and not bool(m.get("plane_locked"))
+    _check(beside, "summoned crawlers rise on either side of its heading, in 3D (%d)" % minions.size())
+    room.call("clear_enemies")
+    await _frames(3)
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _check(not EnemyFactory.full_3d, "leaving the 3D room puts the factory back to side-view enemies")
     _bind()
 
 

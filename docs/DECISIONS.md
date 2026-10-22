@@ -401,3 +401,23 @@ The user chose to rebuild the game as a full 3D action platformer with a third-p
 - **Other:** floor snap 0.35, max floor angle 50°, and the model turns faster (28/s).
 - **Measured:** full speed in 0.08 s; a 90° turn in 0.10 s; reversal in 0.13 s; stop within 0.48 m; jump peak 2.44 m at 0.43 s. These are permanent checks (469/469).
 - **Build:** `build/windows-run15/Bloodbound.exe`.
+
+## DEC-045 — Full 3D phase 2: every enemy fights in 3D (2026-10-22)
+
+- **One AI, two modes.** Every enemy keeps its side-view behaviour (`plane_locked = true`, the default) and gains a full-3D mode (`plane_locked = false`):
+  - movement on X/Z, `heading` as a flat facing vector, kept within `leash_radius` (12 m) of where it spawned;
+  - `CodeEnemy` helpers (`planar_to`, `face`, `move_dir`, `stop`, `chase_dir`, `can_step`) carry the knight, crawler, wraith and Gravewarden. The Crypt Hound and Bone Archer (their own classes) carry matching private helpers;
+  - the model turns to its heading instead of mirroring.
+- **Spawning:** `EnemyFactory.full_3d` makes the factory build unlocked enemies. The 3D room sets it on entry and clears it on exit. The factory now places each enemy at its spot *before* it enters the tree: it used to appear at the origin for one physics step, and a player standing there was carried along to the enemy's real spot.
+- **Pathing:** in full 3D, enemies get a `NavigationAgent3D` and chase along a navigation mesh (repath every 0.25 s; straight at you when there is no mesh or path). The 3D room bakes one at load from its solids, off the main thread (the synchronous bake logged an internal engine error in 4.7).
+- **3D attacks:**
+  - Shielded Knight: blocks hits from in front of its heading.
+  - Crypt Hound: pounces along its aim.
+  - Bone Archer: shoots along its heading; the Grave Arrow lands on your x/z; the hop retreats away from you.
+  - Flying Wraith: hovers on its own side of you and dives along a 3D line.
+  - Bone Crawler: runs you down.
+  - Gravewarden: charges along its heading, quakes in six radial spike lines and summons crawlers either side of its heading.
+  - `StrikeZone` keeps the z it is given (side-view callers pass 0), so ground telegraphs and Blood Nova land where they are aimed in 3D.
+- **3D room:** three waves that repeat. (1) soldiers and husks; (2) knight, hound, archer and crawlers; (3) wraiths and the Gravewarden.
+- **Known art gap:** the knight's shield and the Gravewarden's maul are still greybox boxes (their models have no weapon). In the side view they were thin slivers; seen face-on in 3D they read as blocky slabs. They need weapon models.
+- **Tests:** 14 new full-3D enemy checks (483/483). **Build:** `build/windows-run16/Bloodbound.exe`.

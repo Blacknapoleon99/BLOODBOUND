@@ -55,8 +55,14 @@ func _apply_motion(delta: float) -> void:
     if _dead:
         velocity.y -= 20.0 * delta  # the shroud collapses to the ground
     global_position += velocity * delta
-    global_position.z = 0.0
-    global_position.x = clampf(global_position.x, min_x, max_x)
+    if plane_locked:
+        global_position.z = 0.0
+        global_position.x = clampf(global_position.x, min_x, max_x)
+    else:
+        var out: Vector3 = global_position - home
+        out.y = 0.0
+        if out.length() > leash_radius:
+            global_position -= out.normalized() * (out.length() - leash_radius)
     if global_position.y < -9.0 and not _dead:
         health.apply_damage(health.current)
 
@@ -67,13 +73,19 @@ func _tick(delta: float, target: Node3D) -> void:
             if target == null or not ai_enabled:
                 velocity = velocity.move_toward(Vector3.ZERO, 6.0 * delta)
                 return
-            var side: float = -1.0 if global_position.x < target.global_position.x else 1.0
-            var spot: Vector3 = target.global_position + Vector3(side * keep_distance, hover_height + sin(_t * 2.0) * 0.3, 0.0)
+            # Hover off to the side the wraith is already on (in 3D: anywhere around you).
+            var away: Vector3 = -planar_to(target)
+            if away.length_squared() < 0.01:
+                away = Vector3.RIGHT
+            var spot: Vector3 = target.global_position + away.normalized() * keep_distance + Vector3(0.0, hover_height + sin(_t * 2.0) * 0.3, 0.0)
             var to: Vector3 = spot - global_position
             velocity = to.limit_length(1.0) * drift_speed if to.length() > 0.2 else Vector3.ZERO
-            facing = signf(target.global_position.x - global_position.x) if absf(target.global_position.x - global_position.x) > 0.05 else facing
+            face(planar_to(target))
             if _t >= rest_time and to.length() < 1.2 and _silenced_left <= 0.0:
-                _dive_dir = (target.global_position - global_position).normalized()
+                _dive_dir = (target.global_position - global_position)
+                if plane_locked:
+                    _dive_dir.z = 0.0
+                _dive_dir = _dive_dir.normalized()
                 set_state(&"windup")
         &"windup":
             velocity = Vector3.ZERO
