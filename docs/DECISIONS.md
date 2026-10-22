@@ -333,3 +333,20 @@ Design: docs/superpowers/specs/2026-10-21-coop-design.md (the user chose local-f
 - **Down and revive:** in co-op, 0 HP downs you. Your partner holds Interact beside you for 1.2 s to bring you back at 2 HP. Both down sends both to the checkpoint. A pit fall pulls you back beside a grounded partner for 1 HP.
 - **Camera and leash:** the camera frames the midpoint and pulls back as the players spread. A leash keeps them within 18 m (main runs its physics after the players).
 - **The Reality Fracture** is solo-only for now.
+
+## DEC-040 — Art merged; fluid animation layer (2026-10-22)
+
+- **Merge:** the art branch (`claude/exciting-kapitsa-f1c50d`) is merged into main. It adds the Tripo models (the Bone Revenant hero with its separate sword, back scabbard and spring-bone cloth; the enemies; the Bishop), the art bible and the asset list.
+- **Why the characters were stiff:** the Tripo preset clips are long. Slash and chop run 6.6 s, dive 2.7 s, jump 2.2 s, while a light attack lasts about 0.28 s. The old animator played whole clips as uninterruptible one-shots on the full body, and locomotion was a hard idle/run switch.
+- **The new `ArtAnimator`** builds an AnimationTree in code:
+  - **Locomotion:** a BlendSpace1D (idle, walk, run) on the smoothed ground speed. Playback speeds up past the run clip's own speed, so the feet track the 8.5 m/s run instead of sliding.
+  - **Falling:** a Blend2 eases into "fall" while descending.
+  - **Actions:** two one-shots, full body and upper body. The upper-body one is masked to spine, arms and head, so swings, draws and casts play over running legs. Both fade in over 0.06 s and out over 0.12 s.
+- **Action timing:** every action plays only its busiest stretch, found once per clip by summing bone rotation speed. That stretch is time-scaled to the gameplay duration (startup + active + recovery ÷ weapon and haste speed), so the visible swing lasts as long as the real attack.
+- **Draw:** a 0.14 s upper-body draw, then the swing for the rest of the attack.
+- **Death** stops the tree and holds the defeat clip. Facing eases toward the gameplay direction at the same rate whatever the frame rate.
+- **Evidence:** `tests/shot_motion.gd` prints the tree state and saves `docs/screenshots/20_motion_*.png`:
+  - running at the full blend, sped up 1.55×;
+  - draw and swing on the upper body while running;
+  - heavy attack, dodge and jump on the full body.
+- **Results:** 446/446; `build/windows-run11/Bloodbound.exe` (192 MB, models embedded); the release export probe exits 0.
