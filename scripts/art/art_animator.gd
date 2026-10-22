@@ -15,6 +15,9 @@ var steer_facing: bool = false
 ## Clip used while moving on the ground ("run" for the player, "walk" for enemies).
 var move_clip: StringName = &"walk"
 var _one_shot: StringName = &""
+## Sword owner (ArtWeapon) when the model carries one: the first attack plays a fast draw first.
+var weapon: Node
+var _queued: StringName = &""
 ## Locomotion clip forced by the current enemy state (the Gravewarden's charge runs).
 var _state_move: StringName = &""
 var _dead: bool = false
@@ -60,12 +63,22 @@ func _connect_gameplay_signals() -> void:
 ## Player attack ids (light/heavy) and Hollow Bishop attack names map onto the model's clips.
 func _on_attack(id: Variant = null) -> void:
     var s: String = str(id).to_lower()
+    var clip: StringName = attack_clip()
     if (s.contains("heavy") or s.contains("slam") or s.contains("sunder")) and player.has_animation(&"chop"):
-        play_once(&"chop")
+        clip = &"chop"
     elif (s.contains("beam") or s.contains("barrage") or s.contains("rain") or s.contains("geyser")             or s.contains("summon") or s.contains("requiem")) and player.has_animation(&"cast_a_spell"):
-        play_once(&"cast_a_spell")
-    else:
-        play_once(attack_clip())
+        clip = &"cast_a_spell"
+    if weapon != null:
+        weapon.call(&"note_attack")
+        if not weapon.get(&"drawn") and player.has_animation(&"draw"):
+            var speed: float = ArtWeapon.DRAW_SPEED
+            weapon.call(&"begin_draw", float(ArtWeapon.DRAW_GRAB_FRAME) / 30.0 / speed)
+            play_once(&"draw", speed)
+            _queued = clip  # the swing continues straight after the draw
+            return
+        elif not weapon.get(&"drawn"):
+            weapon.call(&"begin_draw", 0.0)
+    play_once(clip)
 
 
 func _hook(source: Object, sig: StringName, callable: Callable) -> void:
@@ -74,11 +87,13 @@ func _hook(source: Object, sig: StringName, callable: Callable) -> void:
 
 
 ## Plays `clip` once if the model has it (missing clips are ignored: the greybox timing rules).
-func play_once(clip: StringName) -> void:
+func play_once(clip: StringName, speed: float = 1.0) -> bool:
     if _dead or not player.has_animation(clip):
-        return
+        return false
     _one_shot = clip
-    player.play(clip, 0.08)
+    _queued = &""
+    player.play(clip, 0.08, speed)
+    return true
 
 
 ## Enemy state names (PlaguedSoldier/BoneArcher/CryptHound enums, CodeEnemy set_state names).
@@ -120,6 +135,10 @@ func _on_died() -> void:
 func _on_finished(clip: StringName) -> void:
     if clip == _one_shot and not _dead:
         _one_shot = &""
+        if _queued != &"":
+            var next: StringName = _queued
+            _queued = &""
+            play_once(next)
 
 
 func _physics_process(_delta: float) -> void:

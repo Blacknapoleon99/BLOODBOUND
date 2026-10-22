@@ -441,3 +441,22 @@
   - Spring-bone cloth in Godot.
   - Grip-angle polish.
   - A playtest.
+
+## Revenant cloth, Sheath bone, draw/sheathe (2026-10-22, no credits)
+
+- **Blender** (`tools/blender_process_tripo.py` + `tools/blender_build_hero.py`, run in Blender 5.2 through the MCP):
+  - Four 3-bone cloth chains (front and back, left and right belt panels), weighted from the hips at the top to the chain at the hem.
+  - Only whole thin cloth shells are bound. The first attempt weighted by region, split shells and tore the mesh at the thigh; this rule fixes it.
+  - A `Sheath` bone at the scabbard grip.
+  - `draw` and `sheathe` clips keyed with an IK reach to the grip.
+  - Source saved as `assets/source/player/bone_revenant.blend`.
+- **Godot:**
+  - `ArtCloth`: a `SpringBoneSimulator3D` with 4 chains and `SpringBoneCollisionCapsule3D` on the hips, thighs and shins.
+  - `ArtWeapon` uses the Sheath bone.
+  - `ArtAnimator` plays the draw at double speed on the first attack, moves the sword to the hand on the grab frame, then plays the swing. Sheathe plays after the quiet timeout.
+- `shot_art_hero.gd` → `weapon=true drawn=true cloth=true chains=4`, 13 clips; `docs/screenshots/19_hero_strip.png` (sheathed, drawing, drawn, running with the cloth trailing).
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446**.
+- **Not verified:**
+  - Feel in a playtest: cloth stiffness, and the draw's 0.13 s delay before the first swing.
+  - The hood tail and shoulder rags (no chains yet; they overlap the scabbard strap).
+  - Upper-body blending for drawing while running (the draw plays full-body).

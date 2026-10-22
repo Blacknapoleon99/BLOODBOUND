@@ -22,13 +22,32 @@ func _run() -> void:
     cam.current = true
     for i in 30:
         await physics_frame
+    if OS.get_cmdline_user_args().has("--no-cloth"):
+        for sim: Node in player.find_children("ArtCloth", "", true, false):
+            sim.set("active", false)
+        for i in 10:
+            await physics_frame
     await _shot(cam, player, "19_hero_sheathed.png")
     player.emit_signal(&"attack_started", &"light")
+    for i in 3:
+        await physics_frame
+    await _shot(cam, player, "19_hero_drawing.png")  # mid-draw: hand at the scabbard
     for i in 20:
         await physics_frame
     await _shot(cam, player, "19_hero_drawn.png")
     var weapon: Node = player.find_child("ArtWeapon", true, false)
-    print("hero weapon=", weapon != null, " drawn=", weapon != null and bool(weapon.get("drawn")))
+    var cloth: Node = player.find_child("ArtCloth", true, false)
+    var anim: AnimationPlayer = player.find_children("*", "AnimationPlayer", true, false)[0]
+    print("hero weapon=", weapon != null, " drawn=", weapon != null and bool(weapon.get("drawn")),
+        " cloth=", cloth != null, " chains=", cloth.get("setting_count") if cloth else 0,
+        " clips=", anim.get_animation_list())
+    # Run so the cloth swings: move the player and capture a short strip.
+    player.velocity = Vector3.ZERO
+    Input.action_press(&"move_right")
+    for i in 30:
+        await physics_frame
+    await _shot(cam, player, "19_hero_running.png")
+    Input.action_release(&"move_right")
     quit()
 
 

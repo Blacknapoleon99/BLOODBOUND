@@ -12,7 +12,12 @@ const QUIET_RADIUS: float = 8.0   # ...and no living enemy this close to this we
 ## hand on -X, T-pose rest) and converted to bone-local fits from the rest pose, so they do not
 ## depend on Mixamo bone axes.
 const HAND_BONE_SUFFIX: String = "RightHand"
-const SHEATH_BONE_SUFFIX: String = "Spine2"
+const SHEATH_BONE_SUFFIX: String = "Sheath"  # added in Blender at the scabbard; falls back to Spine2
+const SHEATH_FALLBACK_SUFFIX: String = "Spine2"
+## Draw/sheathe clip timing (30 fps clips): the hand reaches the grip on these frames.
+const DRAW_GRAB_FRAME: int = 4
+const SHEATHE_DROP_FRAME: int = 5
+const DRAW_SPEED: float = 2.0
 const SWORD_LENGTH_M: float = 1.1
 ## Scabbard on the back: grip over the right shoulder, blade down toward the left hip.
 const SHEATH_GRIP: Vector3 = Vector3(-0.07, 0.80, -0.09)
@@ -45,6 +50,8 @@ static func attach(owner_body: Node3D, art: Node3D, sword_scene: PackedScene, sc
     weapon.body = owner_body
     weapon.hand_socket = _socket(skeleton, "WeaponHand", HAND_BONE_SUFFIX)
     weapon.sheath_socket = _socket(skeleton, "WeaponSheath", SHEATH_BONE_SUFFIX)
+    if weapon.sheath_socket == null:
+        weapon.sheath_socket = _socket(skeleton, "WeaponSheath", SHEATH_FALLBACK_SUFFIX)
     if weapon.hand_socket == null or weapon.sheath_socket == null:
         return null
     # Skeleton space is the 1-unit model; the ArtSwap fit scales it by `scale` metres.
@@ -58,9 +65,13 @@ static func attach(owner_body: Node3D, art: Node3D, sword_scene: PackedScene, sc
     weapon.sheath_socket.add_child(weapon.sword)
     weapon.sword.transform = weapon.sheath_fit
     art.add_child(weapon)
-    if owner_body.has_signal(&"attack_started"):
-        owner_body.connect(&"attack_started", weapon._on_attack)
     return weapon
+
+
+## Without an ArtAnimator (no draw clip) the weapon listens to attacks itself and snaps.
+func listen_to_attacks() -> void:
+    if body.has_signal(&"attack_started") and not body.is_connected(&"attack_started", _on_attack):
+        body.connect(&"attack_started", _on_attack)
 
 
 ## A sword transform in skeleton space: grip at `grip`, blade (+Y) along `blade`, flat facing `flat`.
@@ -82,11 +93,29 @@ static func _socket(skeleton: Skeleton3D, socket_name: String, suffix: String) -
     return null
 
 
+## The ArtAnimator that plays draw/sheathe on the model (set by ArtSwap), or null.
+var animator: Node
+
+
 func _on_attack(_id: Variant = null) -> void:
     _quiet = 0.0
     if not drawn:
+        begin_draw(0.0)
+
+
+## Marks the sword drawn and moves it to the hand after `grab_delay` seconds (the draw clip's grab).
+func begin_draw(grab_delay: float) -> void:
+    _quiet = 0.0
+    drawn = true
+    if grab_delay <= 0.0:
         _move_to(hand_socket, hand_fit)
-        drawn = true
+        return
+    get_tree().create_timer(grab_delay).timeout.connect(func() -> void:
+        if drawn: _move_to(hand_socket, hand_fit))
+
+
+func note_attack() -> void:
+    _quiet = 0.0
 
 
 func _move_to(socket: BoneAttachment3D, fit: Transform3D) -> void:
@@ -102,8 +131,15 @@ func _process(delta: float) -> void:
         return
     _quiet += delta
     if _quiet >= SHEATHE_AFTER:
-        _move_to(sheath_socket, sheath_fit)
         drawn = false
+        var drop: float = 0.0
+        if animator != null and animator.call(&"play_once", &"sheathe", 1.0):
+            drop = SHEATHE_DROP_FRAME / 30.0
+        if drop <= 0.0:
+            _move_to(sheath_socket, sheath_fit)
+        else:
+            get_tree().create_timer(drop).timeout.connect(func() -> void:
+                if not drawn: _move_to(sheath_socket, sheath_fit))
 
 
 ## Living members of the gameplay "enemy" group within QUIET_RADIUS of this weapon's own player.

@@ -155,9 +155,18 @@ static func _dress_enemy(enemy: Node, cfg: Dictionary) -> void:
         return
     var h: float = cfg["height"]
     art.transform = Transform3D(Basis(Vector3.UP, cfg["yaw"]).scaled(Vector3.ONE * h), Vector3(0.0, cfg["feet"], 0.0))
+    var weapon: ArtWeapon = null
     if cfg.has("weapon"):
-        ArtWeapon.attach(enemy as Node3D, art, load(cfg["weapon"]) as PackedScene, h)
-    if enemy is CharacterBody3D and ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk")) != null:
+        weapon = ArtWeapon.attach(enemy as Node3D, art, load(cfg["weapon"]) as PackedScene, h)
+    ArtCloth.attach(art)
+    var animator: ArtAnimator = ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk")) if enemy is CharacterBody3D else null
+    if weapon != null:
+        if animator != null:
+            animator.weapon = weapon
+            weapon.animator = animator
+        else:
+            weapon.listen_to_attacks()
+    if animator != null:
         return
     play_loop(art, &"idle")
 
