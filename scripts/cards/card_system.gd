@@ -110,6 +110,8 @@ func play_slot(slot: int, chosen_target: Hurtbox = null) -> StringName:
     var reason: StringName = _validate(card)
     var target: Variant = null
     if reason == &"ok":
+        if chosen_target == null:
+            chosen_target = _locked_hurtbox(card)
         var found: Dictionary = _check_chosen_target(card, chosen_target) if chosen_target != null else _find_target(card)
         reason = found["reason"]
         target = found.get("target")
@@ -125,6 +127,19 @@ func play_slot(slot: int, chosen_target: Hurtbox = null) -> StringName:
     _apply(card, target)
     card_played.emit(card, slot)
     return &"ok"
+
+
+## Full-3D lock-on: enemy-targeting cards aim at the locked enemy's hurtbox (weak points win).
+func _locked_hurtbox(card: CardData) -> Hurtbox:
+    if card == null or (card.targeting != CardData.Targeting.ENEMY and card.targeting != CardData.Targeting.BOSS_WEAK_POINT):
+        return null
+    var target: Node3D = player.get("lock_target") as Node3D if "lock_target" in player else null
+    if target == null or not is_instance_valid(target):
+        return null
+    for child: Node in target.get_children():
+        if child is Hurtbox:
+            return child
+    return null
 
 
 func _is_only_stunned() -> bool:

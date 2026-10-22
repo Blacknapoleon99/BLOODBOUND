@@ -370,3 +370,21 @@ Playtest: "rubberbandy and lagging when switching directions". Measured before t
 - **Bishop motion.** Locomotion reference speeds now scale with model size (the 30 m Bishop had been playing a human-speed walk 1.8× too fast). Its tracking eases (accelerates and settles) instead of starting and stopping instantly. The animation speed input is smoothed exponentially.
 - **Dash costs blood.** A dodge/dash costs 0.6 blood (`Player.dodge_blood_cost`). Without enough blood it is refused (sound plus HUD message) and nothing is spent.
 - **Results:** 452/452. Build `build/windows-run13/Bloodbound.exe`.
+
+## DEC-043 — Full 3D, phase 1: third-person camera, camera-relative movement, lock-on (2026-10-22)
+
+The user chose to rebuild the game as a full 3D action platformer with a third-person camera and lock-on (plan: docs/superpowers/specs/2026-10-22-full-3d-conversion-plan.md). Co-op is postponed. The 2.5D game is tagged `v-2.5d-final`.
+
+- **`ThirdPersonCamera`:**
+  - orbits with mouse (captured) or right stick; pitch is clamped;
+  - a SpringArm3D pulls in instead of clipping through walls;
+  - follows the interpolated player position;
+  - hit shake through the "camera_shaker" group.
+- **Movement:** the player's free-3D mode (from the Reality Fracture) is now camera-relative: W runs away from the camera.
+- **Lock-on** (Q / middle mouse / R3; Tab or mouse wheel cycles):
+  - picks the living enemy nearest the screen centre within 18 m, and breaks past 24 m or on death;
+  - while locked, the camera swings to frame the target, the player faces it and strafes, and enemy-targeting cards aim at it.
+  - A red marker floats over the target.
+- **Menus:** the pause menu and reward overlays free the mouse and restore it on close.
+- **Test room:** "3D Prototype (phase 1)" in the main menu is a test room with stairs, a raised platform, a pit with floating platforms, pillars and three Plagued Soldiers fighting in 3D. The side-scroller game is unchanged.
+- **Results:** 12 new checks (camera-relative run, facing, stick orbit, lock, camera framing, cycle, cards aim at the lock, lock break, release, spring arm), 464/464. Build `build/windows-run14/Bloodbound.exe`.

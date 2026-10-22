@@ -84,6 +84,10 @@ var input_prefix: String = ""
 var player_index: int = 0
 ## Co-op: knocked down at 0 HP until the partner revives you (see main.gd).
 var is_downed: bool = false
+## Full-3D: the ThirdPersonCamera whose yaw makes input camera-relative (null = world axes).
+var view_camera: Node3D
+## Full-3D lock-on target (set by the camera): the player faces it; cards aim at it.
+var lock_target: Node3D
 var _haste_left: float = 0.0
 var _haste_mult: float = 1.0
 var _invulnerable_left: float = 0.0
@@ -282,8 +286,14 @@ func _physics_process(delta: float) -> void:
     if controllable:
         input_x = Input.get_axis(act(&"move_left"), act(&"move_right"))
         input_z = Input.get_axis(act(&"move_forward"), act(&"move_back")) if in_3d_mode else 0.0
+        if in_3d_mode and view_camera != null:
+            # Camera-relative: W runs away from the camera, A/D strafe across its view.
+            var world: Vector3 = (view_camera.call("flat_basis") as Basis) * Vector3(input_x, 0.0, input_z)
+            input_x = world.x
+            input_z = world.z
     if not melee.is_busy():
         _update_facing(input_x, input_z)
+        _face_lock_target()
 
     if controllable and Input.is_action_just_pressed(act(&"jump")):
         _buffer_left = jump_buffer_time
@@ -485,6 +495,18 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
     if not on_floor:
         _air_dodge_used = true
     dodge_started.emit(_dodge_direction)
+
+
+## Locked on: always face the target (strafe around it), unless dodging.
+func _face_lock_target() -> void:
+    if lock_target == null or not is_instance_valid(lock_target) or is_dodging():
+        return
+    var to_target: Vector3 = lock_target.global_position - global_position
+    to_target.y = 0.0
+    if to_target.length_squared() > 0.01:
+        _facing_3d = to_target.normalized()
+        if absf(_facing_3d.x) > 0.01:
+            facing_direction = signf(_facing_3d.x)
 
 
 ## With no stick/keys held, aim the attack at the nearest living enemy in range (3D only).

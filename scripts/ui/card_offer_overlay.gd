@@ -52,7 +52,13 @@ func _build() -> void:
     column.add_child(skip_button)
 
 
+var _mouse_before: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
+
+
 func open(title: String, cards: Array, skip_text: String = "Take nothing") -> void:
+    if not is_open():
+        _mouse_before = Input.mouse_mode
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     title_label.text = title
     skip_button.text = skip_text
     _root.visible = true
@@ -61,6 +67,7 @@ func open(title: String, cards: Array, skip_text: String = "Take nothing") -> vo
 
 
 func _finish(choice: Resource) -> void:
+    Input.mouse_mode = _mouse_before
     _root.visible = false
     get_tree().paused = false
     resolved.emit(choice)

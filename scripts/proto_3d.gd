@@ -1,0 +1,118 @@
+extends Node3D
+## Full-3D phase 1 test room (docs/superpowers/specs/2026-10-22-full-3d-conversion-plan.md):
+## the real player (Bone Revenant, cards, blood, combo, dodge) with the third-person camera and
+## lock-on, in a small 3D space: open ground, a stair to a raised platform, a pit crossed on
+## floating platforms, pillars for camera collision, and three Plagued Soldiers fighting in 3D.
+## Reached from the main menu ("3D Prototype"). Esc pauses (and frees the mouse).
+
+const PLAYER_SCENE: PackedScene = preload("res://scenes/player.tscn")
+const SOLDIER_SCENE: PackedScene = preload("res://scenes/enemies/plagued_soldier.tscn")
+const SPAWN: Vector3 = Vector3(0.0, 1.5, 8.0)
+
+var player: CharacterBody3D
+var cam: ThirdPersonCamera
+var hud: Label
+var soldiers: Array[PlaguedSoldier] = []
+
+
+func _ready() -> void:
+    InputBindings.configure_players(false)
+    GameSettings.load_settings()
+    _environment()
+    _build_space()
+    player = PLAYER_SCENE.instantiate() as CharacterBody3D
+    player.add_to_group(&"player")
+    add_child(player)
+    player.global_position = SPAWN
+    player.set("in_3d_mode", true)
+    player.connect("died", func() -> void: player.call_deferred("revive_at", SPAWN), CONNECT_DEFERRED)
+    cam = ThirdPersonCamera.create(player)
+    add_child(cam)
+    player.set("view_camera", cam)
+    for spot: Vector3 in [Vector3(-6.0, 1.0, -6.0), Vector3(6.0, 1.0, -8.0), Vector3(0.0, 1.0, -14.0)]:
+        var soldier: PlaguedSoldier = SOLDIER_SCENE.instantiate() as PlaguedSoldier
+        soldier.plane_locked = false
+        soldier.leash_radius = 9.0
+        add_child(soldier)
+        soldier.global_position = spot
+        soldier.set("_home", soldier.position)
+        soldiers.append(soldier)
+    ArtSwap.apply(self)
+    var canvas: CanvasLayer = CanvasLayer.new()
+    add_child(canvas)
+    hud = MenuStyle.label("", 17)
+    hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    hud.position = Vector2(22, 18)
+    canvas.add_child(hud)
+    canvas.add_child(CardHandUI.create(player.get_node("Cards") as CardSystem))
+    add_child(PauseMenu.create())
+    Audio.apply_volumes()
+    Audio.music(&"music_level")
+
+
+func _process(_delta: float) -> void:
+    if player.global_position.y < -10.0:
+        player.call("teleport_to", SPAWN)
+    var alive: int = soldiers.filter(func(s: PlaguedSoldier) -> bool: return not s.is_dead()).size()
+    var locked: String = "LOCKED: " + cam.lock_target.name if cam.lock_target != null else "Q / middle mouse: lock on"
+    hud.text = "3D PROTOTYPE (phase 1)\nWASD move (camera-relative) · mouse look · Space jump · Shift dodge · left/right click attack · 1-3 cards\n%s · Tab / wheel: next target · Esc pause\nHP %d/%d    soldiers left %d" % [
+        locked, (player.get("health") as Health).current, (player.get("health") as Health).max_health, alive]
+
+
+func _environment() -> void:
+    var world: WorldEnvironment = WorldEnvironment.new()
+    var env: Environment = Environment.new()
+    env.background_mode = Environment.BG_COLOR
+    env.background_color = Color(0.02, 0.022, 0.035)
+    env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+    env.ambient_light_color = Color(0.3, 0.32, 0.45)
+    env.ambient_light_energy = 0.8
+    env.fog_enabled = true
+    env.fog_light_color = Color(0.08, 0.07, 0.1)
+    env.fog_density = 0.012
+    world.environment = env
+    add_child(world)
+    var moon: DirectionalLight3D = DirectionalLight3D.new()
+    moon.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
+    moon.light_color = Color(0.62, 0.68, 1.0)
+    moon.light_energy = 1.3
+    moon.shadow_enabled = true
+    add_child(moon)
+
+
+func _build_space() -> void:
+    var stone: Color = Color(0.2, 0.2, 0.25)
+    _solid("Ground", Vector3(0.0, -0.5, 0.0), Vector3(40.0, 1.0, 40.0), stone)
+    # A stair up to a raised platform.
+    for i in 5:
+        _solid("Step %d" % i, Vector3(14.0, 0.2 + i * 0.4, -2.0 + i * 1.2), Vector3(5.0, 0.4 + i * 0.8, 1.2), stone.lightened(0.05 * i))
+    _solid("Raised platform", Vector3(14.0, 0.8, 7.5), Vector3(8.0, 3.6, 8.0), stone.lightened(0.15))
+    # A pit beyond the ground, crossed on floating platforms.
+    _solid("Far ground", Vector3(0.0, -0.5, -40.0), Vector3(20.0, 1.0, 12.0), stone)
+    for p: Vector3 in [Vector3(0.0, 0.0, -23.5), Vector3(3.0, 0.6, -27.5), Vector3(-1.0, 1.2, -31.0), Vector3(0.0, 0.4, -34.5)]:
+        _solid("Floating platform", p, Vector3(3.0, 0.5, 3.0), Color(0.3, 0.27, 0.3))
+    # Pillars (camera collision) and a low wall to hop.
+    for p: Vector3 in [Vector3(-8.0, 3.0, 4.0), Vector3(-12.0, 3.0, -4.0), Vector3(8.0, 3.0, -16.0)]:
+        _solid("Pillar", p, Vector3(1.6, 6.0, 1.6), stone.darkened(0.2))
+    _solid("Low wall", Vector3(-6.0, 0.5, 12.0), Vector3(6.0, 1.0, 0.6), stone.darkened(0.1))
+
+
+func _solid(label: String, center: Vector3, size: Vector3, color: Color) -> void:
+    var body: StaticBody3D = StaticBody3D.new()
+    body.name = label
+    body.position = center
+    var shape: CollisionShape3D = CollisionShape3D.new()
+    var box: BoxShape3D = BoxShape3D.new()
+    box.size = size
+    shape.shape = box
+    body.add_child(shape)
+    var mesh_node: MeshInstance3D = MeshInstance3D.new()
+    var mesh: BoxMesh = BoxMesh.new()
+    mesh.size = size
+    mesh_node.mesh = mesh
+    var material: StandardMaterial3D = StandardMaterial3D.new()
+    material.albedo_color = color
+    material.roughness = 0.9
+    mesh_node.material_override = material
+    body.add_child(mesh_node)
+    add_child(body)

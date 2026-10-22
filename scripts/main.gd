@@ -71,6 +71,7 @@ var _banner_left: float = 0.0
 
 func _ready() -> void:
     InputBindings.configure_players(RunState.coop)
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     process_physics_priority = 10  # after the players move (co-op leash)
     GameSettings.load_settings()
     add_to_group(&"camera_shaker")

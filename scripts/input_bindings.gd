@@ -19,6 +19,12 @@ const KEYS: Dictionary = {
     &"card_1": [KEY_1],
     &"card_2": [KEY_2],
     &"card_3": [KEY_3],
+    &"lock_on": [KEY_Q],
+    &"lock_next": [KEY_TAB],
+    &"look_left": [],
+    &"look_right": [],
+    &"look_up": [],
+    &"look_down": [],
 }
 
 const PAD_BUTTONS: Dictionary = {
@@ -32,6 +38,7 @@ const PAD_BUTTONS: Dictionary = {
     &"card_1": [JOY_BUTTON_DPAD_LEFT],
     &"card_2": [JOY_BUTTON_DPAD_UP],
     &"card_3": [JOY_BUTTON_DPAD_RIGHT],
+    &"lock_on": [JOY_BUTTON_RIGHT_STICK],
 }
 
 ## Mouse: left click = light attack, right click = heavy. While a card is armed for targeting,
@@ -39,6 +46,8 @@ const PAD_BUTTONS: Dictionary = {
 const MOUSE_BUTTONS: Dictionary = {
     &"attack": [MOUSE_BUTTON_LEFT],
     &"heavy_attack": [MOUSE_BUTTON_RIGHT],
+    &"lock_on": [MOUSE_BUTTON_MIDDLE],
+    &"lock_next": [MOUSE_BUTTON_WHEEL_UP],
 }
 
 ## Player 2 (local co-op) on the keyboard's right side, when no gamepad is free for them.
@@ -67,6 +76,10 @@ const PAD_AXES: Array = [
     [&"move_right", JOY_AXIS_LEFT_X, 1.0],
     [&"move_forward", JOY_AXIS_LEFT_Y, -1.0],
     [&"move_back", JOY_AXIS_LEFT_Y, 1.0],
+    [&"look_left", JOY_AXIS_RIGHT_X, -1.0],
+    [&"look_right", JOY_AXIS_RIGHT_X, 1.0],
+    [&"look_up", JOY_AXIS_RIGHT_Y, -1.0],
+    [&"look_down", JOY_AXIS_RIGHT_Y, 1.0],
 ]
 
 

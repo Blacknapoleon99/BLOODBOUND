@@ -68,7 +68,12 @@ func _build() -> void:
     _root.add_child(settings)
 
 
+var _mouse_before: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
+
+
 func open() -> void:
+    _mouse_before = Input.mouse_mode
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     _root.visible = true
     _menu.visible = true
     settings.visible = false
@@ -80,6 +85,8 @@ func close() -> void:
     _root.visible = false
     # Stay paused if a reward/shop overlay is still waiting underneath.
     get_tree().paused = _modal_open()
+    if not _modal_open():
+        Input.mouse_mode = _mouse_before
 
 
 func _modal_open() -> bool:

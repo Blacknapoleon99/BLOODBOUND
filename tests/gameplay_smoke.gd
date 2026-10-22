@@ -186,6 +186,7 @@ func _run() -> void:
     await _m19_merchant_secret_shortcut_checks()
     await _m20_coop_checks()
     await _m21_feel_checks()
+    await _m22_3d_core_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2800,6 +2801,79 @@ func _m21_feel_checks() -> void:
     _key(KEY_K, false)
     _check(not bool(_player.call("is_dodging")) and is_equal_approx(energy.current, 0.3), "without enough blood the dash is refused and nothing is spent")
     energy.regen_per_second = 0.25
+
+
+## Full-3D phase 1: third-person camera, camera-relative movement, lock-on, spring arm.
+func _m22_3d_core_checks() -> void:
+    change_scene_to_file("res://scenes/proto_3d.tscn")
+    await _frames(12)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    _check(cam != null and cam.camera.current and bool(p.get("in_3d_mode")) and p.get("view_camera") == cam, "the 3D room runs the player with a third-person camera")
+    for s: Node in room.get("soldiers"):
+        (s as PlaguedSoldier).set_ai_enabled(false)
+    await _seconds(0.5)
+    # Camera-relative movement: turn the camera to face -X; W must run toward -X.
+    cam.yaw = PI * 0.5
+    await _frames(2)
+    var start: Vector3 = p.global_position
+    await _hold(KEY_W, 0.5)
+    var moved: Vector3 = p.global_position - start
+    _check(moved.x < -2.0 and absf(moved.z) < 0.6, "W runs away from the camera (moved %s)" % moved.snapped(Vector3.ONE * 0.1))
+    var facing: Vector3 = p.call("get_facing_vector")
+    _check(facing.x < -0.9, "the player turns to face the way it runs (%s)" % facing.snapped(Vector3.ONE * 0.01))
+    # Right stick turns the camera.
+    var yaw0: float = cam.yaw
+    Input.action_press(&"look_right", 1.0)
+    await _seconds(0.3)
+    Input.action_release(&"look_right")
+    _check(absf(cam.yaw - yaw0) > 0.5, "the right stick orbits the camera (%.2f rad)" % absf(cam.yaw - yaw0))
+    # Lock-on.
+    p.call("teleport_to", Vector3(0.0, 1.0, 0.0))
+    cam.yaw = 0.0  # looking toward -Z, where the soldiers stand
+    await _seconds(0.4)
+    _tap(KEY_Q)
+    await _frames(4)
+    var first: Node3D = cam.lock_target
+    _check(first is PlaguedSoldier and p.get("lock_target") == first, "Q locks onto a soldier in view")
+    await _seconds(0.6)
+    var to_target: Vector3 = (first.global_position - p.global_position)
+    to_target.y = 0.0
+    var face: Vector3 = p.call("get_facing_vector")
+    _check(face.dot(to_target.normalized()) > 0.95, "locked on, the player faces the target")
+    var cam_dir: Vector3 = -cam.camera.global_basis.z
+    cam_dir.y = 0.0
+    _check(cam_dir.normalized().dot(to_target.normalized()) > 0.8, "the camera swings to frame the target")
+    _tap(KEY_TAB)
+    await _frames(4)
+    _check(cam.lock_target != null and cam.lock_target != first, "Tab cycles to another target")
+    var cards: CardSystem = p.get_node("Cards") as CardSystem
+    var spear_card: CardData = CardPool.by_id(&"blood_spear")
+    var locked_box: Hurtbox = cards.call("_locked_hurtbox", spear_card)
+    _check(locked_box != null and locked_box.get_parent() == cam.lock_target, "cards aim at the locked target")
+    (cam.lock_target.get("health") as Health).apply_damage(99)
+    await _frames(4)
+    _check(cam.lock_target == null and p.get("lock_target") == null, "the lock breaks when the target dies")
+    _tap(KEY_Q)
+    await _frames(2)
+    if cam.lock_target != null:
+        _tap(KEY_Q)
+        await _frames(2)
+    _check(cam.lock_target == null, "Q again releases the lock")
+    # The spring arm pulls the camera in front of a pillar instead of through it.
+    p.call("teleport_to", Vector3(-8.0, 1.0, 2.0))  # the pillar (z 3.2..4.8) stands between player and camera
+    cam.yaw = 0.0
+    cam.pitch = 0.0
+    await _seconds(0.6)
+    var cam_dist: float = cam.camera.global_position.distance_to(cam.global_position)
+    _check(cam_dist < 4.5, "the camera pulls in instead of clipping through a pillar (%.1f m)" % cam_dist)
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    LevelLayout.classic = true
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
 
 
 func _m3_boss_checks() -> void:

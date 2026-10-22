@@ -7,6 +7,7 @@ const GAME_SCENE: String = "res://scenes/armory.tscn"
 
 var start_button: Button
 var coop_button: Button
+var proto_button: Button
 var settings_button: Button
 var quit_button: Button
 var settings: SettingsPanel
@@ -16,6 +17,7 @@ var _menu: Control
 func _ready() -> void:
     InputBindings.ensure_defaults()
     GameSettings.load_settings()
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE  # back from the 3D prototype
     Audio.apply_volumes()
     Audio.music(&"music_level")
     set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -48,6 +50,8 @@ func _ready() -> void:
     start_button.pressed.connect(_on_start)
     coop_button = _add_button(column, "Start Co-op (2 players)", "StartCoop")
     coop_button.pressed.connect(_on_start_coop)
+    proto_button = _add_button(column, "3D Prototype (phase 1)", "Proto3D")
+    proto_button.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/proto_3d.tscn"))
     settings_button = _add_button(column, "Settings", "Settings")
     settings_button.pressed.connect(_on_settings)
     quit_button = _add_button(column, "Quit", "Quit")
