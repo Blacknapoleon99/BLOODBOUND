@@ -12,6 +12,8 @@ extends Node3D
 ##   Ledge wall       a 3 m wall to catch, shimmy along and pull up.
 ##   Slide tunnel     a 1.2 m-high gap under a slab.
 ##   Pound floor      a cracked slab over a shard cache: ground pound through it.
+##   Climb tower      (phase 2) an 8 m climbable tower, a 3 m climbable wall to run up
+##                    ("parkour up"), and a plain 8 m wall beside it that does NOT climb.
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/player.tscn")
 const SPAWN: Vector3 = Vector3(0.0, 1.2, 0.0)
@@ -65,6 +67,7 @@ func _process(_delta: float) -> void:
         + "WASD move · mouse look · Space jump (hold = higher) · Ctrl/C crouch · Shift dash · Esc pause\n" \
         + "Triple jump: jump again right as you land, running · Long jump: run, Ctrl, Space · Backflip: stand, Ctrl, Space\n" \
         + "Side flip: reverse hard while running, Space · Wall kick: push into a wall in the air, Space · Ground pound: Ctrl in the air\n" \
+        + "Climb: jump into a wall with bone handholds · W/S up/down · A/D across · Space leap · back+Space jump off · Ctrl let go\n" \
         + "state %s · jump %s · speed %.1f m/s · last %s" % [
             PlatformerMotor.State.keys()[motor.state], PlatformerMotor.Jump.keys()[motor.jump_kind], speed, _last_event]
 
@@ -134,6 +137,16 @@ func _build() -> void:
     _solid("Pound ledge", Vector3(-20.0, 1.9, 18.6), Vector3(4.0, 0.4, 2.6), stone.lightened(0.1))
     _sign("GROUND POUND\njump, Ctrl in the air", Vector3(-14.0, 2.6, 10.5))
     stations["pound"] = Vector3(-15.0, 1.2, 14.0)
+    # Climb tower (-X, -Z): an 8 m climbable tower, a 3 m climbable step wall, a plain 8 m wall.
+    _solid("Climb ground", Vector3(-20.0, -0.5, -16.0), Vector3(16.0, 1.0, 16.0), stone)
+    add_child(ClimbWall.create("Climb tower", Vector3(-22.0, 4.0, -22.0), Vector3(6.0, 8.0, 3.0)))
+    _solid("Tower top", Vector3(-22.0, 8.15, -22.0), Vector3(6.0, 0.3, 3.0), stone.lightened(0.15))
+    add_child(ClimbWall.create("Parkour step", Vector3(-15.0, 1.5, -22.0), Vector3(4.0, 3.0, 3.0)))
+    _solid("Plain wall", Vector3(-28.5, 4.0, -22.0), Vector3(3.0, 8.0, 3.0), accent.darkened(0.25))
+    _sign("CLIMBING\nbone handholds climb: jump in to grab,\nWASD climb, Space leap, back+Space jump off, Ctrl let go", Vector3(-20.0, 3.0, -12.0))
+    stations["climb"] = Vector3(-22.0, 1.2, -17.0)
+    stations["parkour"] = Vector3(-15.0, 1.2, -15.0)
+    stations["plain"] = Vector3(-28.5, 1.2, -17.0)
 
 
 func _solid(label: String, center: Vector3, size: Vector3, color: Color) -> StaticBody3D:

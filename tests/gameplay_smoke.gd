@@ -190,6 +190,7 @@ func _run() -> void:
     await _m23_3d_enemy_checks()
     await _m24_3d_room_checks()
     await _m25_moveset_checks()
+    await _m26_climb_checks()
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -3431,6 +3432,118 @@ func _m25_moveset_checks() -> void:
     var crack: BreakableFloor = room.get("crack")
     _check(spun and crack.is_broken and p.global_position.y < -1.0, "a ground pound breaks the cracked floor and drops into the cache")
     hp.restore_full()
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+
+
+## 3D platformer phase 2: climbing marked walls (ClimbWall), in the movement playground.
+func _m26_climb_checks() -> void:
+    change_scene_to_file("res://scenes/playground_3d.tscn")
+    await _frames(15)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    var motor: PlatformerMotor = p.get("motor")
+    var stations: Dictionary = room.get("stations")
+
+    # Jump into the handholds: grab on, climb 8 m and mantle onto the top.
+    await _station(p, cam, stations["climb"], 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.1)
+    _key(KEY_SPACE, true)
+    await _seconds(0.07)
+    _key(KEY_SPACE, false)
+    var grabbed: bool = false
+    var climb_speed: float = 0.0
+    var no_swing: bool = true
+    for i in int(PHYSICS_HZ * 5.0):
+        await physics_frame
+        if motor.state == PlatformerMotor.State.CLIMB:
+            if not grabbed:
+                grabbed = true
+                _tap(KEY_J)  # no swings while climbing
+            climb_speed = maxf(climb_speed, p.velocity.y)
+            no_swing = no_swing and not (p.get("melee") as MeleeAttack).is_busy()
+        if motor.state == PlatformerMotor.State.GROUND and p.global_position.y > 8.0:
+            break
+    _key(KEY_W, false)
+    await _seconds(0.2)
+    _check(grabbed and no_swing and climb_speed > 2.0 and p.is_on_floor() and p.global_position.y > 8.5,
+            "a handhold wall is grabbed, climbed (%.1f m/s) and mantled onto its 8 m top (y %.2f)" % [climb_speed, p.global_position.y])
+
+    # Across, leap, kick off.
+    await _station(p, cam, stations["climb"], 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.1)
+    _key(KEY_SPACE, true)
+    await _seconds(0.07)
+    _key(KEY_SPACE, false)
+    await _seconds(0.5)
+    _key(KEY_W, false)
+    await _seconds(0.1)
+    var on_wall: bool = motor.state == PlatformerMotor.State.CLIMB
+    var x0: float = p.global_position.x
+    await _hold(KEY_D, 0.6)
+    var across: float = p.global_position.x - x0
+    var y0: float = p.global_position.y
+    _tap(KEY_SPACE)
+    await _seconds(0.05)
+    var leaping: bool = motor.state == PlatformerMotor.State.CLIMB_LEAP
+    await _seconds(0.45)
+    var leap: float = p.global_position.y - y0
+    var back_on: bool = motor.state == PlatformerMotor.State.CLIMB
+    _key(KEY_S, true)
+    _tap(KEY_SPACE)
+    await _seconds(0.05)
+    _key(KEY_S, false)
+    var kicked: bool = motor.jump_kind == PlatformerMotor.Jump.WALL_KICK and p.velocity.z > 3.0
+    _check(on_wall and across > 1.0 and leaping and leap > 1.6 and back_on and kicked,
+            "on the wall you climb across (%.1f m), leap up it (%.1f m) and kick off backwards" % [across, leap])
+
+    # Let go with crouch.
+    await _station(p, cam, stations["climb"], 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.1)
+    _key(KEY_SPACE, true)
+    await _seconds(0.07)
+    _key(KEY_SPACE, false)
+    await _seconds(0.4)
+    _key(KEY_W, false)
+    _tap(KEY_CTRL)
+    await _seconds(0.1)
+    var let_go: bool = motor.state == PlatformerMotor.State.AIR
+    await _seconds(1.0)
+    _check(let_go and p.is_on_floor() and motor.state == PlatformerMotor.State.GROUND, "crouch lets go of the wall")
+
+    # Only handhold walls climb: the plain wall right beside it does not.
+    await _station(p, cam, stations["plain"], 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.1)
+    _key(KEY_SPACE, true)
+    var climbed: bool = false
+    for i in int(PHYSICS_HZ * 1.5):
+        await physics_frame
+        climbed = climbed or motor.state in [PlatformerMotor.State.CLIMB, PlatformerMotor.State.CLIMB_LEAP]
+    _key(KEY_SPACE, false)
+    _key(KEY_W, false)
+    _check(not climbed, "a plain wall is not climbable")
+
+    # Parkour up: run and jump into the 3 m handhold wall and end on top of it.
+    await _station(p, cam, stations["parkour"], 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.15)
+    _key(KEY_SPACE, true)
+    var on_top: bool = false
+    for i in int(PHYSICS_HZ * 2.5):
+        await physics_frame
+        if p.is_on_floor() and p.global_position.y > 3.5:
+            on_top = true
+            break
+    _key(KEY_SPACE, false)
+    _key(KEY_W, false)
+    _check(on_top, "running and jumping into a 3 m handhold wall carries you up onto it")
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     change_scene_to_file("res://scenes/main.tscn")
     await _frames(10)

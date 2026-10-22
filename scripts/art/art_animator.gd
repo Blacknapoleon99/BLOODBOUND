@@ -42,6 +42,7 @@ var _base_scale: Vector3 = Vector3.ONE
 var _base_origin: Vector3 = Vector3.ZERO
 var _yaw: float = 0.0
 var _squash: float = 1.0
+var _climb_phase: float = 0.0
 var _state_move: bool = false
 var _has_upper: bool = false
 var _queued: Dictionary = {}  # an action to fire when the current one ends (draw -> swing)
@@ -461,6 +462,14 @@ func _apply_pose(delta: float) -> void:
                 pitch = -deg_to_rad(12.0)
             PlatformerMotor.State.HANG, PlatformerMotor.State.PULL_UP:
                 pitch = deg_to_rad(8.0)
+            PlatformerMotor.State.CLIMB:
+                # Hand over hand: a sway that follows how far you've climbed.
+                _climb_phase += (absf(character_velocity().y) + Vector2(character_velocity().x, character_velocity().z).length()) * delta * 3.2
+                pitch = deg_to_rad(6.0)
+                roll = sin(_climb_phase) * deg_to_rad(7.0)
+            PlatformerMotor.State.CLIMB_LEAP:
+                pitch = deg_to_rad(10.0)
+                squash = 1.05
             PlatformerMotor.State.POUND_SPIN:
                 pitch = TAU * smoothstep(0.0, PlatformerMotor.POUND_SPIN_TIME, t)
                 squash = 0.85
@@ -473,6 +482,11 @@ func _apply_pose(delta: float) -> void:
     var pivot: Vector3 = Vector3.ZERO  # the body's centre in the visual root's space
     var origin: Vector3 = pivot + turn * (_base_origin - pivot)
     model.transform = Transform3D(turn * Basis.from_scale(Vector3(_base_scale.x, _base_scale.y * _squash, _base_scale.z)), origin)
+
+
+func character_velocity() -> Vector3:
+    var character: CharacterBody3D = body as CharacterBody3D
+    return character.velocity if character != null else Vector3.ZERO
 
 
 # --- Per frame --------------------------------------------------------------------------------

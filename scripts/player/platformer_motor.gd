@@ -7,12 +7,14 @@ extends RefCounted
 ##
 ## Moves: momentum run (speed builds 8.5 -> 11 m/s running straight), skid turn (+ side flip),
 ## variable jump, triple jump chain, crouch / crouch-walk / slide, long jump, backflip, wall slide
-## + wall kick, ledge grab (hang, shimmy, pull up, drop) and ground pound. The dash stays the
-## player's (it overrides everything while it lasts).
+## + wall kick, ledge grab (hang, shimmy, pull up, drop), ground pound, and climbing on marked
+## walls (group "climbable", see ClimbWall): climb in 8 directions, leap along the wall, jump
+## off backwards, mantle over the top; running and jumping into one carries you up it
+## ("parkour up"). The dash stays the player's (it overrides everything while it lasts).
 ##
 ## Our own numbers, written from scratch; tuned in playtests.
 
-enum State { GROUND, AIR, SKID, CROUCH, SLIDE, WALL_SLIDE, HANG, PULL_UP, POUND_SPIN, POUND_FALL, POUND_LAND }
+enum State { GROUND, AIR, SKID, CROUCH, SLIDE, WALL_SLIDE, HANG, PULL_UP, POUND_SPIN, POUND_FALL, POUND_LAND, CLIMB, CLIMB_LEAP }
 enum Jump { NONE, SINGLE, DOUBLE, TRIPLE, LONG, BACKFLIP, SIDE_FLIP, WALL_KICK, FALL }
 
 # --- Tuning -----------------------------------------------------------------------------------
@@ -51,6 +53,14 @@ const POUND_FALL_SPEED: float = 26.0
 const POUND_LAND_TIME: float = 0.25
 const POUND_RADIUS: float = 2.0
 const POUND_DAMAGE: int = 2
+const CLIMB_UP_SPEED: float = 2.6  # climbing up is quicker than crawling across
+const CLIMB_SIDE_SPEED: float = 2.0
+const CLIMB_DOWN_SPEED: float = 3.0
+const CLIMB_LEAP_SPEED: float = 7.5
+const CLIMB_LEAP_TIME: float = 0.3  # about 2.2 m along the wall
+const CLIMB_RUN_UP_SPEED: float = 6.5  # "parkour up": jumping into a climb wall keeps rising
+const CLIMB_RUN_UP_TIME: float = 0.35
+const CLIMB_GAP: float = 0.38  # body centre to wall while climbing
 const STAND_HEIGHT: float = 1.7
 const CROUCH_HEIGHT: float = 1.0
 
@@ -66,7 +76,9 @@ var ledge_normal: Vector3 = Vector3.ZERO
 var ledge_top: float = 0.0
 var wall_normal: Vector3 = Vector3.ZERO
 var crouched: bool = false
-var _hang_let_go: bool = false  # pushing toward the wall pulls up only after first easing off
+var _hang_let_go: bool = false
+var _climb_boost: float = 0.0
+var _leap_velocity: Vector3 = Vector3.ZERO  # pushing toward the wall pulls up only after first easing off
 
 var _chain_left: float = 0.0
 var _control_lock: float = 0.0
@@ -103,17 +115,17 @@ func launch_speed(height: float, gravity_scale: float = 1.0) -> float:
 
 ## No sword swings while hanging, sliding on a wall, pulling up or ground-pounding.
 func blocks_attacks() -> bool:
-    return state in [State.HANG, State.PULL_UP, State.WALL_SLIDE, State.POUND_SPIN, State.POUND_FALL, State.POUND_LAND]
+    return state in [State.HANG, State.PULL_UP, State.WALL_SLIDE, State.POUND_SPIN, State.POUND_FALL, State.POUND_LAND, State.CLIMB, State.CLIMB_LEAP]
 
 
 ## No dash out of a hang or a pound.
 func blocks_dodge() -> bool:
-    return state in [State.HANG, State.PULL_UP, State.POUND_SPIN, State.POUND_FALL, State.POUND_LAND]
+    return state in [State.HANG, State.PULL_UP, State.POUND_SPIN, State.POUND_FALL, State.POUND_LAND, State.CLIMB, State.CLIMB_LEAP]
 
 
 ## The motor owns the facing in these states (wall, ledge, flips) — the stick doesn't turn you.
 func locks_facing() -> bool:
-    return state in [State.SKID, State.WALL_SLIDE, State.HANG, State.PULL_UP, State.POUND_SPIN, State.POUND_FALL, State.POUND_LAND] \
+    return state in [State.SKID, State.WALL_SLIDE, State.HANG, State.PULL_UP, State.POUND_SPIN, State.POUND_FALL, State.POUND_LAND, State.CLIMB, State.CLIMB_LEAP] \
             or (state == State.AIR and jump_kind in [Jump.BACKFLIP, Jump.LONG, Jump.WALL_KICK])
 
 
@@ -142,6 +154,12 @@ func step(wish: Vector2, on_floor: bool, delta: float) -> void:
     match state:
         State.HANG:
             _step_hang(wish, jump_wanted, crouch_pressed, delta)
+            return
+        State.CLIMB:
+            _step_climb(wish, jump_wanted, crouch_pressed, on_floor, delta)
+            return
+        State.CLIMB_LEAP:
+            _step_climb_leap()
             return
         State.PULL_UP:
             _step_pull_up()
@@ -323,6 +341,8 @@ func _land(wish: Vector2) -> void:
 func _step_air(wish: Vector2, jump_wanted: bool, delta: float) -> void:
     # Ledge grab first (it can catch you out of a wall slide too).
     if _regrab_left <= 0.0 and player.velocity.y <= 0.5 and _try_ledge_grab():
+        return
+    if _regrab_left <= 0.0 and _try_start_climb(wish):
         return
     if state == State.WALL_SLIDE:
         _step_wall_slide(wish, jump_wanted, delta)
@@ -526,6 +546,138 @@ func _drop_from_ledge() -> void:
     player.global_position += ledge_normal * 0.15
     player.velocity = Vector3.ZERO
     jump_kind = Jump.FALL
+    _set_state(State.AIR)
+
+
+# --- Climbing ---------------------------------------------------------------------------------
+
+## The climbable surface straight ahead of the body at `height` above its centre (toward the wall
+## `into`), or {}.
+func _climb_hit(at: Vector3, into: Vector3, height: float) -> Dictionary:
+    var from: Vector3 = at + Vector3(0.0, height, 0.0)
+    var hit: Dictionary = _ray(from, from + into * 0.9)
+    if hit.is_empty() or not (hit["collider"] as Node).is_in_group(&"climbable"):
+        return {}
+    if absf((hit["normal"] as Vector3).y) > 0.35:
+        return {}
+    return hit
+
+
+## In the air, pushing into (or rising against) a climbable wall: grab on.
+func _try_start_climb(wish: Vector2) -> bool:
+    if not player.is_on_wall():
+        return false
+    var n: Vector3 = player.get_wall_normal()
+    n.y = 0.0
+    if n.length_squared() < 0.01:
+        return false
+    n = n.normalized()
+    var rising: bool = player.velocity.y > 0.5 and Input.is_action_pressed(player.act(&"jump"))
+    if wish.dot(Vector2(-n.x, -n.z)) < 0.3 and not rising:
+        return false
+    var hit: Dictionary = _climb_hit(player.global_position, -n, 0.3)
+    if hit.is_empty():
+        return false
+    _attach_climb(hit)
+    # Parkour up: a jump into the wall carries on up it for a moment.
+    _climb_boost = CLIMB_RUN_UP_TIME if rising else 0.0
+    jump_kind = Jump.NONE
+    chain = 0
+    _set_state(State.CLIMB)
+    player.emit_signal(&"move_event", &"climb")
+    return true
+
+
+func _attach_climb(hit: Dictionary) -> void:
+    var n: Vector3 = hit["normal"]
+    n.y = 0.0
+    wall_normal = n.normalized()
+    var at: Vector3 = (hit["position"] as Vector3) + wall_normal * CLIMB_GAP
+    player.global_position = Vector3(at.x, player.global_position.y, at.z)
+    player.velocity = Vector3.ZERO
+    _face(Vector2(-wall_normal.x, -wall_normal.z))
+
+
+func _step_climb(wish: Vector2, jump_wanted: bool, crouch_pressed: bool, on_floor: bool, delta: float) -> void:
+    _climb_boost = maxf(0.0, _climb_boost - delta)
+    var n2: Vector2 = Vector2(wall_normal.x, wall_normal.z)
+    var tangent: Vector3 = wall_normal.cross(Vector3.UP).normalized()
+    var up: float = wish.dot(-n2)  # pushing toward the wall climbs up, away climbs down
+    var side: float = wish.dot(Vector2(tangent.x, tangent.z))
+    if crouch_pressed:
+        _leave_climb(Jump.FALL)
+        return
+    if jump_wanted:
+        player._buffer_left = 0.0
+        if up < -0.5:
+            # Back + jump: kick off the wall.
+            _control_lock = WALL_KICK_LOCK
+            _face(n2)
+            _launch(Jump.WALL_KICK, n2 * WALL_KICK_SPEED)
+            return
+        var dir: Vector3 = Vector3.UP * (up if wish.length() > 0.2 else 1.0) + tangent * side
+        if dir.length_squared() < 0.01:
+            dir = Vector3.UP
+        _leap_velocity = dir.normalized() * CLIMB_LEAP_SPEED
+        _set_state(State.CLIMB_LEAP)
+        player.emit_signal(&"move_event", &"climb_leap")
+        return
+    var vertical: float = up * (CLIMB_UP_SPEED if up > 0.0 else CLIMB_DOWN_SPEED)
+    if _climb_boost > 0.0:
+        vertical = maxf(vertical, CLIMB_RUN_UP_SPEED)
+    var velocity: Vector3 = Vector3.UP * vertical + tangent * side * CLIMB_SIDE_SPEED
+    var next: Vector3 = player.global_position + velocity * delta
+    var hit: Dictionary = _climb_hit(next, -wall_normal, 0.3)
+    if hit.is_empty():
+        if velocity.y > 0.0 and _try_mantle():
+            return
+        # Off the edge of the climbable part: no further that way.
+        var lateral_only: Vector3 = player.global_position + tangent * side * CLIMB_SIDE_SPEED * delta
+        if not _climb_hit(lateral_only, -wall_normal, 0.3).is_empty():
+            velocity.y = 0.0
+        elif not _climb_hit(player.global_position + Vector3.UP * velocity.y * delta, -wall_normal, 0.3).is_empty():
+            velocity = Vector3.UP * velocity.y
+        else:
+            velocity = Vector3.ZERO
+    else:
+        _attach_climb(hit)
+    if on_floor and vertical < 0.0:
+        _set_state(State.GROUND)  # climbed down to the floor
+        player.velocity = Vector3.ZERO
+        return
+    player.velocity = velocity
+
+
+func _step_climb_leap() -> void:
+    player.velocity = _leap_velocity
+    var next: Vector3 = player.global_position + _leap_velocity * player.get_physics_process_delta_time()
+    if _climb_hit(next, -wall_normal, 0.3).is_empty() and _leap_velocity.y > 0.0 and _try_mantle():
+        return
+    if state_time >= CLIMB_LEAP_TIME:
+        var hit: Dictionary = _climb_hit(player.global_position, -wall_normal, 0.3)
+        if hit.is_empty():
+            _leave_climb(Jump.FALL)
+        else:
+            _attach_climb(hit)
+            _set_state(State.CLIMB)
+
+
+## At the top of a climb wall: if there is a walkable top within reach, pull up onto it.
+func _try_mantle() -> bool:
+    var probe: Vector3 = player.global_position - wall_normal * (CLIMB_GAP + 0.3)
+    var hit: Dictionary = _ray(Vector3(probe.x, player.global_position.y + 1.8, probe.z), Vector3(probe.x, player.global_position.y - 0.3, probe.z))
+    if hit.is_empty() or (hit["normal"] as Vector3).y < 0.7:
+        return false
+    ledge_normal = wall_normal
+    ledge_top = (hit["position"] as Vector3).y
+    return _start_pull_up()
+
+
+func _leave_climb(kind: Jump) -> void:
+    _regrab_left = REGRAB_COOLDOWN
+    player.global_position += wall_normal * 0.15
+    player.velocity = Vector3.ZERO
+    jump_kind = kind
     _set_state(State.AIR)
 
 

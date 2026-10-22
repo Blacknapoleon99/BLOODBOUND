@@ -70,3 +70,20 @@
 - **Movement playground** (`scenes/playground_3d.tscn`, F1 on the title screen; developer shortcut, not in the menu). One station each: momentum strip, 3.4 m tower, 8 m long-jump gap, wall-kick shaft, ledge wall, slide tunnel, pound floor.
 - The old "reversal ≤ 0.20 s" check becomes "a reversal skids and relaunches ≤ 0.30 s": the skid is the design.
 - **Not done:** real animation clips (the hang has its arms down), climbing (phase 2), and stages built for the moves (phases 3–4).
+
+## DEC-050 — 3D platformer phase 2: climbing (2026-10-22)
+
+- **Our own AC-style climbing.** It is written from scratch, from the public description: marked surfaces only, deliberate routes, and up to climb to the top. No decompiled code was used (see DEC-044).
+- **What climbs:** `ClimbWall` (`scripts/level/climb_wall.gd`), a block in group `climbable`. It carries staggered bone handholds on its four sides (one MultiMesh) so climb routes read at a glance. Plain walls do not climb; you still wall-slide and wall-kick on those.
+  - **Deviation from the spec:** the spec had separate handhold strips. Here the whole face of a marked wall is climbable, and the handholds are its visible marker. It is simpler to build stages with and feels the same in play. Strips can come later if routes need finer control.
+- **Moves** (new `PlatformerMotor` states CLIMB and CLIMB_LEAP):
+  - **Grab on:** jump into a climbable wall while pushing toward it.
+  - **Move:** in 8 directions, relative to the camera. Toward the wall climbs up (2.6 m/s), away from it climbs down (3 m/s), and sideways crawls across (2 m/s).
+  - **Edges hold you:** you can't climb past the side or the top of the climbable part.
+  - **Space** leaps 2.1 m along the held direction (up by default); **back + Space** jumps off with a wall kick; **Ctrl** lets go.
+  - **Mantle:** reaching the top with a walkable surface pulls you up onto it, using the ledge pull-up.
+  - **Parkour up:** jumping into a climbable wall while holding jump keeps rising at 6.5 m/s for 0.35 s.
+  - **No sword or dash while on the wall.**
+- **Pose (placeholder):** the hero faces the wall, leans in, and sways hand over hand with the distance climbed.
+- **Playground:** an 8 m climb tower with a top, a 3 m handhold wall for parkour-up, and a plain 8 m wall beside them that doesn't climb.
+- **Tests:** 5 new `_m26` checks (512/512): climb and mantle onto the 8 m top; across 2.3 m, leap 2.1 m, kick off; crouch lets go; the plain wall doesn't climb; parkour-up onto the 3 m wall. Probe 12/12; build `build/windows-run21`.
