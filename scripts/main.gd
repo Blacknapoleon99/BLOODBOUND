@@ -75,6 +75,7 @@ func _ready() -> void:
     GameSettings.load_settings()
     add_to_group(&"camera_shaker")
     _build_greybox()
+    ArtSwap.apply(self)  # visual-only model swaps; collision stays greybox
     player = PLAYER_SCENE.instantiate() as CharacterBody3D
     player.add_to_group(&"player")
     card_system = player.get_node("Cards") as CardSystem

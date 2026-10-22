@@ -382,3 +382,81 @@
 - Screenshot: `docs/screenshots/13_coop.png`.
 - `build/windows-run10/Bloodbound.exe`; the release export probe exits 0.
 - **Not verified:** a physical second gamepad (pad device mapping is by connected-joypad order), and co-op feel and balance.
+
+## Art pipeline test (2026-10-21)
+
+- **Model:** `causeway_segment_4m.glb`, original Blender work, 1,936 tris, 4 materials.
+- **Swap:** it replaces "Starting causeway appearance" through `ArtSwap.apply` (`scripts/art/art_swap.gd`). The greybox mesh is hidden and the collision is unchanged.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446** with art enabled.
+- `godot_console --path . -s res://tests/shot_art_swap.gd`:
+  - with art on: `model=true greybox_visible=false collision=(12, 1, 4)`;
+  - with art off: `model=false greybox_visible=true collision=(12, 1, 4)`.
+- Screenshots: `docs/screenshots/15_art_causeway.png` and `15_art_causeway_greybox.png`.
+- **Not verified:** the Web export render of the GLB, and the `-- --greybox` command-line toggle (the code path is the same as `ArtSwap.enabled = false`, which was exercised).
+
+## Tripo models in game: Bishop, Plagued Soldier, Wraith (2026-10-22)
+
+- **Models:** Tripo Studio HD multiview generations from ChatGPT turnarounds, cleaned in Blender:
+  - Bishop body: 29k tris, 2k textures.
+  - Bishop hand: 9.6k tris, stray islands removed.
+  - Rigged Soldier: 14.9k tris, Mixamo skeleton, `idle` clip.
+  - Wraith: 8.8k tris.
+- **Wiring:** `ArtSwap` dresses the Bishop at level build and enemies as they enter the tree. Collision, hitboxes, the heart glow, the stigmata glow and the slam arm are untouched.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446** with art enabled.
+- **Screenshots:** `docs/screenshots/16_art_bishop(_greybox).png` and `17_art_soldier(_greybox).png`.
+- **Not verified:**
+  - The Wraith in a screenshot (it only appears in certain rooms).
+  - Hit-flash and enrage tints on model enemies (the code tints the hidden greybox material).
+  - The Web export.
+
+## Rigged and animated characters (2026-10-22)
+
+- **New models:**
+  - Player knight: T-pose regeneration, 11 clips.
+  - Archer, Shield Knight, Gravewarden: 5–7 clips each.
+  - Hound: walk.
+  - Bishop body: now rigged, 7 clips.
+  - Soldier: re-exported with 5 clips.
+- **Animation:** `ArtAnimator` drives them from gameplay signals and velocity (see `docs/ASSET_LIST.md`). Scene lighting gets a shadowless fill light and a filmic tonemap when art is on.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446**. The log has the same three engine warnings as before ("resources still in use", `p_elem->_root`) and no art-script errors.
+- `godot_console --audio-driver Dummy --path . -s res://tests/shot_art_anim.gd` (run silently at the user's request) → strips `18_anim_soldier.png` (chase and swing) and `18_anim_bishop.png` (pose changes while attacking).
+- **Not verified:**
+  - A hands-on playtest for feel and timing of clips against hit windows.
+  - The Archer, Shield Knight, Hound and Gravewarden in screenshots (they only appear in certain rooms or ambushes).
+  - The Web export.
+
+## Bone Revenant hero + separate sword (2026-10-22)
+
+- **Tripo (80 credits, as approved):**
+  - Body: H3.1 HD multiview from `revenant_tpose_v2.png` (private) plus auto-rig. No T-pose warning; 25.8k tris after Blender; 65 Mixamo bones; 11 free preset clips.
+  - Sword: HD multiview from `revenant_sword.png`; 5.9k tris, origin on the grip.
+  - Balance 1,955 → 1,875.
+- **Deformation check in Blender** (posed run, chop, jump and cast; `docs/screenshots/19_hero_poses_blender.png`): knees bend about 90° cleanly, elbows bend cleanly, and the cloth panels hang free of the legs. The mesh is 376 separate shells, so the cloth panels can be isolated for bone chains.
+- **Godot:** `ArtWeapon` adds `BoneAttachment3D` sockets WeaponHand (RightHand) and WeaponSheath (Spine2). Placements are computed from the rest pose. The sword draws on `attack_started` and sheathes after 4 s with no living `enemy` within 8 m.
+- `godot_console --audio-driver Dummy --path . -s res://tests/shot_art_hero.gd` → `hero weapon=true drawn=true`; screenshots `19_hero_sheathed.png` and `19_hero_drawn.png`.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446**.
+- **Not done yet (no credits needed):**
+  - Blender cloth bone chains and the `Sheath` bone.
+  - Keyed draw/sheathe clips.
+  - Spring-bone cloth in Godot.
+  - Grip-angle polish.
+  - A playtest.
+
+## Revenant cloth, Sheath bone, draw/sheathe (2026-10-22, no credits)
+
+- **Blender** (`tools/blender_process_tripo.py` + `tools/blender_build_hero.py`, run in Blender 5.2 through the MCP):
+  - Four 3-bone cloth chains (front and back, left and right belt panels), weighted from the hips at the top to the chain at the hem.
+  - Only whole thin cloth shells are bound. The first attempt weighted by region, split shells and tore the mesh at the thigh; this rule fixes it.
+  - A `Sheath` bone at the scabbard grip.
+  - `draw` and `sheathe` clips keyed with an IK reach to the grip.
+  - Source saved as `assets/source/player/bone_revenant.blend`.
+- **Godot:**
+  - `ArtCloth`: a `SpringBoneSimulator3D` with 4 chains and `SpringBoneCollisionCapsule3D` on the hips, thighs and shins.
+  - `ArtWeapon` uses the Sheath bone.
+  - `ArtAnimator` plays the draw at double speed on the first attack, moves the sword to the hand on the grab frame, then plays the swing. Sheathe plays after the quiet timeout.
+- `shot_art_hero.gd` → `weapon=true drawn=true cloth=true chains=4`, 13 clips; `docs/screenshots/19_hero_strip.png` (sheathed, drawing, drawn, running with the cloth trailing).
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446**.
+- **Not verified:**
+  - Feel in a playtest: cloth stiffness, and the draw's 0.13 s delay before the first swing.
+  - The hood tail and shoulder rags (no chains yet; they overlap the scabbard strap).
+  - Upper-body blending for drawing while running (the draw plays full-body).
