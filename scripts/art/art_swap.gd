@@ -34,8 +34,10 @@ const HAND_PARTS: Array[String] = ["Palm", "Finger", "Thumb"]
 const ENEMY_MODELS: Dictionary = {
     &"PlaguedSoldier": {"path": "res://assets/models/enemies/plagued_soldier.glb", "visual": "visual",
         "hide": ["Body", "Head"], "yaw": PI, "height": 1.8, "feet": -0.9},
-    &"res://scripts/player.gd": {"path": "res://assets/models/player/cursed_knight.glb", "visual": "VisualRoot",
-        "hide": ["PlaceholderKnight"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.85, "steer": true, "move": &"run"},
+    # The Bone Revenant (chosen hero). cursed_knight.glb (the Blood Knight) stays as a fallback model.
+    &"res://scripts/player.gd": {"path": "res://assets/models/player/bone_revenant.glb", "visual": "VisualRoot",
+        "hide": ["PlaceholderKnight"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.85, "steer": true, "move": &"run",
+        "weapon": "res://assets/models/player/revenant_sword.glb"},
     &"BoneArcher": {"path": "res://assets/models/enemies/bone_archer.glb", "visual": "_visual",
         "hide": ["Body"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.9},
     &"ShieldedKnight": {"path": "res://assets/models/enemies/shielded_knight.glb", "visual": "_visual",
@@ -153,6 +155,8 @@ static func _dress_enemy(enemy: Node, cfg: Dictionary) -> void:
         return
     var h: float = cfg["height"]
     art.transform = Transform3D(Basis(Vector3.UP, cfg["yaw"]).scaled(Vector3.ONE * h), Vector3(0.0, cfg["feet"], 0.0))
+    if cfg.has("weapon"):
+        ArtWeapon.attach(enemy as Node3D, art, load(cfg["weapon"]) as PackedScene, h)
     if enemy is CharacterBody3D and ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk")) != null:
         return
     play_loop(art, &"idle")

@@ -424,3 +424,20 @@
   - A hands-on playtest for feel and timing of clips against hit windows.
   - The Archer, Shield Knight, Hound and Gravewarden in screenshots (they only appear in certain rooms or ambushes).
   - The Web export.
+
+## Bone Revenant hero + separate sword (2026-10-22)
+
+- **Tripo (80 credits, as approved):**
+  - Body: H3.1 HD multiview from `revenant_tpose_v2.png` (private) plus auto-rig. No T-pose warning; 25.8k tris after Blender; 65 Mixamo bones; 11 free preset clips.
+  - Sword: HD multiview from `revenant_sword.png`; 5.9k tris, origin on the grip.
+  - Balance 1,955 → 1,875.
+- **Deformation check in Blender** (posed run, chop, jump and cast; `docs/screenshots/19_hero_poses_blender.png`): knees bend about 90° cleanly, elbows bend cleanly, and the cloth panels hang free of the legs. The mesh is 376 separate shells, so the cloth panels can be isolated for bone chains.
+- **Godot:** `ArtWeapon` adds `BoneAttachment3D` sockets WeaponHand (RightHand) and WeaponSheath (Spine2). Placements are computed from the rest pose. The sword draws on `attack_started` and sheathes after 4 s with no living `enemy` within 8 m.
+- `godot_console --audio-driver Dummy --path . -s res://tests/shot_art_hero.gd` → `hero weapon=true drawn=true`; screenshots `19_hero_sheathed.png` and `19_hero_drawn.png`.
+- `tools/run_checks.ps1 -Godot godot_console` → **SMOKE RESULT: 446/446**.
+- **Not done yet (no credits needed):**
+  - Blender cloth bone chains and the `Sheath` bone.
+  - Keyed draw/sheathe clips.
+  - Spring-bone cloth in Godot.
+  - Grip-angle polish.
+  - A playtest.

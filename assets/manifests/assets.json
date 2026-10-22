@@ -238,12 +238,53 @@
       "provider": "Tripo Studio web: H3.1 HD multiview from ChatGPT refs, Tripo auto-rig (Mixamo skeleton) + free preset animations; cleaned in Blender 5.2.2",
       "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
       "approval": "user approved 2026-10-21/22 ('continue use the 1100', 'make them animated')"
+    },
+    {
+      "id": "player_bone_revenant",
+      "file": "assets/models/player/bone_revenant.glb",
+      "ref": "assets/concepts/refs/revenant_tpose_v2.png",
+      "tripo_id": "5767e155-4d98-4396-9996-e415f61a9d90",
+      "cost": "30 + 20 rig; presets free",
+      "tris": 25760,
+      "textures": "2k",
+      "islands": 376,
+      "animations": [
+        "idle",
+        "run",
+        "walk",
+        "jump",
+        "fall",
+        "slash",
+        "chop",
+        "dive",
+        "hit_to_body_01",
+        "defeat",
+        "cast_a_spell"
+      ],
+      "notes": "hands empty; scabbard on back; cloth panels separate shells (bone chains pending)",
+      "provider": "Tripo Studio web: H3.1 HD multiview (private) from ChatGPT turnaround, Tripo auto-rig (Mixamo) + free presets; Blender 5.2.2 cleanup",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-22 (50-credit body test + sword, 80 total)"
+    },
+    {
+      "id": "player_revenant_sword",
+      "file": "assets/models/player/revenant_sword.glb",
+      "ref": "assets/concepts/refs/revenant_sword.png",
+      "tripo_id": "77c2daef-a935-433d-9b9c-8065632708d9",
+      "cost": "30",
+      "tris": 5875,
+      "textures": "1k",
+      "fit": "origin on grip, blade +Y, 1.1 m",
+      "notes": "ArtWeapon sockets WeaponHand (RightHand) / WeaponSheath (Spine2)",
+      "provider": "Tripo Studio web: H3.1 HD multiview (private) from ChatGPT turnaround, Tripo auto-rig (Mixamo) + free presets; Blender 5.2.2 cleanup",
+      "license": "Tripo paid plan output (user's Max plan, private); refs ChatGPT (user's account)",
+      "approval": "user approved 2026-10-22 (50-credit body test + sword, 80 total)"
     }
   ],
   "tripo_studio_credits": {
     "start": 2435,
-    "after": 1955,
-    "spent": 480,
-    "note": "2,135 of the start balance expire 2026-10-30; preset animations are free"
+    "after": 1875,
+    "spent": 560,
+    "note": "Revenant test 50 + sword 30 approved 2026-10-22; preset animations free; 2,135 of start expire 2026-10-30"
   }
 }
