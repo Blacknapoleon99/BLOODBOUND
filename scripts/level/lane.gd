@@ -16,6 +16,6 @@ static func depth(side: float = SIDE_DEPTH) -> float:
     return DEPTH_3D if full_3d else side
 
 
-## Half the hall's depth (where the side walls stand).
+## Half the hall's depth (its open edge: past it you fall into the abyss).
 static func half() -> float:
     return depth() * 0.5

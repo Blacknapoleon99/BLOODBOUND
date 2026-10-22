@@ -53,10 +53,8 @@ func build(at_x: float) -> void:
     checkpoint = Checkpoint.create(Vector3(gx(2.4), 1.2, 0.0), Vector3(2.0, 3.0, Lane.depth(3.0)))
     checkpoint.name = "Checkpoint: " + title
     add_child(checkpoint)
-    if Lane.full_3d:
-        _hall_walls()
-    else:
-        _backdrop()
+    if not Lane.full_3d:
+        _backdrop()  # full 3D: no walls at all — the stage floats in the void, falls go to the checkpoint
 
 
 ## Override: lay out the room with the helpers.
@@ -313,17 +311,6 @@ func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Co
     mesh_node.material_override = material
     body.add_child(mesh_node)
     add_child(body)
-
-
-## Full 3D: tall walls down both sides of the hall (you fall into pits, never off the side).
-func _hall_walls() -> void:
-    var wall_color: Color = _palette.darkened(0.45)
-    for side: float in [-1.0, 1.0]:
-        _block("Hall wall", 0.0, width, -14.0, 12.0, wall_color, side * (Lane.half() + 0.3), 0.6)
-    # Buttresses break up the long walls (decor that also gives the camera something to frame).
-    for i in int(width / 8.0):
-        for side: float in [-1.0, 1.0]:
-            _block("Buttress", 3.6 + i * 8.0, 4.4 + i * 8.0, -14.0, 12.0, wall_color.lightened(0.06), side * (Lane.half() + 0.1), 0.4)
 
 
 ## Dark back wall and a few pillars so each room reads as a place (decor only).

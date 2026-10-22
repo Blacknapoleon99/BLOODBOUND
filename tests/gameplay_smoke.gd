@@ -3201,13 +3201,23 @@ func _m24_3d_room_checks() -> void:
         var after_air: float = float(animator.tree.get("parameters/air/blend_amount"))
         _check(rising and rising_air > 0.5 and landed and after_air < 0.05 and fall_node.use_custom_timeline and fall_node.timeline_length < fall_len * 0.5,
                 "the hero's air pose follows the jump (rising %.2f, landed %.2f) and the fall loop skips the clip's collapse (%.2f of %.2f s)" % [rising_air, after_air, fall_node.timeline_length, fall_len])
-    # The hall walls: running sideways stops at the wall, never off the edge.
+    # No side walls: running sideways carries you past the hall's open edge and off it.
     var first: LevelSection = sections[0]
     _player.call("teleport_to", first.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
     cam.yaw = -PI * 0.5  # looking down the hall (+X): D runs toward +Z
     await _seconds(0.3)
-    await _hold(KEY_D, 1.2)
-    _check(_player.global_position.z > 3.5 and _player.global_position.z < Lane.half() and _player.is_on_floor(), "a hall wall stops you at the side (z %.2f)" % _player.global_position.z)
+    var walls: int = 0
+    for node: Node in first.find_children("Hall wall*", "", true, false):
+        walls += 1
+    var max_z: float = 0.0
+    _key(KEY_D, true)
+    for i in int(PHYSICS_HZ * 1.5):
+        await physics_frame
+        max_z = maxf(max_z, _player.global_position.z)
+    _key(KEY_D, false)
+    _check(walls == 0 and max_z > Lane.half() + 0.3, "no hall wall: running sideways goes past the open edge (walls %d, furthest z %.2f)" % [walls, max_z])
+    _player.call("teleport_to", first.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
+    await _seconds(0.3)
     # Hazards span the hall.
     var deep_spikes: bool = true
     var spike_count: int = 0
