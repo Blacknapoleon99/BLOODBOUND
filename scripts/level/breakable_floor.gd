@@ -22,12 +22,9 @@ static func create(center: Vector3, size: Vector3) -> BreakableFloor:
     box.size = size
     slab._shape.shape = box
     slab.add_child(slab._shape)
-    var mesh_node: MeshInstance3D = MeshInstance3D.new()
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = size
-    mesh_node.mesh = mesh
-    slab._material = GothicMaterials.block(&"breakable")  # faint red light in the cracks gives it away
-    mesh_node.material_override = slab._material
+    # Shattered slab; red light in the cracks gives it away (DEC-056).
+    var mesh_node: MeshInstance3D = GothicKit.single("cracked", size, &"breakable")
+    slab._material = mesh_node.material_override as ShaderMaterial
     slab.add_child(mesh_node)
     slab.health = Health.new()
     slab.health.max_health = 4

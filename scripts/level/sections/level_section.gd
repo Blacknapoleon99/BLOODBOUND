@@ -65,6 +65,9 @@ var _climbs: Array[Dictionary] = []
 ## Every solid block's box (world centre `pos`, `size`, material `kind`, `walkable` top), for the
 ## decor pass (GothicDressing, DEC-054): crumbled undersides and props. Visual data only.
 var dress_blocks: Array[Dictionary] = []
+## The room's modelled gothic architecture (DEC-056): every `_block` and climb wall adds its
+## pieces here; `build()` commits them as MultiMeshes. Visual only.
+var kit: GothicKit.Batch
 
 
 ## Builds the room with its left edge at `at_x` (world). Call after adding it to the level.
@@ -84,6 +87,7 @@ func build(at_x: float) -> void:
         _backdrop()  # full 3D: no walls at all — the course floats in the void
     else:
         GothicDressing.dress(self)  # decor only: rubble undersides and props (DEC-054)
+    _commit_kit()
 
 
 ## Override: lay out the room with the helpers (the side view).
@@ -288,8 +292,10 @@ func wall3(cx: float, cz: float, w: float, d: float, y0: float, y1: float, label
 ## A climbable block (bone handholds) from `bottom` to `top`; its top is walkable. Climbing it
 ## is an ADVANCED link from any platform at its foot (within 2.5 m, at a height it spans).
 func climb(cx: float, cz: float, w: float, d: float, bottom: float, top: float, label: String = "Climb wall") -> int:
-    var wall: ClimbWall = ClimbWall.create(label, Vector3(gx(cx), (bottom + top) * 0.5, cz), Vector3(w, top - bottom, d), _palette.lightened(0.08))
+    var wall: ClimbWall = ClimbWall.create(label, Vector3(gx(cx), (bottom + top) * 0.5, cz), Vector3(w, top - bottom, d), _palette.lightened(0.08), false)
     add_child(wall)
+    _kit().add_box(wall.position, Vector3(w, top - bottom, d), &"climb", label)  # drawn with the room (DEC-056)
+    _kit().add_handholds(wall.position, Vector3(w, top - bottom, d))
     climb_walls.append(wall)
     dress_blocks.append({"pos": wall.position, "size": Vector3(w, top - bottom, d), "kind": &"climb", "walkable": false})
     var index: int = _platform(Rect2(cx - w * 0.5, top, w, 0.0), Vector2(cz - d * 0.5, cz + d * 0.5))
@@ -702,6 +708,20 @@ func _floor_kind(label: String, cx: float, cz: float, top: float) -> StringName:
     return &"floor_cobble" if routes.find(_route) % 3 == 1 else &"floor"
 
 
+func _kit() -> GothicKit.Batch:
+    if kit == null:
+        kit = GothicKit.Batch.new()
+    return kit
+
+
+## Draws the room's kit pieces (once, after everything is laid out).
+func _commit_kit() -> void:
+    if kit == null or kit.boxes.is_empty():
+        return
+    kit.tint = _palette
+    kit.commit(self, "Gothic architecture")
+
+
 func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Color, z: float = 0.0, z_depth: float = -1.0, kind: StringName = &"wall") -> void:
     var body: StaticBody3D = StaticBody3D.new()
     body.name = label
@@ -712,12 +732,7 @@ func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Co
     box.size = size
     shape.shape = box
     body.add_child(shape)
-    var mesh_node: MeshInstance3D = MeshInstance3D.new()
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = size
-    mesh_node.mesh = mesh
-    mesh_node.material_override = GothicMaterials.block(kind, _palette)
-    body.add_child(mesh_node)
+    _kit().add_box(body.position, size, kind, label)  # modelled gothic architecture (DEC-056)
     add_child(body)
     dress_blocks.append({"pos": body.position, "size": size, "kind": kind, "walkable": kind != &"wall", "color": color})
 

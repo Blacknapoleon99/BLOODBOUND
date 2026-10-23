@@ -240,3 +240,40 @@
 
   A mid GPU has not been measured yet.
 - **Captures:** `tests/shot_gothic.gd` (visible window) writes `docs/screenshots/23_gothic_*.png` and prints the fps. Pass `-- <dir> low` to capture the low preset.
+
+## DEC-056 — Modelled gothic architecture for level geometry (2026-10-23)
+
+- **User direction:** "we still need everything to be textured, and have actual shapes". The DEC-054 PBR look still sat on boxes. Every level block now has real modelled gothic architecture, and **every collision shape is unchanged**: the same `BoxShape3D`s, routes, validator and tests.
+- **Kit:** `assets/models/kit/gothic_kit.glb` holds 21 original pieces, about 22k triangles in total. `tools/blender/build_gothic_kit.py` models them procedurally in Blender 5.2, headless (`-b --factory-startup`), with no live session, no download and no paid generation. The pieces:
+  - 2 x 2 m random-ashlar paving cells (one worn variant with a sunk, broken slab and a tilted one);
+  - coping strips with a moulded cornice lip and a corbel table, a broken-lip variant, and mitred corners;
+  - masonry panels in three bonds (one with a fallen stone), a 2 x 3 m blind pointed arcade (colonnettes, voussoirs, hood moulding, sill), quoins, shallow buttresses and a rough underside slab;
+  - a pier capital (abacus, octagonal bell, leaf band, crockets), a clustered shaft, an annulet and a jagged broken foot;
+  - a carved corbel with a bone grip (handholds);
+  - a riveted iron grate platform, a shattered slab over a glowing core, and a portcullis.
+- **Assembly** (`scripts/art/gothic_kit.gd`, `GothicKit`): any box is 9-sliced. Corners stay fixed; edges, paving cells, panels and quoins are tiled to whole counts and stretched to fit. Faces taller than 3 m get the arcade band. Walls get buttresses. Pillars become capital, shaft, annulets and broken foot. The layout is seeded by position, so every build matches.
+  - `LevelSection._block` / `climb()` feed one `GothicKit.Batch` per room, drawn as one `MultiMeshInstance3D` per (piece, material).
+  - Movers, orbiters, collapsing slabs, secret floors and gate bars use `GothicKit.single()`, an object-space scaled piece. The collapse flash, the crack glow and the falling Bishop slabs all still work.
+  - `main.gd` causeways, steps and walls get the kit; its bars become a portcullis. The side view's art-swapped causeway keeps its box.
+  - Without the GLB, everything falls back to the DEC-054 textured boxes.
+- **Look:** `scripts/art/shaders/gothic_kit.gdshader` maps the CC0 scans by world-space triplanar projection at large scales, so the modelled joints carry the pattern. Vertex colours carry masks: cavity, glow, bone, and paving vs trim (trim keeps dressed stone on top). Per-instance custom data gives the block top (sides fade into the void) and the blood amount (blood floors share the floor batch). Moss, blood, macro variation and the room tint are kept.
+- **Footing contract:** checked for every placed piece, and reported in `Batch.violations`. Nothing rises more than 0.03 m above a block's top. Only lips and buttresses reach past the sides, by at most 0.16 m. Handholds are exempt.
+- **Performance** (RTX 5090, 1280×720, high preset, vsync off, `tools/dev/kit_perf.gd`; A/B in one session with `-- nokit`; other GPU jobs were running, so absolute fps is noisy):
+  - with the kit: 215-252 fps, 1352-1910 draws, 0.67-1.12 M primitives;
+  - boxes: 257-318 fps, 1120-1526 draws, 0.51-0.95 M primitives.
+  - That is about 15-20% fps for the kit. Paving, trims and handholds cast no shadows (the underside slab gives each block its shadow), and the bevels were cut to one segment.
+  - A mid-range GPU is still unmeasured. If one needs it, the next steps are visibility ranges per room batch, or merging pillar/floor/wall into one material via custom data.
+- **Checks:** `tests/kit_check.gd` passes 153/153:
+  - every piece loads;
+  - every room (3D and side view) and the opening grounds draw kit MultiMeshes;
+  - no level body keeps a BoxMesh, and each keeps exactly one BoxShape3D;
+  - nothing breaks the footing contract;
+  - handholds, movers, slabs, secret floors, causeway slabs and standalone climb walls use the kit.
+  - The smoke test stays 544/544. `tools/dev/audit_materials.gd` lists no level geometry.
+- **Captures:** `tools/dev/shot_kit.gd` (close-ups) writes `docs/screenshots/24_kit_*.png`. The run overview and a room are in the same set.
+- **Not done:**
+  - ramps (no helper makes one);
+  - the boss arena's back wall and the Reality Fracture blocks (other owners);
+  - the side-view `_backdrop()` wall;
+  - per-kind paving: cobble floors use the same slab cells with the cobble scan on top;
+  - LOD (the per-room MultiMesh AABB makes mesh LOD pick the full mesh).

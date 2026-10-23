@@ -10,8 +10,7 @@ var breakable: bool = true
 var is_broken: bool = false
 var size: Vector3
 var _shape: CollisionShape3D
-var _mesh: MeshInstance3D
-var _material: StandardMaterial3D
+var _mesh: Node3D
 var _tween: Tween
 
 
@@ -26,16 +25,16 @@ static func create(label: String, center: Vector3, slab_size: Vector3, color: Co
     box.size = slab_size
     segment._shape.shape = box
     segment.add_child(segment._shape)
-    segment._mesh = MeshInstance3D.new()
+    # Modelled flagstone slab with a moulded edge (DEC-056); breakable slabs stay a shade
+    # lighter than the solid ends.
+    segment._mesh = Node3D.new()
     segment._mesh.name = "Slab"
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = slab_size
-    segment._mesh.mesh = mesh
-    # Flagstone (DEC-054); breakable slabs stay a shade lighter than the solid ends.
-    var tone: Color = Color(0.82, 0.78, 0.74) if can_break else Color(0.6, 0.57, 0.56)
-    segment._material = GothicMaterials.standard("flagstone", tone.lerp(color * 4.0, 0.15), 2.6)
-    segment._mesh.material_override = segment._material
     segment.add_child(segment._mesh)
+    var kit: GothicKit.Batch = GothicKit.Batch.new()
+    kit.offset = center
+    kit.tint = color
+    kit.add_box(Vector3.ZERO, slab_size, &"floor_pale" if can_break else &"floor", label)
+    kit.commit(segment._mesh, "Kit")
     return segment
 
 

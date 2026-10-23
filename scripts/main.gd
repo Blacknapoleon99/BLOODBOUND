@@ -1452,6 +1452,25 @@ func _make_solid(label: String, center: Vector3, size: Vector3, color: Color) ->
 
 
 func _make_visual(label: String, center: Vector3, size: Vector3, color: Color, parent: Node3D = null) -> void:
+    if parent == null:
+        parent = self
+    var kit_kind: StringName = GothicMaterials.kind_for_label(label)
+    # Modelled gothic architecture (DEC-056): causeways/steps/walls get the stone kit, gate bars
+    # an iron portcullis. The side view's art-swapped causeway keeps its box for ArtSwap.
+    var swapped: bool = not full_3d and ArtSwap.enabled and ArtSwap.CAUSEWAY_SOLIDS.has(label.trim_suffix(" appearance"))
+    if GothicKit.available() and not swapped and kit_kind != &"":
+        if kit_kind == &"rust":
+            var bars: MeshInstance3D = GothicKit.single("portcullis", size, &"bars")
+            bars.name = label
+            bars.position = center
+            parent.add_child(bars)
+            return
+        var kit: GothicKit.Batch = GothicKit.Batch.new()
+        kit.offset = parent.position
+        kit.tint = color
+        kit.add_box(center, size, kit_kind, label)
+        kit.commit(parent, label)
+        return
     var mesh_node: MeshInstance3D = MeshInstance3D.new()
     mesh_node.name = label
     mesh_node.position = center
@@ -1467,6 +1486,4 @@ func _make_visual(label: String, center: Vector3, size: Vector3, color: Color, p
         material.metallic = 0.1
         material.roughness = 0.9
         mesh_node.material_override = material
-    if parent == null:
-        parent = self
     parent.add_child(mesh_node)

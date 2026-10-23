@@ -52,3 +52,24 @@ Record tool settings and costs, not API keys. Do not copy Tidebreaker, Shadow of
 - Backdrop decor is procedural (`scripts/level/backdrop_kit.gd`) plus CC0 kit pieces copied into `assets/models/backdrop/` with a `CREDITS.md` row each. Copy only the pieces used, with their licence file and any texture the GLB references (or the import logs errors).
 - Kit pieces are merged into one mesh per object and drawn with `assets/shaders/backdrop/backdrop_stone.gdshader` (vertex colour rgb = tint, alpha 0 = glowing). A replacement GLB only needs a single mesh at a sensible scale; `BackdropKit.kenney()` measures its AABB to stack it.
 - Backdrop meshes never get collision and never cast shadows; `tests/backdrop_check.gd` enforces that and keeps them out of every course's play volume.
+
+## Modelled level architecture (DEC-056)
+
+- Level blocks keep their `BoxShape3D` collision exactly; only the look is rebuilt. `GothicKit` (`scripts/art/gothic_kit.gd`) 9-slices any box into kit pieces from `assets/models/kit/gothic_kit.glb`:
+  - walkable tops: 2 x 2 m random-ashlar paving cells;
+  - edges: a coping ring with a moulded cornice lip and a corbel table, with mitred corners;
+  - sides: masonry courses, or a blind pointed arcade on faces taller than 3 m, with dressed quoins on the corners;
+  - walls get shallow buttresses; pillars get a capital, a clustered shaft, annulets and a broken foot;
+  - climb walls get carved corbel-and-bone handholds; movers become iron grates; collapsing and secret slabs become shattered stone over a glowing core; gate bars become a portcullis.
+- The kit is original, modelled procedurally and headless by `tools/blender/build_gothic_kit.py` (Blender 5.2, `-b --factory-startup`; it never touches a live Blender session). Pieces are authored in Godot axes (Y up, +Z outward). Vertex colour carries masks: r = cavity, g = glow, b = bone, a = paving (1) or trim (0).
+- Textures come from the CC0 scans by world-space triplanar mapping (`gothic_kit.gdshader`), so stretched pieces still tile at true metres. Materials are cached per kind and room tint.
+- **Performance:** each room is one `GothicKit.Batch`, drawn as one MultiMeshInstance3D per (piece, material). Paving cells and handholds cast no shadow; the underside slab casts the block's full shadow.
+- **Footing contract** (checked for every piece; see `tests/kit_check.gd`): nothing more than 0.03 m above a block's top, and nothing more than 0.16 m past its sides or bottom.
+- **To add a piece:**
+  1. Write a `build_<name>(B)` function, register it in `PIECES`, and rerun the script.
+  2. Run `godot --headless --path . --import`.
+  3. Place the piece in `GothicKit._masonry` / `_pillar` (or `single()` for a scaled one-off), and add it to `tests/kit_check.gd`.
+- **Visual checks** (visible window):
+  - `tools/dev/shot_kit.gd`: close-ups of the cornice edge, paving, pier, climb wall, mover, slab, and both sides of a tall face;
+  - `tools/dev/shot_ground.gd`: room views;
+  - `tools/dev/kit_perf.gd`: fps, draw calls and primitives.

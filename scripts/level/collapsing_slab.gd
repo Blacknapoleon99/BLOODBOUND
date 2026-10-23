@@ -13,7 +13,7 @@ var is_collapsed: bool = false
 var size: Vector3
 var _shape: CollisionShape3D
 var _mesh: MeshInstance3D
-var _material: ShaderMaterial
+var _material: ShaderMaterial  # its own copy: it flashes red
 var _base_color: Color
 var _trigger: Area3D
 var _armed_left: float = -1.0
@@ -30,12 +30,10 @@ static func create(label: String, center: Vector3, slab_size: Vector3) -> Collap
     box.size = slab_size
     slab._shape.shape = box
     slab.add_child(slab._shape)
-    slab._mesh = MeshInstance3D.new()
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = slab_size
-    slab._mesh.mesh = mesh
+    # Shattered slab over a core glowing through the cracks (DEC-056).
+    slab._mesh = GothicKit.single("cracked", slab_size, &"cracked")
     slab._base_color = Color(0.32, 0.24, 0.22)
-    slab._material = GothicMaterials.unique(&"cracked")  # its own copy: it flashes red (DEC-054)
+    slab._material = (slab._mesh.material_override as ShaderMaterial).duplicate() as ShaderMaterial
     slab._mesh.material_override = slab._material
     slab.add_child(slab._mesh)
     # Thin sensor on top: detects the player standing on the slab.

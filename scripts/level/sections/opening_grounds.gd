@@ -26,6 +26,7 @@ func build_grounds() -> void:
     _course()
     _finish_course()
     GothicDressing.dress(self)  # decor only (DEC-054)
+    _commit_kit()  # modelled architecture (DEC-056)
     Backdrop3D.attach(self)  # background world (DEC-055)
 
 

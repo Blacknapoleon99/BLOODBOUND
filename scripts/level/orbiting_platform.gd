@@ -28,12 +28,8 @@ static func create(label: String, at_center: Vector3, orbit_radius: float, lap_t
     box.size = slab_size
     shape.shape = box
     p.add_child(shape)
-    var mesh_node: MeshInstance3D = MeshInstance3D.new()
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = slab_size
-    mesh_node.mesh = mesh
-    mesh_node.material_override = GothicMaterials.block(&"iron")  # rusted iron, ember rim (DEC-054)
-    p.add_child(mesh_node)
+    # Riveted iron grate, ember-lit rim (DEC-056).
+    p.add_child(GothicKit.single("grate", slab_size, &"iron"))
     return p
 
 
