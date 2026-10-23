@@ -1443,11 +1443,15 @@ func _make_visual(label: String, center: Vector3, size: Vector3, color: Color, p
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = size
     mesh_node.mesh = mesh
-    var material: StandardMaterial3D = StandardMaterial3D.new()
-    material.albedo_color = color
-    material.metallic = 0.1
-    material.roughness = 0.9
-    mesh_node.material_override = material
+    var kind: StringName = GothicMaterials.kind_for_label(label)  # stone / masonry look (DEC-054)
+    if kind != &"":
+        mesh_node.material_override = GothicMaterials.block(kind)
+    else:
+        var material: StandardMaterial3D = StandardMaterial3D.new()
+        material.albedo_color = color
+        material.metallic = 0.1
+        material.roughness = 0.9
+        mesh_node.material_override = material
     if parent == null:
         parent = self
     parent.add_child(mesh_node)

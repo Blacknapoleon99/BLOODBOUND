@@ -25,6 +25,7 @@ func build_grounds() -> void:
     name = "Opening grounds"
     _course()
     _finish_course()
+    GothicDressing.dress(self)  # decor only (DEC-054)
 
 
 func _course() -> void:

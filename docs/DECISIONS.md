@@ -146,3 +146,36 @@
 
   Updated: the 3D "zig-zag ledges" check is now "completable and over 24 m across"; "floor spikes span the hall" is now "spike beds lie on their walkway"; the 3D ambush is now entered at its ring.
 - **Dev tools:** `tools/dev/room_stats.gd` prints every course's validator view; `tools/dev/shot_courses.gd` captures overviews (visible window).
+
+## DEC-054 — Level geometry look: gothic PBR stone, rubble undersides, props (2026-10-23)
+
+- **User direction:** "better looking ground assets ... it needs to look like a triple-A platformer, Super Mario 64 but a gorey dark gothic 3D platformer". This pass covers the level geometry only. Sky, lighting and fog belong to the renderer pass; background scenery belongs to the backdrop pass.
+- **Materials:** `GothicMaterials` (scripts/art/gothic_materials.gd) is a cached library of ShaderMaterials built from CC0 Poly Haven 1k scans in `assets/textures/gothic/` (about 13 MB; see CREDITS.md). Kinds: `floor`, `floor_cobble`, `floor_blood`, `pillar`, `wall`, `ossuary`, `climb`, `iron`, `cracked`, `breakable`, `rubble`, `column`, `rust`.
+- **Box shader** (`scripts/art/shaders/gothic_block.gdshader`):
+  - Planar mapping per face, in world metres, so any box size tiles. Movers map in local space so the texture doesn't swim.
+  - The walkable top uses flagstone or cobble. The sides use masonry and fade to near-black with depth.
+  - Fake bevel: the top rim and vertical corners tilt their normals and brighten.
+  - Moss and blood creep from the edges and drip down the sides; cobble is wet.
+  - Variation per block plus large-scale noise.
+  - The box half-size comes from the corner vertices, so one shared material fits every size.
+  - Plain GLSL only, so it works in Compatibility and Forward+.
+- **Which helper gets which material:**
+  - Each `plat` route gets its own top: route 2 is wet cobble, and about 20% of blocks are blood-stained. The exit pad is always bloody.
+  - `pillar`: darker shaft. `wall3`: dark masonry. Cellar dais: ossuary.
+  - `ClimbWall`: pale block, with the bone handholds unchanged so climbs still read.
+  - Movers: rusted iron with an ember rim glow.
+  - Collapsing slab: cracked bricks that flash red (a per-instance copy).
+  - Breakable floor: red light in its cracks.
+  - The exit arch is now blood-lit.
+  - main.gd's causeway solids and the portcullis now use the library (`kind_for_label`).
+- **Decor pass** (`GothicDressing.dress`, open courses and the opening grounds):
+  - A faceted rock chunk hangs under every floating walkable block. Its depth is capped so it stays 2.6 m above anything below, and there is none where a wall runs down through.
+  - About half of the platforms at least 3×3 m get one corner prop: a skull pile with bones, a candle cluster on a wax puddle, a broken column with a fallen drum, or a bent spear-topped iron fence.
+  - Props are procedural meshes in one MultiMesh per part, seeded per room. They stay 1.7 m clear of checkpoints, pickups, traps, altars, chests, levers, foes, hints, rings and the exit arch.
+- **Collision unchanged:** every helper still makes exactly the same bodies and shapes. Decor has no physics, and the route validator and tests are untouched.
+- **Dev tool:** `tools/dev/shot_ground.gd` captures close views (visible window).
+- **Not done:**
+  - Real modelled trim and edge caps (the bevel is a shader trick).
+  - Side-view backdrop materials.
+  - Boss arena and Reality Fracture blocks.
+  - Spike-trap and pendulum art.

@@ -39,3 +39,10 @@
 > Single original [character / prop] for a dark medieval action-platformer. Functional silhouette visible from a fixed side camera, readable negative space, weathered charcoal stone/bone/iron with restrained crimson accents. Neutral pose if animated, no base/pedestal, no text/logos, no environment; design appropriate for real-time 3D use. Target dimensions [meters], animation requirements [list], topology and texture constraints [budget]. Distinct from existing games/film designs.
 
 Record tool settings and costs, not API keys. Do not copy Tidebreaker, Shadow of the Colossus, or third-party signature character appearances.
+
+## Level geometry textures (DEC-054)
+
+- CC0 PBR scans live in `assets/textures/gothic/<set>_{diff,nor,arm}.jpg` with `CREDITS.md`.
+- Import settings (in the `.import` files): diffuse and ARM use VRAM compression with mipmaps; normal maps are lossless with mipmaps. Normals are OpenGL convention, and the shaders decode them by hand, so no normal-map import flag is needed.
+- To add a set: download the 1k `diff`, `nor_gl` and `arm` JPGs and name them `<set>_diff.jpg`, `<set>_nor.jpg` and `<set>_arm.jpg`. Copy the import params from an existing set, run `godot --headless --path . --import`, add a kind in `GothicMaterials._make`, and add a CREDITS row.
+- Check the look with `godot --path . -s res://tools/dev/shot_ground.gd -- <out_dir> [seed]` (a visible window, not headless).

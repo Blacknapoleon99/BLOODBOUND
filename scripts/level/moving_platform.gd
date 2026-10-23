@@ -27,11 +27,7 @@ static func create(label: String, from: Vector3, to: Vector3, slab_size: Vector3
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = slab_size
     mesh_node.mesh = mesh
-    var material: StandardMaterial3D = StandardMaterial3D.new()
-    material.albedo_color = Color(0.42, 0.3, 0.2)
-    material.emission_enabled = true
-    material.emission = Color(0.25, 0.08, 0.02)
-    mesh_node.material_override = material
+    mesh_node.material_override = GothicMaterials.block(&"iron")  # rusted iron, ember rim (DEC-054)
     platform.add_child(mesh_node)
     return platform
 

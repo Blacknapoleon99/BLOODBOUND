@@ -20,10 +20,7 @@ static func create(label: String, center: Vector3, size: Vector3, color: Color =
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = size
     body_mesh.mesh = mesh
-    var stone: StandardMaterial3D = StandardMaterial3D.new()
-    stone.albedo_color = color
-    stone.roughness = 0.95
-    body_mesh.material_override = stone
+    body_mesh.material_override = GothicMaterials.block(&"climb", color)  # pale block masonry (DEC-054)
     wall.add_child(body_mesh)
     wall.add_child(_handholds(size))
     return wall

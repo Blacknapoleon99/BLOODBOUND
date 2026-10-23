@@ -8,7 +8,7 @@ signal broken
 var health: Health
 var hurtbox: Hurtbox
 var is_broken: bool = false
-var _material: StandardMaterial3D
+var _material: ShaderMaterial
 var _shape: CollisionShape3D
 
 
@@ -26,10 +26,7 @@ static func create(center: Vector3, size: Vector3) -> BreakableFloor:
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = size
     mesh_node.mesh = mesh
-    slab._material = StandardMaterial3D.new()
-    slab._material.albedo_color = Color(0.36, 0.3, 0.28)
-    slab._material.emission_enabled = true
-    slab._material.emission = Color(0.45, 0.08, 0.05) * 0.35  # faint red cracks give it away
+    slab._material = GothicMaterials.block(&"breakable")  # faint red light in the cracks gives it away
     mesh_node.material_override = slab._material
     slab.add_child(mesh_node)
     slab.health = Health.new()

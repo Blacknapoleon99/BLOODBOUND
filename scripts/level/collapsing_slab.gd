@@ -13,7 +13,7 @@ var is_collapsed: bool = false
 var size: Vector3
 var _shape: CollisionShape3D
 var _mesh: MeshInstance3D
-var _material: StandardMaterial3D
+var _material: ShaderMaterial
 var _base_color: Color
 var _trigger: Area3D
 var _armed_left: float = -1.0
@@ -35,8 +35,7 @@ static func create(label: String, center: Vector3, slab_size: Vector3) -> Collap
     mesh.size = slab_size
     slab._mesh.mesh = mesh
     slab._base_color = Color(0.32, 0.24, 0.22)
-    slab._material = StandardMaterial3D.new()
-    slab._material.albedo_color = slab._base_color
+    slab._material = GothicMaterials.unique(&"cracked")  # its own copy: it flashes red (DEC-054)
     slab._mesh.material_override = slab._material
     slab.add_child(slab._mesh)
     # Thin sensor on top: detects the player standing on the slab.
@@ -67,7 +66,7 @@ func _physics_process(delta: float) -> void:
         _armed_left -= delta
         # Tremble: readable warning before the drop.
         _mesh.position = Vector3(randf_range(-0.05, 0.05), randf_range(-0.03, 0.03), 0.0)
-        _material.albedo_color = _base_color.lerp(Color(0.6, 0.15, 0.1), 1.0 - maxf(0.0, _armed_left) / collapse_delay)
+        _material.set_shader_parameter(&"flash", Color(0.6, 0.15, 0.1, 1.0 - maxf(0.0, _armed_left) / collapse_delay))
         if _armed_left <= 0.0:
             _collapse()
 
@@ -86,5 +85,5 @@ func restore() -> void:
     _armed_left = -1.0
     _mesh.visible = true
     _mesh.position = Vector3.ZERO
-    _material.albedo_color = _base_color
+    _material.set_shader_parameter(&"flash", Color(0.6, 0.15, 0.1, 0.0))
     _shape.set_deferred(&"disabled", false)

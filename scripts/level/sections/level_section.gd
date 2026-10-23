@@ -62,6 +62,9 @@ var pickups: Array[ShardPickup] = []
 var climb_walls: Array[ClimbWall] = []
 var _route: StringName = &""
 var _climbs: Array[Dictionary] = []
+## Every solid block's box (world centre `pos`, `size`, material `kind`, `walkable` top), for the
+## decor pass (GothicDressing, DEC-054): crumbled undersides and props. Visual data only.
+var dress_blocks: Array[Dictionary] = []
 
 
 ## Builds the room with its left edge at `at_x` (world). Call after adding it to the level.
@@ -78,6 +81,8 @@ func build(at_x: float) -> void:
     add_child(checkpoint)
     if not Lane.full_3d:
         _backdrop()  # full 3D: no walls at all — the course floats in the void
+    else:
+        GothicDressing.dress(self)  # decor only: rubble undersides and props (DEC-054)
 
 
 ## Override: lay out the room with the helpers (the side view).
@@ -99,7 +104,7 @@ func gx(local_x: float) -> float:
 ## Solid ground from x0 to x1 with its top at `top`, reaching down to `bottom` (a step block or
 ## a thick floor). Records the walkable top.
 func ground(x0: float, x1: float, top: float = 0.0, bottom: float = -1.0, label: String = "Ground") -> void:
-    _block(label, x0, x1, bottom, top, _palette)
+    _block(label, x0, x1, bottom, top, _palette, 0.0, -1.0, &"floor")
     _platform(Rect2(x0, top, x1 - x0, 0.0))
 
 
@@ -107,12 +112,12 @@ func ground(x0: float, x1: float, top: float = 0.0, bottom: float = -1.0, label:
 ## LEDGE_DEPTH_3D deep and alternates left/right of the hall's centre.
 func ledge(x0: float, x1: float, top: float, label: String = "Ledge") -> void:
     if not Lane.full_3d:
-        _block(label, x0, x1, top - 0.4, top, _palette.lightened(0.12))
+        _block(label, x0, x1, top - 0.4, top, _palette.lightened(0.12), 0.0, -1.0, &"floor")
         _platform(Rect2(x0, top, x1 - x0, 0.0))
         return
     var z: float = LEDGE_SWAY_3D * (1.0 if _ledges % 2 == 0 else -1.0)
     _ledges += 1
-    _block(label, x0, x1, top - 0.4, top, _palette.lightened(0.12), z, LEDGE_DEPTH_3D)
+    _block(label, x0, x1, top - 0.4, top, _palette.lightened(0.12), z, LEDGE_DEPTH_3D, &"floor")
     _platform(Rect2(x0, top, x1 - x0, 0.0), Vector2(z - LEDGE_DEPTH_3D * 0.5, z + LEDGE_DEPTH_3D * 0.5))
 
 
@@ -135,7 +140,7 @@ func z_range_at(x: float, top: float) -> Vector2:
 
 ## Solid, non-walkable scenery that blocks movement (ceilings, pillars).
 func block(x0: float, x1: float, y0: float, y1: float, label: String = "Wall") -> void:
-    _block(label, x0, x1, y0, y1, _palette.darkened(0.25))
+    _block(label, x0, x1, y0, y1, _palette.darkened(0.25), 0.0, -1.0, &"wall")
 
 
 func slab(center_x: float, top: float = 0.0, slab_width: float = 2.5) -> CollapsingSlab:
@@ -264,19 +269,19 @@ func pads(entry_len: float = 10.0, exit_len: float = 8.0) -> void:
 ## A flat walkable box centred at (local x, z), `w` along X, `d` along Z, top at `top`.
 func plat(cx: float, cz: float, w: float, d: float, top: float, label: String = "Platform", thick: float = 1.0) -> int:
     var tint: Color = _palette.lightened(0.1) if _route == &"" else _palette.lightened(0.03 + 0.04 * (routes.find(_route) % 3))
-    _block(label, cx - w * 0.5, cx + w * 0.5, top - thick, top, tint, cz, d)
+    _block(label, cx - w * 0.5, cx + w * 0.5, top - thick, top, tint, cz, d, _floor_kind(label, cx, cz, top))
     return _platform(Rect2(cx - w * 0.5, top, w, 0.0), Vector2(cz - d * 0.5, cz + d * 0.5))
 
 
 ## A column rising out of the void with a walkable top (stepping stones, perches).
 func pillar(cx: float, cz: float, size: float, top: float, label: String = "Pillar", depth: float = 8.0) -> int:
-    _block(label, cx - size * 0.5, cx + size * 0.5, top - depth, top, _palette.darkened(0.08), cz, size)
+    _block(label, cx - size * 0.5, cx + size * 0.5, top - depth, top, _palette.darkened(0.08), cz, size, &"pillar")
     return _platform(Rect2(cx - size * 0.5, top, size, 0.0), Vector2(cz - size * 0.5, cz + size * 0.5))
 
 
 ## Solid, non-walkable scenery at (local x, z): a wall-kick wall, a tunnel roof, cover.
 func wall3(cx: float, cz: float, w: float, d: float, y0: float, y1: float, label: String = "Wall") -> void:
-    _block(label, cx - w * 0.5, cx + w * 0.5, y0, y1, _palette.darkened(0.25), cz, d)
+    _block(label, cx - w * 0.5, cx + w * 0.5, y0, y1, _palette.darkened(0.25), cz, d, &"wall")
 
 
 ## A climbable block (bone handholds) from `bottom` to `top`; its top is walkable. Climbing it
@@ -285,6 +290,7 @@ func climb(cx: float, cz: float, w: float, d: float, bottom: float, top: float, 
     var wall: ClimbWall = ClimbWall.create(label, Vector3(gx(cx), (bottom + top) * 0.5, cz), Vector3(w, top - bottom, d), _palette.lightened(0.08))
     add_child(wall)
     climb_walls.append(wall)
+    dress_blocks.append({"pos": wall.position, "size": Vector3(w, top - bottom, d), "kind": &"climb", "walkable": false})
     var index: int = _platform(Rect2(cx - w * 0.5, top, w, 0.0), Vector2(cz - d * 0.5, cz + d * 0.5))
     _climbs.append({"x0": cx - w * 0.5, "x1": cx + w * 0.5, "z0": cz - d * 0.5, "z1": cz + d * 0.5, "bottom": bottom, "top": top, "index": index})
     return index
@@ -318,6 +324,8 @@ func lift(a: Vector3, b: Vector3, w: float = 3.0, d: float = 3.0, travel: float 
     p.travel_time = travel
     p.pause_time = 0.8
     add_child(p)
+    for end: Vector3 in [a, b]:  # rubble must not hang into a lift's path
+        dress_blocks.append({"pos": Vector3(gx(end.x), end.y - 0.3, end.z), "size": Vector3(w, 0.6, d), "kind": &"iron", "walkable": false})
     var i: int = _platform(Rect2(a.x - w * 0.5, a.y, w, 0.0), Vector2(a.z - d * 0.5, a.z + d * 0.5))
     var j: int = _platform(Rect2(b.x - w * 0.5, b.y, w, 0.0), Vector2(b.z - d * 0.5, b.z + d * 0.5))
     links.append(Vector2i(i, j))
@@ -329,6 +337,7 @@ func lift(a: Vector3, b: Vector3, w: float = 3.0, d: float = 3.0, travel: float 
 func orbit(cx: float, cz: float, top: float, radius: float, period: float = 9.0, angle0: float = 0.0, size: float = 3.0) -> OrbitingPlatform:
     var p: OrbitingPlatform = OrbitingPlatform.create("Orbiting platform", Vector3(gx(cx), top - 0.3, cz), radius, period, angle0, Vector3(size, 0.6, size))
     add_child(p)
+    dress_blocks.append({"pos": Vector3(gx(cx), top - 0.3, cz), "size": Vector3(radius * 2.0 + size, 0.6, radius * 2.0 + size), "kind": &"iron", "walkable": false})
     var first: int = platforms.size()
     for k in 8:
         var a: float = TAU * k / 8.0
@@ -354,15 +363,15 @@ func crumble(cx: float, cz: float, top: float, w: float = 2.6, d: float = 2.6) -
 ## 1.5 m down holding a reliquary of `kind`. Pound it (or strike it) to break in; hop back out.
 func cellar(cx: float, cz: float, top: float, kind: StringName, shards: int = 25) -> LootChest:
     var tint: Color = _palette.lightened(0.06)
-    _block("Cellar dais", cx - 3.0, cx - 1.0, top - 3.0, top, tint, cz, 6.0)
-    _block("Cellar dais", cx + 1.0, cx + 3.0, top - 3.0, top, tint, cz, 6.0)
-    _block("Cellar dais", cx - 1.0, cx + 1.0, top - 3.0, top, tint, cz - 2.0, 2.0)
-    _block("Cellar dais", cx - 1.0, cx + 1.0, top - 3.0, top, tint, cz + 2.0, 2.0)
+    _block("Cellar dais", cx - 3.0, cx - 1.0, top - 3.0, top, tint, cz, 6.0, &"ossuary")
+    _block("Cellar dais", cx + 1.0, cx + 3.0, top - 3.0, top, tint, cz, 6.0, &"ossuary")
+    _block("Cellar dais", cx - 1.0, cx + 1.0, top - 3.0, top, tint, cz - 2.0, 2.0, &"ossuary")
+    _block("Cellar dais", cx - 1.0, cx + 1.0, top - 3.0, top, tint, cz + 2.0, 2.0, &"ossuary")
     _platform(Rect2(cx - 3.0, top, 6.0, 0.0), Vector2(cz - 3.0, cz + 3.0))
     var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(cx), top - 0.5, cz), Vector3(2.0, 1.0, 2.0))
     add_child(crack)
     secrets.append(crack)
-    _block("Secret niche", cx - 1.0, cx + 1.0, top - 3.0, top - 1.5, _palette.darkened(0.2), cz, 2.0)
+    _block("Secret niche", cx - 1.0, cx + 1.0, top - 3.0, top - 1.5, _palette.darkened(0.2), cz, 2.0, &"wall")
     _platform(Rect2(cx - 1.0, top - 1.5, 2.0, 0.0), Vector2(cz - 1.0, cz + 1.0))
     var chest: LootChest = LootChest.create(Vector3(gx(cx), top - 1.5, cz - 0.4))
     chest.kind = kind
@@ -471,9 +480,9 @@ func platform_under(x: float, z: float, top: float) -> int:
 ## A glowing archway over the exit pad: the goal reads from anywhere on the course (decor only).
 func _exit_arch() -> void:
     var bone: StandardMaterial3D = StandardMaterial3D.new()
-    bone.albedo_color = Color(0.62, 0.55, 0.45)
+    bone.albedo_color = Color(0.3, 0.26, 0.22)
     bone.emission_enabled = true
-    bone.emission = Color(0.85, 0.22, 0.12) * 0.7
+    bone.emission = Color(0.75, 0.1, 0.05) * 0.65  # a blood-lit gate: the goal reads from anywhere
     var parts: Array = [
         [Vector3(width - 1.0, 3.5, -3.7), Vector3(0.5, 7.0, 0.5)],
         [Vector3(width - 1.0, 3.5, 3.7), Vector3(0.5, 7.0, 0.5)],
@@ -691,7 +700,19 @@ func _platform_at(local_x: float) -> int:
 
 # --- Internals ------------------------------------------------------------------------
 
-func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Color, z: float = 0.0, z_depth: float = -1.0) -> void:
+## The look of a walkable `plat` (DEC-054): pads and routes get different stone, some blood.
+func _floor_kind(label: String, cx: float, cz: float, top: float) -> StringName:
+    if label == "Exit pad":
+        return &"floor_blood"
+    if _route == &"":
+        return &"floor"
+    var roll: float = fposmod(sin(cx * 12.9898 + cz * 78.233 + top * 37.719 + origin_x) * 43758.5453, 1.0)
+    if roll < 0.2:
+        return &"floor_blood"
+    return &"floor_cobble" if routes.find(_route) % 3 == 1 else &"floor"
+
+
+func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Color, z: float = 0.0, z_depth: float = -1.0, kind: StringName = &"wall") -> void:
     var body: StaticBody3D = StaticBody3D.new()
     body.name = label
     body.position = Vector3(gx((x0 + x1) * 0.5), (y0 + y1) * 0.5, z)
@@ -705,12 +726,10 @@ func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Co
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = size
     mesh_node.mesh = mesh
-    var material: StandardMaterial3D = StandardMaterial3D.new()
-    material.albedo_color = color
-    material.roughness = 0.9
-    mesh_node.material_override = material
+    mesh_node.material_override = GothicMaterials.block(kind, _palette)
     body.add_child(mesh_node)
     add_child(body)
+    dress_blocks.append({"pos": body.position, "size": size, "kind": kind, "walkable": kind != &"wall", "color": color})
 
 
 ## Dark back wall and a few pillars so each room reads as a place (decor only).
