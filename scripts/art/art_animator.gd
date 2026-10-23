@@ -48,6 +48,65 @@ const HERO_POSES: Dictionary = {
     &"shimmy": [&"hold", &"walk", &"travel"], &"climb": [&"hold", &"walk", &"travel"],
     &"knockback": [&"hold", &"hit_to_body_01", &"time"],
 }
+## The hero's full moveset (DEC-059): Kimodo text-to-motion clips retargeted onto the hero
+## (assets/models/player/hero_kimodo_anims.res, built by tools/kimodo). Used instead of the
+## placeholder rows above whenever the model has every clip named here.
+## Rows: [&"loco"] | [&"air"] | [&"hold", clip, mode, ...] with modes (seconds of the clip):
+##   &"play" from, to, rate     plays from `from` at `rate` x the state's time, holding at `to`;
+##   &"loop" from, to, rate     the same, wrapping inside [from, to];
+##   &"stride" from, to, metres one [from, to] cycle per `metres` moved (hands keep pace);
+##   &"progress" from, to       the move's own 0..1 progress (pull-up, climb leap);
+##   &"at" t                    one held frame.
+const HERO_MOVESET: Dictionary = {
+    &"idle": [&"loco"], &"walk": [&"loco"], &"push": [&"loco"], &"attack": [&"loco"], &"dash": [&"loco"],
+    &"fall": [&"air"],
+    &"crouch": [&"hold", &"crouch", &"loop", 0.3, 3.0, 1.0],
+    &"land": [&"hold", &"land_hard", &"play", 0.1, 0.4, 1.2],
+    &"jump": [&"hold", &"air_jump", &"play", 0.43, 0.95, 1.4],
+    &"triple": [&"hold", &"front_flip", &"play", 0.4, 1.7, 1.9],
+    &"backflip": [&"hold", &"backflip", &"play", 0.35, 1.6, 1.8],
+    &"side_flip": [&"hold", &"side_flip", &"play", 0.55, 1.9, 1.9],
+    &"long_jump": [&"hold", &"long_jump", &"play", 0.5, 1.25, 1.0],
+    &"wall_kick": [&"hold", &"wall_kick", &"play", 0.1, 1.2, 1.6],
+    &"pound_spin": [&"hold", &"front_flip", &"play", 0.75, 1.35, 2.1],
+    &"pound_fall": [&"hold", &"air_jump", &"at", 0.75],
+    &"pound_land": [&"hold", &"ground_pound", &"play", 0.4, 0.62, 1.0],
+    &"bonk": [&"hold", &"knockback", &"play", 0.25, 1.3, 1.5],
+    &"brake": [&"hold", &"skid", &"play", 0.3, 1.2, 1.4],
+    &"skid": [&"hold", &"skid", &"play", 0.3, 1.2, 1.4],
+    &"slide": [&"hold", &"slide", &"loop", 0.3, 2.0, 1.0],
+    &"slope_slide": [&"hold", &"slide", &"loop", 0.3, 2.0, 1.0],
+    &"wall_slide": [&"hold", &"wall_slide", &"play", 0.3, 1.0, 1.0],
+    &"hang": [&"hold", &"ledge_hang", &"loop", 0.0, 3.3, 1.0],
+    &"shimmy": [&"hold", &"shimmy", &"stride", 0.0, 3.3, 2.0],
+    &"pull_up": [&"hold", &"pull_up", &"progress", 0.2, 2.2],
+    &"climb": [&"hold", &"climb", &"stride", 0.0, 3.3, 3.0],
+    &"climb_leap": [&"hold", &"air_jump", &"progress", 0.43, 0.95],
+    &"knockback": [&"hold", &"knockback", &"play", 0.0, 1.5, 1.2],
+}
+## Poses whose clip turns the whole body over (the procedural flip is skipped for them).
+const CLIP_FLIPS: Array[StringName] = [&"triple", &"backflip", &"side_flip", &"pound_spin"]
+## Each step of the hero's combo swings its own whole clip (DEC-059).
+const ATTACK_CLIPS: Dictionary = {
+    &"player_light": &"slash_1", &"player_light_2": &"slash_2", &"player_light_finisher": &"slash_3",
+    &"player_heavy": &"heavy_overhead",
+}
+## Attack playback (clips with "strike"/"motion_start"/"motion_end" metadata): the wind-up plays
+## over the attack's STARTUP, the clip's contact (the sword hand's fastest frame, +-
+## STRIKE_HALF seconds) over ACTIVE, and the follow-through over RECOVERY plus a visual-only
+## FOLLOW_TAIL that any next action interrupts. No segment plays faster than MAX_SWING_RATE: a
+## wind-up too long for a fast startup starts part-way in instead of being squeezed.
+const STRIKE_HALF: float = 0.06
+const FOLLOW_TAIL: float = 0.25
+const MAX_SWING_RATE: float = 4.0
+const ATTACK_FADE_OUT: float = 0.18
+## Boost sprint over the run (m/s at which it starts and is fully in).
+const SPRINT_FROM: float = 7.5
+const SPRINT_FULL: float = 10.0
+## Clips that loop on their own (locomotion and stance).
+const LOOP_CLIPS: Array[StringName] = [&"idle", &"walk", &"run", &"fall", &"combat_idle", &"sprint"]
+## Seconds both held-clip slots cross-fade when the held clip changes.
+const HOLD_SWAP: float = 0.1
 ## Metres of shimmy/climb per walk-clip cycle (hands and feet keep pace with the body).
 const HOLD_STRIDE: float = 1.4
 ## Locomotion playback may speed up this far past the run clip (feet planted at 10.8 m/s+).
@@ -87,16 +146,36 @@ var _hold: float = 0.0
 var _hold_clip: StringName = &""
 var _lean_pitch: float = 0.0
 var _lean_roll: float = 0.0
+## The moveset table in use (HERO_MOVESET when the model has its clips, else HERO_POSES).
+var poses: Dictionary = HERO_POSES
+var real_moveset: bool = false
+## Held-clip slots A/B (cross-faded when the clip changes) and the active one.
+var _slot: int = 0
+var _slot_clip: Array[StringName] = [&"", &""]
+var _ab: float = 0.0
+var _stance: float = 0.0
+var _boost: float = 0.0
+var _sprint_ref: float = 4.4
+## The attack being played by plan (see attack_plan) and its game time; tests read
+## action_src_time (seconds into the clip) to check the contact lands in ACTIVE.
+var _plan: Dictionary = {}
+var _plan_t: float = 0.0
+var action_src_time: float = -1.0
 ## Cached busiest-window start per Animation resource.
 static var _window_cache: Dictionary = {}
 ## Cached [start, length] spans found from the hips' height (see _hips_span).
 static var _span_cache: Dictionary = {}
 
 
-static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringName, height: float = 1.8) -> ArtAnimator:
+static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringName, height: float = 1.8, extra: AnimationLibrary = null) -> ArtAnimator:
     var players: Array[Node] = art.find_children("*", "AnimationPlayer", true, false)
     if players.is_empty():
         return null
+    if extra != null:  # retargeted clips (the hero's moveset) join the model's own library
+        var own: AnimationLibrary = (players[0] as AnimationPlayer).get_animation_library(&"")
+        for clip: StringName in extra.get_animation_list():
+            if not own.has_animation(clip):
+                own.add_animation(clip, extra.get_animation(clip))
     var animator: ArtAnimator = ArtAnimator.new()
     animator.name = "ArtAnimator"
     animator.body = owner_body
@@ -111,7 +190,11 @@ static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringN
     animator._last_pos = owner_body.global_position if owner_body.is_inside_tree() else owner_body.position
     for clip: StringName in animator.player.get_animation_list():
         var anim: Animation = animator.player.get_animation(clip)
-        anim.loop_mode = Animation.LOOP_LINEAR if clip in [&"idle", &"walk", &"run", &"fall"] else Animation.LOOP_NONE
+        anim.loop_mode = Animation.LOOP_LINEAR if clip in LOOP_CLIPS else Animation.LOOP_NONE
+    animator.real_moveset = animator._has_moveset()
+    animator.poses = HERO_MOVESET if animator.real_moveset else HERO_POSES
+    if animator.player.has_animation(&"sprint"):
+        animator._sprint_ref = float(animator.player.get_animation(&"sprint").get_meta(&"treadmill_speed", 2.45)) * height
     art.add_child(animator)
     animator._build_tree()
     animator._connect_gameplay_signals()
@@ -145,6 +228,20 @@ func _build_tree() -> void:
     root.add_node(&"loco", loco)
     root.add_node(&"loco_speed", AnimationNodeTimeScale.new())
     root.connect_node(&"loco_speed", 0, &"loco")
+    # Combat stance over standing still (sword drawn), and the boost sprint over the run.
+    var ground: StringName = &"loco_speed"
+    for extra: Array in [[&"stance", &"combat_idle"], [&"boost", &"sprint"]]:
+        if not player.has_animation(extra[1]):
+            continue
+        var clip_node: AnimationNodeAnimation = AnimationNodeAnimation.new()
+        clip_node.animation = extra[1]
+        root.add_node(StringName("%s_clip" % extra[0]), clip_node)
+        root.add_node(StringName("%s_speed" % extra[0]), AnimationNodeTimeScale.new())
+        root.connect_node(StringName("%s_speed" % extra[0]), 0, StringName("%s_clip" % extra[0]))
+        root.add_node(extra[0], AnimationNodeBlend2.new())
+        root.connect_node(extra[0], 0, ground)
+        root.connect_node(extra[0], 1, StringName("%s_speed" % extra[0]))
+        ground = extra[0]
 
     var fall: AnimationNodeAnimation = AnimationNodeAnimation.new()
     fall.animation = &"fall" if player.has_animation(&"fall") else _loco_anim_name(0)
@@ -160,19 +257,24 @@ func _build_tree() -> void:
             fall.loop_mode = Animation.LOOP_LINEAR
     root.add_node(&"fall", fall)
     root.add_node(&"air", AnimationNodeBlend2.new())
-    root.connect_node(&"air", 0, &"loco_speed")
+    root.connect_node(&"air", 0, ground)
     root.connect_node(&"air", 1, &"fall")
-    # Held / scrubbed poses: a clip frozen (time scale 0) and placed by a seek every frame.
-    var hold: AnimationNodeAnimation = AnimationNodeAnimation.new()
-    hold.animation = player.get_animation_list()[0]
-    root.add_node(&"hold_clip", hold)
-    root.add_node(&"hold_scale", AnimationNodeTimeScale.new())
-    root.connect_node(&"hold_scale", 0, &"hold_clip")
-    root.add_node(&"hold_seek", AnimationNodeTimeSeek.new())
-    root.connect_node(&"hold_seek", 0, &"hold_scale")
+    # Held / scrubbed poses: two slots (A/B, cross-faded when the held clip changes), each a clip
+    # frozen (time scale 0) and placed by a seek every frame.
+    for slot: String in ["hold_a", "hold_b"]:
+        var hold: AnimationNodeAnimation = AnimationNodeAnimation.new()
+        hold.animation = player.get_animation_list()[0]
+        root.add_node(StringName(slot + "_clip"), hold)
+        root.add_node(StringName(slot + "_scale"), AnimationNodeTimeScale.new())
+        root.connect_node(StringName(slot + "_scale"), 0, StringName(slot + "_clip"))
+        root.add_node(StringName(slot + "_seek"), AnimationNodeTimeSeek.new())
+        root.connect_node(StringName(slot + "_seek"), 0, StringName(slot + "_scale"))
+    root.add_node(&"hold_ab", AnimationNodeBlend2.new())
+    root.connect_node(&"hold_ab", 0, &"hold_a_seek")
+    root.connect_node(&"hold_ab", 1, &"hold_b_seek")
     root.add_node(&"base", AnimationNodeBlend2.new())
     root.connect_node(&"base", 0, &"air")
-    root.connect_node(&"base", 1, &"hold_seek")
+    root.connect_node(&"base", 1, &"hold_ab")
 
     for layer: StringName in [&"full", &"upper"]:
         var shot: AnimationNodeAnimation = AnimationNodeAnimation.new()
@@ -195,7 +297,9 @@ func _build_tree() -> void:
     _has_upper = _mask_upper_body(root.get_node(&"upper") as AnimationNodeOneShot)
     tree.tree_root = root
     tree.active = true
-    tree.set("parameters/hold_scale/scale", 0.0)
+    tree.set("parameters/hold_a_scale/scale", 0.0)
+    tree.set("parameters/hold_b_scale/scale", 0.0)
+    tree.set("parameters/hold_ab/blend_amount", 0.0)
     tree.set("parameters/base/blend_amount", 0.0)
 
 
@@ -241,6 +345,9 @@ func act(clip: StringName, duration: float, kind: StringName, upper: bool) -> bo
     var start: float = clampf(_busiest_start(anim, window), 0.0, maxf(0.0, anim.length - window))
     if kind == &"hit":
         start = 0.0  # reactions read best from their first frame
+    if kind == &"roll":  # the whole roll: from the dip to back on the feet
+        start = 0.1
+        window = anim.length - 0.02 - start  # through to back on the feet
     if kind == &"jump" or kind == &"dive":
         # The takeoff of one hop / the leap of the dive, never the landing or lying on the floor:
         # the air pose and locomotion take over from there, driven by the real jump.
@@ -250,6 +357,10 @@ func act(clip: StringName, duration: float, kind: StringName, upper: bool) -> bo
             window = span[1]
     var layer: StringName = &"upper" if upper and _has_upper else &"full"
     var root: AnimationNodeBlendTree = tree.tree_root as AnimationNodeBlendTree
+    if not _plan.is_empty() and _plan["layer"] == layer:
+        _plan = {}  # a new action on the same layer interrupts the swing
+        action_src_time = -1.0
+    (root.get_node(layer) as AnimationNodeOneShot).fadeout_time = FADE_OUT
     var shot: AnimationNodeAnimation = root.get_node(StringName("%s_clip" % layer)) as AnimationNodeAnimation
     shot.animation = clip
     shot.start_offset = start
@@ -266,6 +377,92 @@ func play_once(clip: StringName, speed: float = 1.0) -> bool:
     var kind: StringName = &"draw" if clip == &"draw" or clip == &"sheathe" else &"attack"
     var length: float = player.get_animation(clip).length if player.has_animation(clip) else 0.0
     return act(clip, length / maxf(speed, 0.01), kind, true)
+
+
+## The whole swing of `clip` laid onto an attack's phases (game seconds already divided by the
+## weapon speed): {"clip", "start", "end", "contact", "segments": [[game seconds, src from,
+## src to] x3]} for startup / active / recovery+tail. Empty if the clip has no strike metadata.
+func attack_plan(clip: StringName, startup: float, active: float, recovery: float) -> Dictionary:
+    if not player.has_animation(clip):
+        return {}
+    var anim: Animation = player.get_animation(clip)
+    if not anim.has_meta(&"strike"):
+        return {}
+    var c: float = float(anim.get_meta(&"strike"))
+    var hit_from: float = maxf(0.0, c - STRIKE_HALF)
+    var hit_to: float = minf(anim.length, c + STRIKE_HALF)
+    var start: float = minf(float(anim.get_meta(&"motion_start", 0.0)), hit_from)
+    start = maxf(start, hit_from - maxf(startup, 0.01) * MAX_SWING_RATE)  # start part-way in if needed
+    var follow: float = recovery + FOLLOW_TAIL
+    var end: float = clampf(float(anim.get_meta(&"motion_end", anim.length)) + 0.1, hit_to, anim.length)
+    end = minf(end, hit_to + follow * MAX_SWING_RATE)
+    return {"clip": clip, "start": start, "end": end, "contact": c,
+        "segments": [[maxf(startup, 0.001), start, hit_from], [maxf(active, 0.001), hit_from, hit_to], [follow, hit_to, end]]}
+
+
+## Seconds into the clip that `plan` shows `t` game seconds after the attack started.
+static func plan_time(plan: Dictionary, t: float) -> float:
+    var left: float = t
+    for seg: Array in plan["segments"]:
+        if left <= seg[0]:
+            return lerpf(seg[1], seg[2], left / seg[0])
+        left -= seg[0]
+    return float(plan["end"])
+
+
+## Plays an attack plan on the full or upper layer; _physics_process steps each segment's rate.
+func act_plan(plan: Dictionary, upper: bool) -> void:
+    var layer: StringName = &"upper" if upper and _has_upper else &"full"
+    var root: AnimationNodeBlendTree = tree.tree_root as AnimationNodeBlendTree
+    var shot: AnimationNodeAnimation = root.get_node(StringName("%s_clip" % layer)) as AnimationNodeAnimation
+    shot.animation = plan["clip"]
+    shot.start_offset = plan["start"]
+    shot.timeline_length = float(plan["end"]) - float(plan["start"])
+    shot.stretch_time_scale = false
+    var one: AnimationNodeOneShot = root.get_node(layer) as AnimationNodeOneShot
+    one.fadeout_time = ATTACK_FADE_OUT
+    _plan = plan.duplicate()
+    _plan["layer"] = layer
+    _plan_t = 0.0
+    action_src_time = float(plan["start"])
+    _step_plan(0.0)
+    tree.set("parameters/%s/request" % layer, AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+func _step_plan(delta: float) -> void:
+    if _plan.is_empty():
+        return
+    _plan_t += delta
+    action_src_time = plan_time(_plan, _plan_t)
+    var left: float = _plan_t
+    var rate: float = 1.0
+    for seg: Array in _plan["segments"]:
+        rate = (float(seg[2]) - float(seg[1])) / float(seg[0])
+        if left < seg[0]:
+            break
+        left -= seg[0]
+    tree.set("parameters/%s_speed/scale" % _plan["layer"], clampf(rate, 0.05, MAX_SWING_RATE))
+    if _plan_t > _plan_length():
+        _plan = {}
+        action_src_time = -1.0
+
+
+func _plan_length() -> float:
+    var total: float = 0.0
+    for seg: Array in _plan["segments"]:
+        total += float(seg[0])
+    return total
+
+
+## True when the model carries every clip the hero moveset (and its combo) needs.
+func _has_moveset() -> bool:
+    for row: Array in HERO_MOVESET.values():
+        if row.size() > 1 and not player.has_animation(row[1]):
+            return false
+    for clip: StringName in ATTACK_CLIPS.values():
+        if not player.has_animation(clip):
+            return false
+    return true
 
 
 ## Start of the `window`-second stretch with the most bone rotation (cached per clip).
@@ -387,8 +584,8 @@ func _connect_gameplay_signals() -> void:
 ## and a full-body takeoff would fight them.
 func _on_jumped() -> void:
     var motor: PlatformerMotor = _hero_motor()
-    if motor != null and motor.jump_kind not in [PlatformerMotor.Jump.SINGLE, PlatformerMotor.Jump.DOUBLE]:
-        return
+    if motor != null and (real_moveset or motor.jump_kind not in [PlatformerMotor.Jump.SINGLE, PlatformerMotor.Jump.DOUBLE]):
+        return  # the real moveset's jump row plays the takeoff from the motor state
     act(&"jump", 0.22, &"jump", false)  # the takeoff only
 
 
@@ -403,6 +600,17 @@ func _on_melee_attack(data: Variant = null) -> void:
     var melee: MeleeAttack = body.get("melee") as MeleeAttack
     var duration: float = 0.5
     var clip: StringName = _attack_clip()
+    if attack != null and ATTACK_CLIPS.has(attack.id) and player.has_animation(ATTACK_CLIPS[attack.id]):
+        # The hero's moveset: the whole swing, its contact on the attack's ACTIVE window.
+        var rate: float = maxf(0.1, melee.speed_scale * melee.haste_scale) if melee else 1.0
+        var plan: Dictionary = attack_plan(ATTACK_CLIPS[attack.id], attack.startup / rate, attack.active / rate, attack.recovery / rate)
+        if not plan.is_empty():
+            if weapon != null:
+                weapon.call(&"note_attack")
+                if not weapon.get(&"drawn"):
+                    weapon.call(&"begin_draw", 0.0)  # the wind-up itself brings the sword round
+            act_plan(plan, _moving() or not _grounded())
+            return
     if attack != null:
         var speed: float = maxf(0.1, melee.speed_scale * melee.haste_scale) if melee else 1.0
         duration = (attack.startup + attack.active + attack.recovery) / speed
@@ -435,6 +643,9 @@ func _on_named_attack(id: Variant = null) -> void:
 
 func _on_dodge(_dir: Variant = null) -> void:
     var duration: float = float(body.get("dodge_invulnerable_time")) if "dodge_invulnerable_time" in body else 0.35
+    if real_moveset and player.has_animation(&"roll"):
+        act(&"roll", maxf(0.3, duration + 0.14), &"roll", false)  # a whole forward roll
+        return
     act(&"dive", maxf(0.3, duration + 0.06), &"dive", false)
 
 
@@ -483,6 +694,11 @@ func _moving() -> bool:
     return Vector2(_velocity.x, _velocity.z).length() > 1.0
 
 
+func _grounded() -> bool:
+    var character: CharacterBody3D = body as CharacterBody3D
+    return character == null or character.is_on_floor()
+
+
 # --- Procedural moveset poses (placeholder until real clips) ----------------------------------
 
 ## The 3D hero's motor, or null (side view, enemies, the Bishop).
@@ -504,7 +720,21 @@ func _apply_pose(delta: float) -> void:
     var lean_pitch: float = 0.0
     var lean_roll: float = 0.0
     var motor: PlatformerMotor = _hero_motor()
-    if motor != null:
+    if motor != null and real_moveset:
+        # Real clips carry the flips, slides, hangs and climbs; only the run lean, the long
+        # jump's dive and a small landing give stay procedural.
+        var t2: float = motor.state_time
+        match motor.state:
+            PlatformerMotor.State.AIR:
+                if motor.jump_kind == PlatformerMotor.Jump.LONG:
+                    pitch = deg_to_rad(45.0) * smoothstep(0.0, 0.15, t2)
+            PlatformerMotor.State.GROUND, PlatformerMotor.State.DECEL:
+                var run: float = maxf(0.0, motor.forward_speed)
+                lean_pitch = deg_to_rad(8.0) * clampf(run / PlatformerMotor.RUN_SPEED, 0.0, 1.5)
+                lean_roll = clampf(-motor.turn_speed * run * 0.02, -deg_to_rad(25.0), deg_to_rad(25.0))
+            PlatformerMotor.State.LAND:
+                squash = lerpf(0.93, 1.0, smoothstep(0.0, 0.13, t2))
+    elif motor != null:
         var t: float = motor.state_time
         match motor.state:
             PlatformerMotor.State.AIR:
@@ -581,7 +811,7 @@ func character_velocity() -> Vector3:
 func _drive_hero(motor: PlatformerMotor, delta: float) -> void:
     var a: Dictionary = motor.anim_state()
     pose = a["pose"]
-    var row: Array = HERO_POSES.get(pose, [&"loco"])
+    var row: Array = poses.get(pose, [&"loco"])
     var layer: StringName = row[0]
     var speed: float = float(a["speed"]) if layer == &"loco" else 0.0
     _speed_smoothed = lerpf(_speed_smoothed, speed, 1.0 - exp(-20.0 * delta))
@@ -589,15 +819,64 @@ func _drive_hero(motor: PlatformerMotor, delta: float) -> void:
     tree.set("parameters/loco/blend_position", minf(_speed_smoothed, top) if top > 0.0 else 0.0)
     var over: float = _speed_smoothed / top if top > 0.0 else 1.0
     tree.set("parameters/loco_speed/scale", clampf(over, 1.0, LOCO_MAX_RATE) if _loco_points.size() > 1 else clampf(over, 0.25, LOCO_MAX_RATE))
+    _drive_stance(_speed_smoothed, delta)
     if layer == &"hold":
-        _set_hold(row, float(a["progress"]))
+        if real_moveset:
+            _set_slot(row, float(a["progress"]), float(a["time"]))
+        else:
+            _set_hold(row, float(a["progress"]))
     _air = move_toward(_air, 1.0 if layer == &"air" else 0.0, (7.0 if layer == &"air" else 10.0) * delta)
     _hold = move_toward(_hold, 1.0 if layer == &"hold" else 0.0, 12.0 * delta)
+    _ab = move_toward(_ab, float(_slot), delta / HOLD_SWAP)
+    tree.set("parameters/hold_ab/blend_amount", _ab)
     tree.set("parameters/air/blend_amount", _air)
     tree.set("parameters/base/blend_amount", _hold)
 
 
-## Places the held clip for a hold-layer pose (see HERO_POSES).
+## Combat stance (sword drawn, standing) and boost sprint (top speed) over the locomotion.
+func _drive_stance(speed: float, delta: float) -> void:
+    var drawn: bool = weapon != null and bool(weapon.get(&"drawn"))
+    _stance = move_toward(_stance, 1.0 if drawn and speed < 0.4 else 0.0, 5.0 * delta)
+    _boost = move_toward(_boost, smoothstep(SPRINT_FROM * size_scale, SPRINT_FULL * size_scale, speed), 4.0 * delta)
+    if player.has_animation(&"combat_idle"):
+        tree.set("parameters/stance/blend_amount", _stance)
+    if player.has_animation(&"sprint"):
+        tree.set("parameters/boost/blend_amount", _boost)
+        tree.set("parameters/boost_speed/scale", clampf(speed / maxf(_sprint_ref, 0.1), 0.5, LOCO_MAX_RATE))
+
+
+## Places a real-moveset held clip in the A/B slots (see HERO_MOVESET): a new clip goes into the
+## other slot and the two cross-fade, so changing poses never pops.
+func _set_slot(row: Array, progress: float, time: float) -> void:
+    var clip: StringName = row[1]
+    if clip != _slot_clip[_slot]:
+        _slot = 1 - _slot
+        _slot_clip[_slot] = clip
+        var node: StringName = &"hold_b_clip" if _slot == 1 else &"hold_a_clip"
+        ((tree.tree_root as AnimationNodeBlendTree).get_node(node) as AnimationNodeAnimation).animation = clip
+    _hold_clip = clip
+    var length: float = player.get_animation(clip).length
+    hold_time = clampf(pose_clip_time(row, progress, time), 0.0, length)
+    tree.set("parameters/%s/seek_request" % ("hold_b_seek" if _slot == 1 else "hold_a_seek"), hold_time)
+
+
+## Seconds into the row's clip for a pose `time` seconds old with move `progress` (HERO_MOVESET).
+static func pose_clip_time(row: Array, progress: float, time: float) -> float:
+    match row[2]:
+        &"play":
+            return minf(float(row[3]) + time * float(row[5]), float(row[4]))
+        &"loop":
+            return float(row[3]) + fposmod(time * float(row[5]), float(row[4]) - float(row[3]))
+        &"stride":
+            return float(row[3]) + fposmod(progress / float(row[5]), 1.0) * (float(row[4]) - float(row[3]))
+        &"progress":
+            return lerpf(float(row[3]), float(row[4]), clampf(progress, 0.0, 1.0))
+        &"at":
+            return float(row[3])
+    return 0.0
+
+
+## Places the held clip for a placeholder pose (HERO_POSES, models without the moveset).
 func _set_hold(row: Array, progress: float) -> void:
     var clip: StringName = row[1]
     if not player.has_animation(clip):
@@ -605,7 +884,7 @@ func _set_hold(row: Array, progress: float) -> void:
     var anim: Animation = player.get_animation(clip)
     if clip != _hold_clip:
         _hold_clip = clip
-        ((tree.tree_root as AnimationNodeBlendTree).get_node(&"hold_clip") as AnimationNodeAnimation).animation = clip
+        ((tree.tree_root as AnimationNodeBlendTree).get_node(&"hold_a_clip") as AnimationNodeAnimation).animation = clip
     var mode: StringName = row[2] if row.size() > 2 else &"frame"
     var t: float = 0.0
     match mode:
@@ -621,7 +900,7 @@ func _set_hold(row: Array, progress: float) -> void:
             var length: float = float(span[1]) if not span.is_empty() else anim.length
             t = start + length * (1.0 if mode == &"peak" else clampf(progress, 0.0, 1.0))
     hold_time = clampf(t, 0.0, anim.length)
-    tree.set("parameters/hold_seek/seek_request", hold_time)
+    tree.set("parameters/hold_a_seek/seek_request", hold_time)
 
 
 # --- Per frame --------------------------------------------------------------------------------
@@ -644,6 +923,7 @@ func _physics_process(delta: float) -> void:
             var turn_rate: float = 28.0 if body.get("view_camera") != null else 20.0
             _yaw = lerp_angle(_yaw, atan2(f.x, f.z), 1.0 - exp(-turn_rate * delta))
         _apply_pose(delta)
+    _step_plan(delta)
     if not _queued.is_empty() and _clock >= _queued_at:
         var next: Dictionary = _queued
         _queued = {}
@@ -665,6 +945,7 @@ func _physics_process(delta: float) -> void:
     tree.set("parameters/loco/blend_position", minf(_speed_smoothed, top) if top > 0.0 else 0.0)
     var over: float = _speed_smoothed / top if top > 0.0 else 1.0
     tree.set("parameters/loco_speed/scale", clampf(over, 1.0, 1.8) if _loco_points.size() > 1 else clampf(over, 0.25, 1.8))
+    _drive_stance(_speed_smoothed, delta)
     # Air: the air pose whenever really airborne (rising or falling); a short grace keeps steps
     # and slope lips from flickering it; landing eases straight back into locomotion.
     var grounded: bool = character == null or character.is_on_floor()

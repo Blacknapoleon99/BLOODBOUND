@@ -37,7 +37,8 @@ const ENEMY_MODELS: Dictionary = {
     # The Bone Revenant (chosen hero). cursed_knight.glb (the Blood Knight) stays as a fallback model.
     &"res://scripts/player.gd": {"path": "res://assets/models/player/bone_revenant.glb", "visual": "VisualRoot",
         "hide": ["PlaceholderKnight"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.85, "steer": true, "move": &"run",
-        "weapon": "res://assets/models/player/revenant_sword.glb"},
+        "weapon": "res://assets/models/player/revenant_sword.glb",
+        "anims": "res://assets/models/player/hero_kimodo_anims.res"},  # the full moveset (DEC-059)
     &"BoneArcher": {"path": "res://assets/models/enemies/bone_archer.glb", "visual": "_visual",
         "hide": ["Body"], "yaw": PI * 0.5, "height": 1.8, "feet": -0.9},
     &"ShieldedKnight": {"path": "res://assets/models/enemies/shielded_knight.glb", "visual": "_visual",
@@ -162,7 +163,8 @@ static func _dress_enemy(enemy: Node, cfg: Dictionary) -> void:
     if cfg.has("weapon"):
         weapon = ArtWeapon.attach(enemy as Node3D, art, load(cfg["weapon"]) as PackedScene, h)
     ArtCloth.attach(art)
-    var animator: ArtAnimator = ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk"), float(cfg.get("height", 1.8))) if enemy is CharacterBody3D else null
+    var anims: AnimationLibrary = load(cfg["anims"]) as AnimationLibrary if cfg.has("anims") and ResourceLoader.exists(cfg["anims"]) else null
+    var animator: ArtAnimator = ArtAnimator.attach(enemy, art, cfg.get("steer", false), cfg.get("move", &"walk"), float(cfg.get("height", 1.8)), anims) if enemy is CharacterBody3D else null
     if weapon != null:
         if animator != null:
             animator.weapon = weapon

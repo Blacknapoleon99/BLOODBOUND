@@ -35,3 +35,6 @@ Thumbs.db
 .playwright-mcp/
 .mcp/
 tools/.elevenlabs_cache*/
+
+# Kimodo raw samples (regenerate with tools/kimodo/kimodo_generate.py; seeds are fixed)
+tools/kimodo/raw/
