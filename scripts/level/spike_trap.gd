@@ -45,22 +45,45 @@ func cycle_time() -> float:
 
 
 func _build() -> void:
-    var plate: MeshInstance3D = MeshInstance3D.new()
-    var plate_mesh: BoxMesh = BoxMesh.new()
-    plate_mesh.size = Vector3(width, 0.04, depth)
-    plate.mesh = plate_mesh
     _plate_material = GothicMaterials.standard("rust_iron", Color(0.55, 0.42, 0.38), 0.8)  # a rusted grate (DEC-054)
-    plate.material_override = _plate_material
-    plate.position.y = 0.02
-    add_child(plate)
-    _spikes = Node3D.new()
-    add_child(_spikes)
     _spike_material = GothicMaterials.standard("rust_iron", Color(0.95, 0.88, 0.8), 0.6, false)
+    # Modelled grate tiles and octagonal rusted spikes (DEC-057), one MultiMesh each; the
+    # scripted materials still drive the warning pulse.
+    var tile: ArrayMesh = GothicProps.mesh("spike_plate_tile", {&"iron": _plate_material})
+    if tile != null:
+        var nx: int = maxi(1, roundi(width))
+        var nz: int = maxi(1, roundi(depth))
+        var tiles: Array[Transform3D] = []
+        for i in nx:
+            for j in nz:
+                var at: Vector3 = Vector3(-width * 0.5 + (i + 0.5) * width / nx, 0.0, -depth * 0.5 + (j + 0.5) * depth / nz)
+                tiles.append(Transform3D(Basis.from_scale(Vector3(width / nx, 1.0, depth / nz)), at))
+        add_child(_multi(tile, tiles, "Plate"))
+    else:
+        var plate: MeshInstance3D = MeshInstance3D.new()
+        var plate_mesh: BoxMesh = BoxMesh.new()
+        plate_mesh.size = Vector3(width, 0.04, depth)
+        plate.mesh = plate_mesh
+        plate.material_override = _plate_material
+        plate.position.y = 0.02
+        add_child(plate)
+    _spikes = Node3D.new()
+    _spikes.name = "Spikes"
+    add_child(_spikes)
     var count: int = maxi(2, int(width / 0.45))
     var rows: int = 1 if depth <= 2.6 else int(depth / 0.9)  # a bed of spikes across a 3D hall
+    var spike_mesh: ArrayMesh = GothicProps.mesh("spike", {&"iron": _spike_material})
+    var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+    rng.seed = hash(name)
+    var spikes: Array[Transform3D] = []
     for r in rows:
         var z: float = 0.0 if rows == 1 else -depth * 0.5 + (r + 0.5) * depth / rows
         for i in count:
+            var x: float = -width * 0.5 + (i + 0.5) * width / count
+            if spike_mesh != null:
+                var tilt: Basis = Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.06, 0.06))
+                spikes.append(Transform3D(tilt.scaled(Vector3.ONE * rng.randf_range(0.92, 1.08)), Vector3(x, 0.0, z)))
+                continue
             var spike: MeshInstance3D = MeshInstance3D.new()
             var cone: CylinderMesh = CylinderMesh.new()
             cone.top_radius = 0.0
@@ -68,8 +91,10 @@ func _build() -> void:
             cone.height = 0.9
             spike.mesh = cone
             spike.material_override = _spike_material
-            spike.position = Vector3(-width * 0.5 + (i + 0.5) * width / count, 0.45, z)
+            spike.position = Vector3(x, 0.45, z)
             _spikes.add_child(spike)
+    if spike_mesh != null:
+        _spikes.add_child(_multi(spike_mesh, spikes, "Spike bed"))
     _spikes.position.y = -0.95  # retracted into the floor
     hitbox = Hitbox.new()
     hitbox.team = &"enemy"
@@ -86,6 +111,19 @@ func _build() -> void:
     shape.position.y = 0.45
     hitbox.add_child(shape)
     add_child(hitbox)
+
+
+static func _multi(m: Mesh, xfs: Array[Transform3D], label: String) -> MultiMeshInstance3D:
+    var multi: MultiMesh = MultiMesh.new()
+    multi.transform_format = MultiMesh.TRANSFORM_3D
+    multi.mesh = m
+    multi.instance_count = xfs.size()
+    for k in xfs.size():
+        multi.set_instance_transform(k, xfs[k])
+    var node: MultiMeshInstance3D = MultiMeshInstance3D.new()
+    node.name = label
+    node.multimesh = multi
+    return node
 
 
 ## Starts the cycle over (used when the player respawns).

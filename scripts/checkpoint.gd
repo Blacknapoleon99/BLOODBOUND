@@ -25,6 +25,20 @@ static func create(at: Vector3, trigger_size: Vector3 = Vector3(2.0, 3.0, 3.0)) 
     shape.shape = box
     checkpoint.add_child(shape)
 
+    # Modelled standard (DEC-057): stone foot, iron pole and crossbar, skull finial and a
+    # tattered cloth banner whose material turns from ash-grey to blood-red when lit. The
+    # checkpoint origin is 1.2 m above the floor.
+    var cloth: ArrayMesh = GothicProps.raw("checkpoint_cloth")
+    var standard: MeshInstance3D = GothicProps.instance("checkpoint_banner", {}, "Standard")
+    if cloth != null and standard != null:
+        standard.position = Vector3(0.0, -1.2, -0.9)
+        checkpoint.add_child(standard)
+        checkpoint._banner_material = GothicMaterials.standard("cloth", IDLE_COLOR * 1.6, 0.5, false)
+        checkpoint._banner_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+        var flag: MeshInstance3D = GothicProps.instance("checkpoint_cloth", {&"cloth": checkpoint._banner_material}, "Banner")
+        flag.position = standard.position
+        checkpoint.add_child(flag)
+        return checkpoint
     var banner: MeshInstance3D = MeshInstance3D.new()
     banner.name = "Banner"
     var mesh: BoxMesh = BoxMesh.new()

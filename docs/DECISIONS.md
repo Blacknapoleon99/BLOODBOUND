@@ -240,3 +240,67 @@
 
   A mid GPU has not been measured yet.
 - **Captures:** `tests/shot_gothic.gd` (visible window) writes `docs/screenshots/23_gothic_*.png` and prints the fps. Pass `-- <dir> low` to capture the low preset.
+
+## DEC-057 — Modelled, textured gothic props, hazards and background world (2026-10-23)
+
+- **User direction:** "we still need everything to be textured, and have actual shapes and so on for assets for the game!" Props, hazards and the backdrop were still boxes, cylinders and procedural blobs.
+- **Source:** original models built headless in Blender 5.2 by scripts in `tools/blender/`. The scripts use primitives, real bevels, booleans, and voxel-remeshed unions for organic parts (skulls, bones, wax, shards), plus skin-modifier trees.
+  - No third-party meshes, no Tripo, no live Blender MCP session, and nothing downloaded.
+  - Bone, cloth and wax PBR sets are generated with numpy (`make_textures.py`). The stone, iron and wood sets are the existing Poly Haven CC0 scans.
+  - Credits: `assets/models/props/CREDITS.md`, `assets/models/backdrop/CREDITS.md` and `assets/textures/gothic/CREDITS.md`. The pipeline is described in docs/ASSET_PIPELINE.md.
+- **Props and hazards** (`GothicProps`, `scripts/art/gothic_props.gd`): GLB material names are roles, mapped to object-space triplanar PBR materials. Scripts pass their animated materials in, so telegraphs are unchanged. Hitboxes, collision, timings and node contracts are unchanged ("Handle", `_lid`, `_spikes`, `_plate_material`, `_bridge_material`, `_glow`, `_banner_material`). Every model has its old primitive as a fallback.
+  - **Spike trap:** bevelled rusted grate tiles with slots and rivets, and octagonal collared spikes. Each is one MultiMesh, replacing about 20–60 MeshInstances.
+  - **Pendulum:** a flanged iron arm, nine-sliced to the arm length, and a row of sharpened crescent blades on an iron spine across the walkway. The side view gets a single crescent.
+  - **Lever:** a carved stone plinth with niches, an axle and a skull, plus an iron lever with a bone grip.
+  - **Shortcut bridge:** uneven planks (MultiMesh) on iron stringers. The planks and the iron fade in together.
+  - **Blood altar:** a stepped plinth, an arcaded octagonal pedestal, a basin brimming with glowing blood that runs over the rim, skulls and candles.
+  - **Merchant:** a stall with plank counter, posts, a torn canopy, shelves of jars, bottles and books, wares and a lantern. The merchant is a tall hooded robe with a pale bone mask and long fingers.
+  - **Reliquary chest:** planked and iron-banded, with corner brackets, a lock plate and a glowing keyhole and seams. The barrel lid is hinged so the old `rotation.z` opens it.
+  - **Bone Shard:** a splintered, carved bone with glowing runes.
+  - **Checkpoint:** a stone foot, iron pole and crossbar, skull finial and a tattered cloth banner that turns from ash to blood red.
+  - **Exit arch:** clustered piers, leaf capitals, a three-order archivolt with crockets and finial, a skull keystone and the glowing moulding.
+  - **Ambush walls:** 2 m ossuary modules repeated along each wall in one MultiMesh. Each module is a lumpy mortar core packed with skulls and long bones, with ribs curling out and red-lit cracks.
+- **Corner dressing** (`GothicDressing`):
+  - Modelled skull piles, candle clusters and a candelabrum, tall or short broken clustered columns with a fallen drum, leaning headstones and ringed crosses, a sarcophagus with its lid ajar, and wrought-iron railing (straight or bent).
+  - Each part is one MultiMesh per room. Candle flames sit in a shadowless second MultiMesh.
+  - Up to 4 flickering candle lights per room (`GothicEnvironment.torch_light`).
+  - The rubble undersides gained strata ledges and stalactites. They are still capped by the headroom rule.
+- **Background** (`BackdropKit`):
+  - The procedural builders now merge modelled pieces into the same one-mesh-per-object `Merge`. Roles become vertex colours, and alpha 0.75 marks rock.
+  - The modelled pieces:
+    - the cathedral: buttressed nave with double flyers and pinnacles, clerestory and aisle lancets, gallery of kings, three deep portals, a traceried rose window, twin west towers (one snapped), transepts with roses, a crossing tower with a crocketed spire, an apse with chapels;
+    - gothic towers: stepped buttresses, belfry lancets, battlements, corner pinnacles, crocketed spire with lucarnes, or a snapped stump. The shaft stretches and the spire scales separately;
+    - stratified rock islands;
+    - gnarled skin-modifier dead trees;
+    - the titan ribcage with a horned skull;
+    - abyss pillar crowns;
+    - ruin walls with a lancet;
+    - buttress pinnacles;
+    - gibbet cages (the prop model);
+    - bats.
+  - `backdrop_stone.gdshader` gains triplanar masonry and rubble detail. It is plain GLSL, so it works in Compatibility.
+  - Far layers stay shadowless, collision-free and fog-handled as before.
+  - The Kenney hexagon towers are no longer used while the modelled towers exist.
+- **Checks:**
+  - `tests/backdrop_check.gd` 5/5 (no collision, no shadow casters, nothing in any play volume).
+  - gameplay_smoke 544/544.
+  - `tools/dev/audit_materials.gd` lists only the Reality Fracture, which is out of scope.
+  - `tools/dev/shot_props.gd` is a new gallery capture.
+- **Performance** (RTX 5090, 1280×720, Forward+ high). "Before" is the same build with the model folders moved aside, so every primitive fallback runs.
+
+  | Measure | Before | After |
+  |---|---|---|
+  | `tests/shot_gothic.gd`, 3D run | 231 fps | 276 fps |
+  | `tests/shot_gothic.gd`, playground | 1107 fps | 1064 fps |
+  | Opening view (`shot_backdrop.gd`), draw calls | 253 | 181 |
+  | Opening view (`shot_backdrop.gd`), primitives | 297k | 464k |
+
+  - Most of the extra primitives are the modelled backdrop: towers, the cathedral and islands, all merged and shadowless.
+  - Draw calls fell because the spike beds, planks and wall modules are now MultiMeshes.
+  - The prop gallery renders in about 4 ms per frame.
+- **Screenshots:** `docs/screenshots/57_*.png`.
+- **Open:**
+  - The merchant figure's arms are blocky.
+  - The candle drips are subtle.
+  - The backdrop has no LOD. Its primitive count is acceptable on desktop; mid-range GPUs have not been measured.
+  - The Reality Fracture (veil, ring, chapel) is still out of scope.

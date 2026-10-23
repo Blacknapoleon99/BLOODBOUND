@@ -19,5 +19,14 @@ from the public API (`https://api.polyhaven.com/files/<id>`): diffuse (`_diff`),
 Licence text: https://polyhaven.com/license (CC0 1.0 Universal,
 https://creativecommons.org/publicdomain/zero/1.0/).
 
-Props (skulls, bones, candles, columns, fence) are procedural meshes built in
-`scripts/art/gothic_dressing.gd`; no third-party models are used.
+Procedural sets (DEC-057, original, generated with numpy by `tools/blender/make_textures.py`,
+512 px tileable; no third-party content):
+
+| Local set | Used for |
+|-----------|----------|
+| `bone`    | skulls, bones, shards, grips, the merchant's mask |
+| `cloth`   | banners, the stall canopy, robes (tinted per use) |
+| `wax`     | candles and wax pools |
+
+Props and hazards are modelled meshes in `assets/models/props/` (see its CREDITS.md); the
+old procedural props in `scripts/art/gothic_dressing.gd` remain only as a fallback.

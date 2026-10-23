@@ -14,6 +14,17 @@ static func create(label: String, at: Vector3) -> BloodAltar:
     altar.name = label
     altar.add_to_group(&"blood_altar")
     altar.position = at
+    altar._glow = StandardMaterial3D.new()
+    altar._glow.albedo_color = Color(0.7, 0.05, 0.08)
+    altar._glow.emission_enabled = true
+    altar._glow.emission = Color(1.0, 0.1, 0.12) * 1.5
+    # Modelled altar (DEC-057): stepped plinth, arcaded pedestal, a basin brimming with blood
+    # (the glow consume() darkens), skulls and candles. Falls back to the old blocks.
+    var model: MeshInstance3D = GothicProps.instance("blood_altar", {&"glow": altar._glow}, "Altar")
+    if model != null:
+        model.position = Vector3(0.0, 0.0, -1.2)
+        altar.add_child(model)
+        return altar
     var stone: StandardMaterial3D = GothicMaterials.standard("masonry", Color(0.62, 0.56, 0.56), 1.2)  # DEC-054
     var pillar: MeshInstance3D = MeshInstance3D.new()
     var pillar_mesh: BoxMesh = BoxMesh.new()
@@ -28,10 +39,6 @@ static func create(label: String, at: Vector3) -> BloodAltar:
     bowl_mesh.bottom_radius = 0.3
     bowl_mesh.height = 0.25
     bowl.mesh = bowl_mesh
-    altar._glow = StandardMaterial3D.new()
-    altar._glow.albedo_color = Color(0.7, 0.05, 0.08)
-    altar._glow.emission_enabled = true
-    altar._glow.emission = Color(1.0, 0.1, 0.12) * 1.5
     bowl.material_override = altar._glow
     bowl.position = Vector3(0.0, 1.12, -1.2)
     altar.add_child(bowl)

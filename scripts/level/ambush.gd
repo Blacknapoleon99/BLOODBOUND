@@ -170,12 +170,17 @@ func _make_wall(x: float) -> StaticBody3D:
     shape.shape = box
     shape.disabled = true
     wall.add_child(shape)
-    var mesh_node: MeshInstance3D = MeshInstance3D.new()
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = Vector3(0.6, 6.0, Lane.DEPTH_3D if three_d else 3.0)
-    mesh_node.mesh = mesh
-    mesh_node.material_override = GothicMaterials.block(&"bone_wall")  # bone-packed stone, red-lit cracks (DEC-054)
-    wall.add_child(mesh_node)
+    var span: float = Lane.DEPTH_3D if three_d else 3.0
+    var modules: MultiMeshInstance3D = _bone_modules(span, true)
+    if modules != null:
+        wall.add_child(modules)
+    else:
+        var mesh_node: MeshInstance3D = MeshInstance3D.new()
+        var mesh: BoxMesh = BoxMesh.new()
+        mesh.size = Vector3(0.6, 6.0, span)
+        mesh_node.mesh = mesh
+        mesh_node.material_override = GothicMaterials.block(&"bone_wall")  # bone-packed stone, red-lit cracks (DEC-054)
+        wall.add_child(mesh_node)
     wall.visible = false
     add_child(wall)
     return wall
@@ -194,15 +199,45 @@ func _make_ring_wall(angle: float, length: float) -> StaticBody3D:
     shape.shape = box
     shape.disabled = true
     wall.add_child(shape)
-    var mesh_node: MeshInstance3D = MeshInstance3D.new()
-    var mesh: BoxMesh = BoxMesh.new()
-    mesh.size = size
-    mesh_node.mesh = mesh
-    mesh_node.material_override = GothicMaterials.block(&"bone_wall")  # bone-packed stone, red-lit cracks (DEC-054)
-    wall.add_child(mesh_node)
+    var modules: MultiMeshInstance3D = _bone_modules(length, false)
+    if modules != null:
+        wall.add_child(modules)
+    else:
+        var mesh_node: MeshInstance3D = MeshInstance3D.new()
+        var mesh: BoxMesh = BoxMesh.new()
+        mesh.size = size
+        mesh_node.mesh = mesh
+        mesh_node.material_override = GothicMaterials.block(&"bone_wall")  # bone-packed stone, red-lit cracks (DEC-054)
+        wall.add_child(mesh_node)
     wall.visible = false
     add_child(wall)
     return wall
+
+
+## The modelled ossuary barricade (DEC-057): 2 m modules (stone core packed with skulls and
+## long bones, ribs curling out, red-lit cracks) repeated along `span` metres, one MultiMesh.
+## `along_z` turns the modules to run along Z (the straight walls). Visual only: the
+## collision box beside it is unchanged. Null when the model isn't available.
+static func _bone_modules(span: float, along_z: bool) -> MultiMeshInstance3D:
+    var m: ArrayMesh = GothicProps.mesh("bone_wall_module")
+    if m == null:
+        return null
+    var count: int = maxi(1, roundi(span / 2.0))
+    var step: float = span / count
+    var multi: MultiMesh = MultiMesh.new()
+    multi.transform_format = MultiMesh.TRANSFORM_3D
+    multi.mesh = m
+    multi.instance_count = count
+    var turn: Basis = Basis(Vector3.UP, PI * 0.5) if along_z else Basis.IDENTITY
+    for k in count:
+        var c: float = -span * 0.5 + (k + 0.5) * step
+        var flip: Basis = Basis(Vector3.UP, PI) if k % 2 == 1 else Basis.IDENTITY  # vary the pattern
+        var at: Vector3 = Vector3(0.0, 0.0, c) if along_z else Vector3(c, 0.0, 0.0)
+        multi.set_instance_transform(k, Transform3D(turn * flip * Basis.from_scale(Vector3(step / 2.0, 0.98, 1.0)), at))
+    var node: MultiMeshInstance3D = MultiMeshInstance3D.new()
+    node.name = "Bone barricade"
+    node.multimesh = multi
+    return node
 
 
 func wall_count() -> int:
