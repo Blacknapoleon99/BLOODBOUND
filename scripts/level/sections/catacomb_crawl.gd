@@ -36,8 +36,10 @@ func _design() -> void:
 func _course() -> void:
     pads()
     route(&"tunnels")
-    plat(17.0, 0.0, 14.0, 6.0, 0.0, "Catacomb tunnel", 1.5)
-    plat(33.0, 0.0, 12.0, 6.0, 0.0, "Catacomb tunnel", 1.5)
+    # DEC-061: the pit and the hop to the exit are 2.5 m, a basic running jump at the 5 m/s run
+    # (they were 3 m, past its 2.94 m reach).
+    plat(17.25, 0.0, 14.5, 6.0, 0.0, "Catacomb tunnel", 1.5)
+    plat(33.25, 0.0, 12.5, 6.0, 0.0, "Catacomb tunnel", 1.5)
     foe(&"crawler", 15.0, 0.0)
     foe(&"crawler", 20.0, 0.0)
     foe(&"crawler", 31.0, 0.0)

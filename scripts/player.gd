@@ -31,6 +31,8 @@ signal attack_started(attack_id: StringName)
 signal hurt(info: DamageInfo)
 signal blocked(info: DamageInfo)
 signal died
+## Emitted after every teleport/respawn: the animator drops any action or pose it was holding.
+signal teleported
 
 @export_group("Run")
 @export var move_speed: float = 8.5
@@ -75,6 +77,11 @@ signal died
 @export var dodge_duration: float = 0.22
 @export var dodge_invulnerable_time: float = 0.28
 @export var dodge_cooldown: float = 0.4
+## Full 3D: a readable dodge-roll at the platformer's pace (3.6 m over 0.36 s) instead of the
+## side view's 17 m/s burst, so the roll clip plays at a believable rate (DEC-061).
+@export var dodge_speed_3d: float = 10.0
+@export var dodge_duration_3d: float = 0.36
+@export var dodge_invulnerable_time_3d: float = 0.36
 ## Blood each dodge/dash costs (refused, with feedback, when you can't pay).
 @export var dodge_blood_cost: float = 0.6
 
@@ -170,6 +177,11 @@ func set_downed(down: bool) -> void:
 
 func is_invulnerable() -> bool:
     return _invulnerable_left > 0.0
+
+
+## Seconds the dodge lasts in the current mode (the 3D roll is longer and slower).
+func current_dodge_duration() -> float:
+    return dodge_duration_3d if _full_3d() else dodge_duration
 
 
 func is_dodging() -> bool:
@@ -281,6 +293,7 @@ func teleport_to(target: Vector3) -> void:
     melee.cancel()
     if motor != null:
         motor.reset()
+    teleported.emit()
 
 
 ## Respawn helper: full health plus a clean motion state.
@@ -349,8 +362,8 @@ func _physics_process(delta: float) -> void:
             _attack_held = false
 
     if is_dodging():
-        velocity.x = _dodge_direction.x * dodge_speed
-        velocity.z = _dodge_direction.z * dodge_speed
+        velocity.x = _dodge_direction.x * (dodge_speed_3d if _full_3d() else dodge_speed)
+        velocity.z = _dodge_direction.z * (dodge_speed_3d if _full_3d() else dodge_speed)
         velocity.y = 0.0
         if _full_3d():
             motor.hold_external(PlatformerMotor.State.DASH, delta)
@@ -589,8 +602,8 @@ func _try_start_dodge(input_x: float, input_z: float, on_floor: bool) -> void:
     if direction.length_squared() < 0.01:
         direction = get_facing_vector()
     _dodge_direction = direction.normalized()
-    _dodge_left = dodge_duration
-    _invulnerable_left = maxf(_invulnerable_left, dodge_invulnerable_time)
+    _dodge_left = current_dodge_duration()
+    _invulnerable_left = maxf(_invulnerable_left, dodge_invulnerable_time_3d if _full_3d() else dodge_invulnerable_time)
     _dodge_cooldown_left = dodge_cooldown
     _jump_rising = false
     if not on_floor:

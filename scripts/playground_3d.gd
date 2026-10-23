@@ -87,7 +87,7 @@ func _build() -> void:
     # Start pad and the momentum strip (+X).
     _solid("Start pad", Vector3(0.0, -0.5, 0.0), Vector3(12.0, 1.0, 12.0), stone)
     _solid("Momentum strip", Vector3(36.0, -0.5, 0.0), Vector3(60.0, 1.0, 5.0), stone.darkened(0.1))
-    _sign("MOMENTUM RUN  →\nrun straight: 6 m/s, then a sprint to 7.25\nlet go: brake · reverse: skid", Vector3(7.0, 2.6, -2.0))
+    _sign("MOMENTUM RUN  →\nrun straight: 5 m/s, then a sprint to 6\nlet go: brake · reverse: skid", Vector3(7.0, 2.6, -2.0))
     stations["momentum"] = Vector3(6.0, 1.2, 0.0)
     # Triple tower (-Z side of the pad): a 3.4 m ledge.
     _solid("Triple ground", Vector3(0.0, -0.5, -16.0), Vector3(12.0, 1.0, 20.0), stone)
@@ -110,7 +110,7 @@ func _build() -> void:
     _solid("Ledge ground", Vector3(20.0, -0.5, -14.0), Vector3(14.0, 1.0, 14.0), stone)
     _solid("Ledge wall", Vector3(20.0, 1.5, -19.5), Vector3(10.0, 3.0, 3.0), accent)
     _sign("LEDGE GRAB\njump at the wall, hang, A/D shimmy, W pull up", Vector3(15.0, 2.6, -10.0))
-    stations["ledge"] = Vector3(20.0, 1.2, -14.0)
+    stations["ledge"] = Vector3(20.0, 1.2, -15.0)  # 3 m from the wall: a run-up jump at the 5 m/s run (DEC-061)
     # Slide tunnel (+X, +Z): a slab with 1.2 m clearance.
     _solid("Tunnel ground", Vector3(22.0, -0.5, 14.0), Vector3(20.0, 1.0, 6.0), stone)
     _solid("Tunnel slab", Vector3(22.0, 2.2, 14.0), Vector3(6.0, 2.0, 6.0), accent)

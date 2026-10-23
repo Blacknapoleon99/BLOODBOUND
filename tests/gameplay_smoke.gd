@@ -196,6 +196,7 @@ func _run() -> void:
     await _m27_motor_contract_checks()
     await _m28_hero_moveset_checks()  # DEC-059: the full animation moveset
     await _dec060_motion_checks()  # DEC-060: a regular pace; the stuck-pose causes the soak found
+    await _dec061_checks()  # DEC-061: the animator wakes after a death; the 3D roll fits its dash
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -3549,7 +3550,7 @@ func _m25_moveset_checks() -> void:
     var stations: Dictionary = room.get("stations")
     var hp: Health = p.get("health") as Health
 
-    # Momentum: running straight builds from the 6 m/s run to the 7.25 m/s sprint (DEC-060).
+    # Momentum: running straight builds from the 5 m/s run to the 6 m/s sprint (DEC-061).
     await _station(p, cam, stations["momentum"], -PI * 0.5)
     _key(KEY_W, true)
     await _seconds(0.3)
@@ -3558,7 +3559,7 @@ func _m25_moveset_checks() -> void:
     var run: float = Vector2(p.velocity.x, p.velocity.z).length()
     await _seconds(1.3)
     var late: float = Vector2(p.velocity.x, p.velocity.z).length()
-    _check(early < PlatformerMotor.RUN_SPEED and absf(run - PlatformerMotor.RUN_SPEED) < 0.3 and late > PlatformerMotor.SPRINT_SPEED - 0.15 and late < 7.6,
+    _check(early < PlatformerMotor.RUN_SPEED and absf(run - PlatformerMotor.RUN_SPEED) < 0.3 and late > PlatformerMotor.SPRINT_SPEED - 0.15 and late < PlatformerMotor.SPRINT_SPEED + 0.35,
             "running straight: %.1f -> run %.1f -> sprint %.1f m/s (a regular pace)" % [early, run, late])
     # Skid + side flip.
     _key(KEY_W, false)
@@ -3608,7 +3609,7 @@ func _m25_moveset_checks() -> void:
     var long_dist: float = Vector2(p.global_position.x - from.x, p.global_position.z - from.z).length()
     _key(KEY_CTRL, false)
     _key(KEY_W, false)
-    # DEC-060: 8-9 m/s for ~0.74 s at the 6 m/s run (was 14-16 m/s, over 8 m).
+    # DEC-061: 7-8 m/s for ~0.74 s at the 5 m/s run (DEC-060 was 8-9 m/s).
     _check(long_kind and long_dist > 5.5 and long_dist < 7.5 and long_rise < 1.4, "a long jump flies %.1f m, only %.2f m high" % [long_dist, long_rise])
 
     # Backflip: crouch + jump standing still: high and backwards.
@@ -3918,6 +3919,69 @@ func _m28_hero_moveset_checks() -> void:
 
 ## DEC-060: a regular platformer pace, and the stuck-pose/slide causes found by the movement soak
 ## (tests/soak_motion.gd), each as a permanent repro in the movement playground.
+## DEC-061 (playtest run26): after a death the hero stayed frozen for the rest of the run (the
+## animator's tree was switched off on death and never woken), and the 3D dodge-roll played a
+## 1.6 s clip squeezed into a 0.22 s dash that it then outlived.
+func _dec061_checks() -> void:
+    change_scene_to_file("res://scenes/playground_3d.tscn")
+    await _frames(15)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    var stations: Dictionary = room.get("stations")
+    var animator: ArtAnimator = p.find_child("ArtAnimator", true, false) as ArtAnimator
+    if animator == null:
+        _check(false, "DEC-061: the playground hero has an ArtAnimator")
+        return
+    var full_on: Callable = func() -> bool: return bool(animator.tree.get("parameters/full/active"))
+
+    # Die -> respawn (the playground revives at its spawn): the tree is awake and the legs run.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    var health: Health = p.get("health") as Health
+    health.apply_damage(health.current)
+    var froze: bool = not animator.tree.active and bool(animator.get("_dead"))
+    await _seconds(0.5)
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.6)
+    var run_pose: String = String(animator.pose)
+    var awake: bool = animator.tree.active and not bool(animator.get("_dead")) and not health.is_dead()
+    _key(KEY_W, false)
+    _check(froze and awake and run_pose in ["walk", "run", "sprint"] and not full_on.call(),
+            "after a death and respawn the animator is awake and the legs run (died frozen %s, awake %s, pose '%s')" % [froze, awake, run_pose])
+    await _seconds(0.5)
+
+    # The 3D dodge-roll: the roll ends with the dash and plays at a believable rate.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    var cost: float = float(p.get("dodge_blood_cost"))
+    p.set("dodge_blood_cost", 0.0)
+    _key(KEY_W, true)
+    await _seconds(0.3)
+    _tap(KEY_K)
+    var dash_end: float = -1.0
+    var roll_end: float = -1.0
+    var rolled: bool = false
+    var roll_scale: float = 0.0
+    var t: float = 0.0
+    for i in 90:
+        await physics_frame
+        t += 1.0 / PHYSICS_HZ
+        if full_on.call() and String(animator.get("pose")) != "" and not rolled and bool(p.call("is_dodging")):
+            rolled = true
+            roll_scale = float(animator.tree.get("parameters/full_speed/scale"))
+        if dash_end < 0.0 and rolled and not bool(p.call("is_dodging")):
+            dash_end = t
+        if roll_end < 0.0 and rolled and not full_on.call():
+            roll_end = t
+            break
+    _key(KEY_W, false)
+    p.set("dodge_blood_cost", cost)
+    var late: float = roll_end - dash_end
+    _check(rolled and dash_end > 0.0 and roll_end > 0.0 and late <= 0.15 and roll_scale <= 3.2,
+            "the 3D dodge-roll ends %.2f s after its %.2f s dash at %.2fx playback (rolled %s)" % [late, float(p.call("current_dodge_duration")), roll_scale, rolled])
+    await _seconds(0.4)
+
+
 func _dec060_motion_checks() -> void:
     change_scene_to_file("res://scenes/playground_3d.tscn")
     await _frames(15)
@@ -3947,7 +4011,8 @@ func _dec060_motion_checks() -> void:
     var reach: float = LevelSection.jump_reach(0.0)
     var short_reach: float = LevelSection.jump_reach(0.0, 1.0)
     Lane.full_3d = false
-    _check(reach <= jumped * 0.8 and short_reach < reach and reach > 3.0,
+    # DEC-061: at the 5 m/s run the basic reach is ~2.9 m (was 3.48 m at 6 m/s).
+    _check(reach <= jumped * 0.8 and short_reach < reach and reach > 2.6,
             "the 3D validator counts on %.2f m of a %.2f m running jump (%.2f m off a 1 m run-up)" % [reach, jumped, short_reach])
     await _seconds(0.5)
 
@@ -4235,15 +4300,15 @@ func _m27_motor_contract_checks() -> void:
     _check(t_turn > 0 and turn_s > 0.18 and turn_s < 0.36 and worst_turn < 5.0,
             "a 90-degree turn takes %.2f s (about 340 deg/s) and velocity follows the facing (worst %.1f deg)" % [turn_s, worst_turn])
 
-    # Shaped stick: half tilt walks at about a third of the run (DEC-060: tilt^1.5, ~2.1 m/s).
+    # Shaped stick: half tilt walks at about a third of the run (tilt^1.5: 5 m/s x 0.354 = 1.77 m/s, DEC-061).
     await _station(p, cam, stations["momentum"], -PI * 0.5)
     Input.action_press(&"move_forward", 0.5)
     await _seconds(1.5)
     var half: float = Vector2(p.velocity.x, p.velocity.z).length()
     Input.action_release(&"move_forward")
-    _check(half > 1.8 and half < 2.6, "half tilt walks at %.2f m/s (~2.1)" % half)
+    _check(half > 1.5 and half < 2.1, "half tilt walks at %.2f m/s (~1.77)" % half)
 
-    # Accel curve: an instant first step, then a quick climb to the 6 m/s run (DEC-060).
+    # Accel curve: an instant first step, then a quick climb to the 5 m/s run (DEC-061).
     await _station(p, cam, stations["momentum"], -PI * 0.5)
     _key(KEY_W, true)
     var first: float = 0.0
@@ -4272,7 +4337,7 @@ func _m27_motor_contract_checks() -> void:
         t_stop += 1
     var brake_dist: float = (p.global_position - stop_from).length()
     _check(first > 2.0 and first < 3.0 and t95 / PHYSICS_HZ > 0.2 and t95 / PHYSICS_HZ < 0.55,
-            "running starts at %.1f m/s and reaches 95%% of the 6 m/s run in %.2f s" % [first, t95 / PHYSICS_HZ])
+            "running starts at %.1f m/s and reaches 95%% of the 5 m/s run in %.2f s" % [first, t95 / PHYSICS_HZ])
     _check(braking and brake_dist < 1.8 and t_stop / PHYSICS_HZ < 0.45, "letting go at a run brakes (BRAKE) to a stop in %.2f m, %.2f s" % [brake_dist, t_stop / PHYSICS_HZ])
     # Decelerate: letting go at a walk glides to a stop on a slowing walk cycle.
     Input.action_press(&"move_forward", 0.6)

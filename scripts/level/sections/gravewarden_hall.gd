@@ -7,7 +7,7 @@ extends LevelSection
 ## than the floor itself, so every way onto it seals the fight and the only way on to the exit
 ## crosses it. Three approaches converge on it: the CAUSEWAY (straight in), the north BALCONY
 ## (stairs up and a drop in) and the south STAIR (broken steps and a crumbling slab). Off the
-## paths: a climb to a shard perch and a pillar for a triple jump.
+## paths: a climb to a shard perch and a post to catch off the floor's corner.
 
 const DIFFICULTY: int = 5
 
@@ -55,8 +55,10 @@ func _course() -> void:
     route(&"side")
     climb(14.0, -16.0, 3.0, 2.0, -2.0, 6.5, "Warden's buttress")
     shard(14.0, -16.0, 6.5, 5)
-    pillar(29.0, 11.5, 2.5, 2.4, "Ossuary post")
-    shard(29.0, 11.5, 2.4, 5)
+    # DEC-061: off the floor's south-east corner, a 2.2 m jump-and-grab at the 5 m/s run (was
+    # 3.25 m off the floor's side, out of reach at the slower pace).
+    pillar(34.8, 9.8, 2.5, 2.4, "Ossuary post")
+    shard(34.8, 9.8, 2.4, 5)
 
 
 func warden() -> Gravewarden:

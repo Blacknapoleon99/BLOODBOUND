@@ -34,13 +34,13 @@ enum Jump { NONE, SINGLE, DOUBLE, TRIPLE, LONG, BACKFLIP, SIDE_FLIP, WALL_KICK, 
 
 # --- Tuning (a regular platformer pace for a 1.8 m hero, DEC-060; was SM64 x1.125, DEC-051) ---
 # Ground run.
-const RUN_SPEED: float = 6.0  # full-tilt run
-const SPRINT_SPEED: float = 7.25  # after running straight at full tilt for SPRINT_DELAY
+const RUN_SPEED: float = 5.0  # full-tilt run (DEC-061: 6.0 still outran the animation)
+const SPRINT_SPEED: float = 6.0  # after running straight at full tilt for SPRINT_DELAY
 const SPRINT_DELAY: float = 0.8
 const SPRINT_ACCEL: float = 1.5  # m/s² from the run up to the sprint (about 0.8 s)
 const SPRINT_TURN: float = 1.5  # rad/s: turning harder than this resets the sprint build-up
 const GROUND_CAP: float = 10.0  # absolute ground speed cap
-const START_SPEED: float = 2.5  # instant first step
+const START_SPEED: float = 2.2  # instant first step
 const ACCEL_BASE: float = 12.0  # drag-limited accel = ACCEL_BASE - ACCEL_DRAG * speed (m/s²)
 const ACCEL_DRAG: float = 0.8  # -> 2.5 to 6.0 m/s in ~0.4 s
 const ACCEL_MIN: float = 2.0  # floor for the curve (haste pushes the target past its zero)
@@ -84,8 +84,8 @@ const HEIGHT: Dictionary = {
 }
 const LONG_GRAVITY_SCALE: float = 0.32  # the same 1 m height, floatier: ~0.74 s of flight
 const LONG_BOOST: float = 2.5  # the long jump launches this much faster than the run
-const LONG_MIN_SPEED: float = 8.0
-const LONG_MAX_SPEED: float = 9.0
+const LONG_MIN_SPEED: float = 7.0
+const LONG_MAX_SPEED: float = 8.0
 const LONG_LAND_SPEED: float = 6.0  # a long jump lands running at most this fast
 const BACKFLIP_BACK_SPEED: float = 2.0
 const SIDE_FLIP_SPEED: float = 3.0
@@ -94,7 +94,7 @@ const AIR_DRAG: float = 2.0
 const AIR_ACCEL: float = 9.0  # × tilt × cos(stick vs facing)
 const AIR_DRIFT: float = 2.4  # sideways m/s × tilt × sin(stick vs facing), never builds up
 const AIR_BACK_LIMIT: float = -3.0  # pulling back can drift you backwards this fast at most
-const AIR_CAP: float = 7.25  # the stick can build air speed up to the sprint
+const AIR_CAP: float = 6.0  # the stick can build air speed up to the sprint
 const LONG_AIR_CAP: float = 9.0
 const AIR_OVER_DRAG: float = 8.0  # extra drag above the cap
 const COMMITTED_AIR_SCALE: float = 0.5  # backflip / wall kick steer at half strength

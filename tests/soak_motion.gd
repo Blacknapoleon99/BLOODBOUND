@@ -20,7 +20,7 @@ const ALL_KEYS: Array[Key] = [KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_CTRL, K
 ## Longest each transient motor state may last (seconds, game time) before it counts as stuck.
 const MAX_TIME: Dictionary = {
     &"LAND": 0.4, &"SKID": 0.6, &"BRAKE": 0.6, &"DECEL": 1.5, &"PULL_UP": 0.9, &"POUND_SPIN": 0.35,
-    &"POUND_LAND": 0.35, &"CLIMB_LEAP": 0.4, &"SLIDE": 1.0, &"DASH": 0.3, &"ATTACK": 1.6, &"KNOCKBACK": 3.0,
+    &"POUND_LAND": 0.35, &"CLIMB_LEAP": 0.4, &"SLIDE": 1.0, &"DASH": 0.45, &"ATTACK": 1.6, &"KNOCKBACK": 3.0,
     &"BONK": 4.0, &"POUND_FALL": 6.0,
 }
 ## States where the body may legitimately move with the stick released.
@@ -53,6 +53,7 @@ var _prev_floor_pos: Vector3
 var _prev_hold_time: float = -1.0
 var _prev_plan_t: float = 0.0
 var _oneshot_age: Dictionary = {&"full": 0.0, &"upper": 0.0}
+var _death_pending: bool = false
 var _last_report: Dictionary = {}  # kind -> sim time last logged (rate limit)
 
 
@@ -216,7 +217,7 @@ func _segment() -> void:
         want[KEY_J] = true  # held light (chains the combo)
     _apply_held(want)
     var taps: Array[Key] = []
-    for entry: Array in [[KEY_SPACE, 0.25], [KEY_CTRL, 0.08], [KEY_SHIFT, 0.08], [KEY_J, 0.18], [KEY_L, 0.06], [KEY_Q, 0.05], [KEY_TAB, 0.02], [KEY_1, 0.03], [KEY_2, 0.02], [KEY_3, 0.02]]:
+    for entry: Array in [[KEY_SPACE, 0.25], [KEY_CTRL, 0.08], [KEY_SHIFT, 0.2], [KEY_J, 0.18], [KEY_L, 0.06], [KEY_Q, 0.05], [KEY_TAB, 0.02], [KEY_1, 0.03], [KEY_2, 0.02], [KEY_3, 0.02]]:
         if rng.randf() < float(entry[1]) and not want.has(entry[0]):
             taps.append(entry[0])
     var look: StringName = &""
@@ -237,7 +238,10 @@ func _segment() -> void:
             for k: Key in taps:
                 _key(k, false)
         if i == hit_at:
-            _synthetic_hit()
+            if rng.randf() < 0.15:
+                _synthetic_death()
+            else:
+                _synthetic_hit()
         await physics_frame
         _monitor()
         if not is_instance_valid(p):
@@ -334,6 +338,15 @@ func _synthetic_hit() -> void:
     _record_event("hit")
 
 
+## A real death (lethal damage, mid-action as often as not): main.gd revives the hero at the
+## checkpoint; afterwards the animator must be running again (the frozen-after-death bug).
+func _synthetic_death() -> void:
+    var health: Health = p.get("health") as Health
+    health.apply_damage(health.current)
+    _record_event("death")
+    _death_pending = true
+
+
 func _record_event(text: String) -> void:
     if not history.is_empty():
         history[history.size() - 1]["event"] = String(history[history.size() - 1].get("event", "")) + text + " "
@@ -350,8 +363,17 @@ func _monitor() -> void:
         return
     var dt: float = (1.0 / HZ) * Engine.time_scale
     sim_time += 1.0 / HZ
-    if frames % 30 == 0:
-        (p.get("health") as Health).restore_full()
+    var hp: Health = p.get("health") as Health
+    if _death_pending:
+        if hp.is_dead():
+            sim_time += 1.0 / HZ  # dead: waiting for main.gd's respawn (time still runs)
+            return
+        _death_pending = false
+    elif frames % 30 == 0:
+        hp.restore_full()
+    # 0. Alive but the animator switched off (death froze the model for the rest of the run).
+    if animator != null:
+        _flag(not hp.is_dead() and (not animator.tree.active or bool(animator.get("_dead"))), "animator_dead_after_respawn", 0.5, (1.0 / HZ))
     var a: Dictionary = motor.anim_state()
     var state: StringName = StringName(PlatformerMotor.State.keys()[motor.state])
     var on_floor: bool = p.is_on_floor()

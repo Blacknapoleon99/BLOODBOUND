@@ -21,8 +21,10 @@ extends Node
 ## of the action: the swing lands with the hitbox and hands back as the attack ends.
 
 ## Reference ground speeds (m/s) of the locomotion clips on a 1.8 m humanoid.
-const WALK_REF: float = 1.6
-const RUN_REF: float = 5.5
+## Measured from the clips' planted foot (tools/dev/measure_stride.gd, DEC-061): walk 1.28 m/s,
+## run 4.01 m/s. Guessed values (1.6 / 5.5) made the body outrun its feet by about 27%.
+const WALK_REF: float = 1.3
+const RUN_REF: float = 4.0
 ## Seconds of source animation used for each kind of action (the busiest window of the clip).
 const SOURCE_WINDOW: Dictionary = {&"attack": 0.75, &"dive": 0.7, &"hit": 0.55, &"jump": 0.6, &"cast": 0.9, &"draw": 0.0}
 const FADE_IN: float = 0.06
@@ -102,8 +104,8 @@ const MAX_SWING_RATE: float = 4.0
 const ATTACK_FADE_OUT: float = 0.18
 ## Boost sprint over the run (m/s at which it starts and is fully in): PlatformerMotor's 6 m/s
 ## run to its 7.25 m/s sprint (DEC-060).
-const SPRINT_FROM: float = 6.3
-const SPRINT_FULL: float = 7.2
+const SPRINT_FROM: float = 5.2
+const SPRINT_FULL: float = 5.9
 ## A whole-body action left behind by the motor state that started it fades out this fast.
 const ABANDON_FADE: float = 0.08
 ## Clips that loop on their own (locomotion and stance).
@@ -200,7 +202,7 @@ static func attach(owner_body: Node3D, art: Node3D, steer: bool, moving: StringN
     animator.real_moveset = animator._has_moveset()
     animator.poses = HERO_MOVESET if animator.real_moveset else HERO_POSES
     if animator.player.has_animation(&"sprint"):
-        animator._sprint_ref = float(animator.player.get_animation(&"sprint").get_meta(&"treadmill_speed", 2.45)) * height
+        animator._sprint_ref = 4.1 * animator.size_scale  # measured planted-foot speed (tools/dev/measure_stride.gd)
     art.add_child(animator)
     animator._build_tree()
     animator._connect_gameplay_signals()
@@ -586,6 +588,7 @@ func _connect_gameplay_signals() -> void:
     _hook(body, &"jumped", _on_jumped)
     _hook(body, &"hurt", func(_info: Variant = null) -> void: act(&"hit_to_body_01", 0.35, &"hit", true))
     _hook(body, &"died", _on_died)
+    _hook(body, &"teleported", reset_actions)
     _hook(body, &"defeated", _on_died)
     _hook(body, &"state_changed", _on_state)
 
@@ -654,7 +657,10 @@ func _on_named_attack(id: Variant = null) -> void:
 func _on_dodge(_dir: Variant = null) -> void:
     var duration: float = float(body.get("dodge_invulnerable_time")) if "dodge_invulnerable_time" in body else 0.35
     if real_moveset and player.has_animation(&"roll"):
-        act(&"roll", maxf(0.3, duration + 0.14), &"roll", false)  # a whole forward roll
+        # The whole roll spans the dash plus a beat to come up on the feet: it ends with the
+        # dash, so the legs never keep rolling while the body runs on (DEC-061).
+        var dash: float = float(body.call(&"current_dodge_duration")) if body.has_method(&"current_dodge_duration") else duration
+        act(&"roll", dash + 0.1, &"roll", false)
         if _hero_motor() != null:
             full_owner = PlatformerMotor.State.DASH
         return
@@ -700,6 +706,29 @@ func _on_died() -> void:
     tree.active = false
     if player.has_animation(&"defeat"):
         player.play(&"defeat", 0.15)
+
+
+## A respawn or teleport (player.gd teleport_to, also on revive): back to plain locomotion. Wakes
+## the tree after a death (the defeat clip held by the AnimationPlayer must not outlive the
+## respawn), aborts both one-shots and any swing plan, and drops held/air poses at once.
+func reset_actions() -> void:
+    if tree == null:
+        return
+    if _dead:
+        _dead = false
+        player.stop()
+        tree.active = true
+    _plan = {}
+    _queued = {}
+    action_src_time = -1.0
+    full_owner = -1
+    for layer: String in ["full", "upper"]:
+        tree.set("parameters/%s/request" % layer, AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
+    _air = 0.0
+    _hold = 0.0
+    _airtime = 0.0
+    tree.set("parameters/air/blend_amount", 0.0)
+    tree.set("parameters/base/blend_amount", 0.0)
 
 
 func _moving() -> bool:
