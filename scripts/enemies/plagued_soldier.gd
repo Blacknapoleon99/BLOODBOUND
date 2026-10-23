@@ -22,6 +22,9 @@ extends CharacterBody3D
 ##     (StrikeZone, 1.3 m, 1 damage) — don't stand on the corpse.
 ## Unlocked (plane_locked = false, Reality Fracture arenas): it chases and strikes on X/Z and is
 ## leashed to `leash_radius` around its home instead of the X range.
+## The 3D run (unlocked while EnemyFactory.full_3d, DEC-058) adds a Roam3D: on patrol it wanders
+## its whole leash area on solid ground; in a fight it flanks in and circles you between swings;
+## it never walks or lunges off a ledge on its own. The side view and Reality Fracture are as before.
 
 signal defeated
 signal state_changed(state_name: String)
@@ -77,6 +80,9 @@ var _silenced_left: float = 0.0
 var _lunge_left: float = 1.5
 var enraged: bool = false
 var _calm_color: Color
+## Full-3D steering (null in the side view and the Reality Fracture).
+var roam: Roam3D
+var _visual_yaw: float = NAN
 static var _lunge_data: AttackData
 
 
@@ -197,6 +203,12 @@ func _physics_process(delta: float) -> void:
         if _poise_regen_left <= 0.0:
             poise = poise_max
 
+    if roam == null and not plane_locked and EnemyFactory.full_3d:
+        roam = Roam3D.new(self, Roam3D.Style.PATROL, facing)
+    if roam != null:
+        var radius: float = leash_radius if leash_radius > 0.0 else 8.0
+        if roam.home != _home or roam.leash != radius:
+            roam.set_home(_home, radius)
     match state:
         State.IDLE, State.DEAD:
             velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
@@ -223,6 +235,9 @@ func _physics_process(delta: float) -> void:
         velocity.z = 0.0
         position.z = 0.0
     _apply_leash()
+    if roam != null and state != State.HITSTUN and state != State.DEAD:
+        roam.update_floor(delta)
+        velocity = roam.guard(velocity, delta)  # never walks or lunges off its platform on its own
     move_and_slide()
     if plane_locked:
         position.z = 0.0
@@ -270,6 +285,12 @@ func _target_in_aggro() -> bool:
 
 
 func _patrol() -> void:
+    if roam != null:
+        var v: Vector3 = roam.idle_velocity(get_physics_process_delta_time(), patrol_speed)
+        velocity.x = v.x
+        velocity.z = v.z
+        facing = roam.heading
+        return
     if global_position.x <= patrol_min_x:
         _patrol_dir = 1.0
     elif global_position.x >= patrol_max_x:
@@ -302,6 +323,13 @@ func _chase() -> void:
             _lunge_left = lunge_cooldown
             Audio.sfx(&"soldier_lunge")
             _set_state(State.ATTACK)
+        return
+    if roam != null:
+        # 3D: flank in on a spread-out angle, then circle at sword's reach between swings.
+        var v: Vector3 = roam.engage_velocity(target, attack_range * 0.9, chase_speed * (1.3 if enraged else 1.0), patrol_speed, get_physics_process_delta_time())
+        velocity.x = v.x
+        velocity.z = v.z
+        roam.heading = facing
         return
     var speed: float = chase_speed if distance > attack_range * 0.8 else 0.0
     if enraged:
@@ -388,7 +416,14 @@ func _set_state(next: State) -> void:
 func _update_visual() -> void:
     if state == State.DEAD:
         return
-    if absf(facing.x) > 0.01 or absf(facing.z) > 0.01:
+    if roam != null and (absf(facing.x) > 0.01 or absf(facing.z) > 0.01):
+        # 3D: the body turns toward its heading instead of snapping.
+        var yaw: float = atan2(-facing.x, -facing.z)
+        _visual_yaw = yaw if is_nan(_visual_yaw) else lerp_angle(_visual_yaw, yaw, 0.3)
+        visual.basis = Basis(Vector3.UP, _visual_yaw)
+        if _flinch_left > 0.0:
+            visual.basis = visual.basis * Basis(Vector3.RIGHT, 0.35 * (_flinch_left / 0.2))
+    elif absf(facing.x) > 0.01 or absf(facing.z) > 0.01:
         visual.basis = Basis.looking_at(Vector3(facing.x, 0.0, facing.z), Vector3.UP)
         if _flinch_left > 0.0:
             # Recoil: lean back away from facing for a moment.

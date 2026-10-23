@@ -11,6 +11,10 @@ extends CharacterBody3D
 ## facing vector, and a NavigationAgent3D routes the chase around obstacles when the level has
 ## a navigation mesh. Subclasses use the helpers (planar_to / face / move_dir / chase_dir /
 ## stop / heading) so the same AI runs in both.
+##
+## Full 3D also gets a `roam` (Roam3D, DEC-058): idle enemies wander their whole leash area on
+## solid ground (`roam_idle`), engaged ones close in on spread-out angles and circle the target
+## (`engage`), and `_apply_motion` never lets self-driven motion carry them off a ledge.
 
 signal defeated
 signal state_changed(state_name: String)
@@ -40,7 +44,15 @@ var _base_color: Color = Color(0.7, 0.68, 0.6)
 var _dead: bool = false
 ## Facing as a flat unit vector (full 3D); in the side view it is (facing, 0, 0).
 var heading: Vector3 = Vector3(-1.0, 0.0, 0.0)
-var home: Vector3
+## Leash centre. Setting it (e.g. an arena ring's centre) before the first physics frame keeps it.
+var home: Vector3:
+    set(value):
+        home = value
+        _home_set = true
+        if roam != null:
+            roam.set_home(value, leash_radius)
+## Full-3D steering (null in the side view).
+var roam: Roam3D
 var nav: NavigationAgent3D
 var _nav_refresh: float = 0.0
 
@@ -101,10 +113,20 @@ func set_ai_enabled(enabled: bool) -> void:
 var _home_set: bool = false
 
 
+## Override: the Roam3D style for this archetype.
+func _roam_style() -> Roam3D.Style:
+    return Roam3D.Style.PATROL
+
+
 func _physics_process(delta: float) -> void:
+    if not plane_locked and roam == null:
+        roam = Roam3D.new(self, _roam_style(), heading)
+        if _home_set:
+            roam.set_home(home, leash_radius)
     if not _home_set:
-        _home_set = true
         home = global_position
+    elif roam != null and roam.leash != maxf(0.5, leash_radius):
+        roam.set_home(home, leash_radius)  # the leash was changed after spawning
     _t += delta
     _stun_left = maxf(0.0, _stun_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
@@ -133,6 +155,9 @@ func _apply_motion(delta: float) -> void:
     elif velocity.y < 0.0:
         velocity.y = 0.0
     _apply_bounds(delta)
+    if roam != null and not _dead and state != &"stagger" and state != &"hitstun":
+        roam.update_floor(delta)
+        velocity = roam.guard(velocity, delta)  # never walk off the platform on its own
     move_and_slide()
     if plane_locked:
         position.z = 0.0
@@ -232,6 +257,32 @@ func chase_dir(target: Node3D) -> Vector3:
     var next: Vector3 = nav.get_next_path_position() - global_position
     next.y = 0.0
     return next if next.length_squared() > 0.01 else direct
+
+
+## Full 3D, no target: roam the leash area at `speed` (turning, pausing, looking around).
+func roam_idle(delta: float, speed: float) -> void:
+    if roam == null:
+        stop()
+        return
+    var v: Vector3 = roam.idle_velocity(delta, speed)
+    velocity.x = v.x
+    velocity.z = v.z
+    if roam.flying:
+        velocity.y = v.y
+    face(roam.heading)
+
+
+## Full 3D, fighting `target`: close in (navigation detour, spread angle), then hold a ring of
+## `ring` m and strafe round it. Faces the target. Side view: walks straight at it as before.
+func engage(delta: float, target: Node3D, ring: float, speed: float, strafe_speed: float) -> void:
+    if roam == null:
+        move_dir(chase_dir(target), speed)
+        return
+    var v: Vector3 = roam.engage_velocity(target, ring, speed, strafe_speed, delta, chase_dir(target))
+    velocity.x = v.x
+    velocity.z = v.z
+    face(planar_to(target))
+    roam.heading = heading
 
 
 ## True if one step along `dir` stays inside this enemy's bounds/leash.

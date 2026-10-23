@@ -29,8 +29,16 @@ var facing: float = -1.0
 var plane_locked: bool = true
 var leash_radius: float = 12.0
 var heading: Vector3 = Vector3(-1.0, 0.0, 0.0)
-var home: Vector3
+## Leash centre. Setting it (e.g. an arena ring's centre) before the first physics frame keeps it.
+var home: Vector3:
+    set(value):
+        home = value
+        _home_set = true
+        if roam != null:
+            roam.set_home(value, leash_radius)
 var _home_set: bool = false
+## Full-3D steering (DEC-058): prowls its platform in arcs, flanks in, never walks off an edge.
+var roam: Roam3D
 var health: Health
 var hurtbox: Hurtbox
 var bite: Hitbox
@@ -108,9 +116,14 @@ func silence(seconds: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if not plane_locked and roam == null:
+        roam = Roam3D.new(self, Roam3D.Style.PROWL, heading)
+        if _home_set:
+            roam.set_home(home, leash_radius)
     if not _home_set:
-        _home_set = true
         home = global_position
+    elif roam != null and roam.leash != maxf(0.5, leash_radius):
+        roam.set_home(home, leash_radius)
     _t += delta
     _stun_left = maxf(0.0, _stun_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
@@ -119,11 +132,22 @@ func _physics_process(delta: float) -> void:
     match state:
         State.RUN:
             _set_planar(Vector3.ZERO)
-            if ai_enabled and target != null:
+            if ai_enabled and target == null and roam != null:
+                _set_planar(roam.idle_velocity(delta, run_speed * 0.45))  # 3D: prowls in arcs
+                _face(roam.heading)
+            elif ai_enabled and target != null:
                 var off: Vector3 = _planar_to(target)
                 _face(off)
                 if off.length() < pounce_range and _silenced_left <= 0.0 and is_on_floor():
                     _set_state(State.CROUCH)
+                elif roam != null:
+                    # 3D: closes in on a curve from its own angle of the pack.
+                    var v: Vector3 = roam.engage_velocity(target, pounce_range * 0.8, run_speed, run_speed * 0.6, delta)
+                    if off.length() > pounce_range + 2.0:
+                        v = v.rotated(Vector3.UP, roam.circle_sign * 0.35)
+                    roam.heading = heading
+                    if _can_step(v):
+                        _set_planar(v)
                 elif off.length() > 1.0 and _can_step(heading):
                     _set_planar(heading * run_speed)
         State.CROUCH:
@@ -158,6 +182,9 @@ func _physics_process(delta: float) -> void:
         velocity.y = 0.0
     if plane_locked:
         velocity.z = 0.0
+    if roam != null and state != State.HITSTUN and state != State.DEAD:
+        roam.update_floor(delta)
+        velocity = roam.guard(velocity, delta)  # never runs or leaps off its platform on its own
     move_and_slide()
     if plane_locked:
         position.z = 0.0
@@ -221,6 +248,8 @@ func _can_step(dir: Vector3) -> bool:
     next.y = 0.0
     var now: Vector3 = global_position - home
     now.y = 0.0
+    if roam != null and not roam.safe_step(dir, 0.6):
+        return false  # 3D: an edge that way
     return next.length() < leash_radius or next.length() < now.length()
 
 

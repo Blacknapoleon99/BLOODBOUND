@@ -33,6 +33,10 @@ func _ready() -> void:
     collision_mask = 0  # a ghost: no body collision with the world or the player
 
 
+func _roam_style() -> Roam3D.Style:
+    return Roam3D.Style.DRIFT
+
+
 func _build_body() -> void:
     _add_collider(Vector3(0.6, 0.9, 0.6), 0.0)
     _add_hurt_shape(Vector3(0.9, 1.1, 0.8), 0.0)
@@ -70,6 +74,9 @@ func _apply_motion(delta: float) -> void:
 func _tick(delta: float, target: Node3D) -> void:
     match state:
         &"idle", &"rise":
+            if ai_enabled and target == null and roam != null:
+                roam_idle(delta, drift_speed * 0.5)  # 3D: drifts a figure-of-eight over its post
+                return
             if target == null or not ai_enabled:
                 velocity = velocity.move_toward(Vector3.ZERO, 6.0 * delta)
                 return
@@ -80,6 +87,12 @@ func _tick(delta: float, target: Node3D) -> void:
             var spot: Vector3 = target.global_position + away.normalized() * keep_distance + Vector3(0.0, hover_height + sin(_t * 2.0) * 0.3, 0.0)
             var to: Vector3 = spot - global_position
             velocity = to.limit_length(1.0) * drift_speed if to.length() > 0.2 else Vector3.ZERO
+            if roam != null:
+                # 3D: circles round you while it waits to dive, spread from the other foes.
+                var bearing: float = atan2(away.z, away.x)
+                var push: float = roam.spread_push(target, bearing, keep_distance)
+                var around: Vector3 = Vector3(-sin(bearing), 0.0, cos(bearing)) * (roam.circle_sign * 0.9 + push * 1.5)
+                velocity += around
             face(planar_to(target))
             if _t >= rest_time and to.length() < 1.2 and _silenced_left <= 0.0:
                 _dive_dir = (target.global_position - global_position)

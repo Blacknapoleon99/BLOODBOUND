@@ -64,6 +64,10 @@ func _build_body() -> void:
     add_child(_lane)
 
 
+func _roam_style() -> Roam3D.Style:
+    return Roam3D.Style.GUARD
+
+
 func phase_title() -> String:
     return "ENRAGED" if enraged else ""
 
@@ -73,11 +77,16 @@ func _tick(delta: float, target: Node3D) -> void:
     match state:
         &"idle":
             stop()
-            if not ai_enabled or target == null:
+            if not ai_enabled:
+                return
+            if target == null:
+                roam_idle(delta, walk_speed * 0.8)  # 3D: paces its hall (no-op in the side view)
                 return
             var off: Vector3 = planar_to(target)
             face(off)
-            if off.length() > 2.5:
+            if roam != null:
+                engage(delta, target, 3.0, walk_speed * speed_scale, walk_speed * 0.7 * speed_scale)  # 3D: circles you between moves
+            elif off.length() > 2.5:
                 move_dir(chase_dir(target), walk_speed * speed_scale)
             if _t >= rest_time / speed_scale and _silenced_left <= 0.0 and is_on_floor():
                 start_move(_rotation[_rotation_index % _rotation.size()])
@@ -97,7 +106,7 @@ func _tick(delta: float, target: Node3D) -> void:
                 set_state(&"charging")
         &"charging":
             move_dir(heading, charge_speed * speed_scale)
-            var blocked: bool = _hit_static_wall() or not can_step(heading, 0.6)
+            var blocked: bool = _hit_static_wall() or not can_step(heading, 0.6) or (roam != null and not roam.safe_step(heading, 1.8))
             if blocked and _t > 0.1 and _charges_left > 0:
                 _charges_left -= 1
                 charge_hitbox.deactivate()

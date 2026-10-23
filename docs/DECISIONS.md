@@ -277,3 +277,30 @@
   - the side-view `_backdrop()` wall;
   - per-kind paving: cobble floors use the same slab cells with the cobble scan on top;
   - LOD (the per-room MultiMesh AABB makes mesh LOD pick the full mesh).
+
+## DEC-058 — Enemies roam and fight on the 3D field (2026-10-23)
+
+- **Playtest:** "the enemies still walk in a straight line and not on the 3d field". The chase already used X/Z, but idle patrols were still the side view's back-and-forth.
+- **`Roam3D`** (`scripts/enemies/roam_3d.gd`): shared full-3D steering, created only for enemies that are not plane-locked. The side view, co-op and the Reality Fracture guardian behave exactly as before. The soldier also needs `EnemyFactory.full_3d`.
+- **Idle:** seeded waypoints inside the leash and on solid ground, checked by rays down at the waypoint and along the path. Each leg turns a new way. The enemy turns at a limited rate, pauses and looks around. Each archetype has its own style:
+  - soldiers and husks wander;
+  - hounds prowl round their home on arcs;
+  - knights and the Gravewarden pace a four-post guard loop;
+  - wraiths drift a figure-of-eight with a height bob;
+  - crawlers scurry in bursts;
+  - archers reposition slowly between long watches.
+- **Engaged:** enemies close in toward a slot on a ring round the player, following the navigation detour when the path bends. Each slot's bearing is pushed away from the other enemies near the same player, so a group comes from several angles. On the ring they hold distance and strafe round.
+  - Hounds come in on a curve.
+  - Crawlers zig-zag.
+  - Wraiths circle while they wait to dive.
+  - Archers strafe toward 6.5 m between shots, and side-step for a clear shot before drawing.
+  - Soldiers circle during their cooldown.
+  - Attack timings, telegraphs, damage and poise are unchanged.
+- **Ledges:** a ground probe ahead zeroes self-driven planar motion (walks, strafes, lunges, pounces, hops, charges) before it leaves solid ground. A Gravewarden charge that reaches an edge ends dazed, as against a wall. Only knockback can push an enemy off.
+- **Leash fix:** an arena ring's `home` set before the first physics frame now sticks for code enemies, hounds and archers. Before, the first frame reset it to the spawn point.
+- **Visuals:** the soldier's body now turns smoothly to its 3D heading; the others already did.
+- **Tests:** 4 new checks (`_dec058_roam_checks`):
+  - every archetype's idle path spans X and Z, with turns;
+  - nobody leaves the raised platform in a 20 s idle run plus a fight at its corner;
+  - a Husk circles the player;
+  - two Husks flank from different angles.

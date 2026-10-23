@@ -188,6 +188,7 @@ func _run() -> void:
     await _m21_feel_checks()
     await _m22_3d_core_checks()
     await _m23_3d_enemy_checks()
+    await _dec058_roam_checks()
     await _m24_3d_room_checks()
     await _open_course_checks()  # DEC-052: the rooms as open 3D courses
     await _m25_moveset_checks()
@@ -3131,6 +3132,134 @@ func _m23_3d_enemy_checks() -> void:
     change_scene_to_file("res://scenes/main.tscn")
     await _frames(10)
     _check(not EnemyFactory.full_3d, "leaving the 3D room puts the factory back to side-view enemies")
+    _bind()
+
+
+## DEC-058: in full 3D, idle enemies roam their whole leash area (X and Z, turning), never walk
+## off their platform, circle you in a fight, and a pair approaches from different angles.
+func _dec058_roam_checks() -> void:
+    change_scene_to_file("res://scenes/proto_3d.tscn")
+    await _frames(12)
+    var room: Node3D = current_scene
+    room.set("auto_waves", false)
+    room.call("clear_enemies")
+    await _frames(3)
+    var p: CharacterBody3D = room.get("player")
+    var hp: Health = p.get("health") as Health
+    var far: Vector3 = Vector3(-19.0, 1.0, 19.0)  # out of every enemy's sight
+    p.call("teleport_to", far)
+    await _frames(3)
+
+    # Idle roaming covers X and Z, with real turns, for every archetype.
+    var types: Array[StringName] = [&"husk", &"knight", &"hound", &"crawler", &"archer", &"wraith", &"gravewarden"]
+    var spots: Array[Vector2] = [Vector2(2.0, -6.0), Vector2(14.0, -9.0), Vector2(4.0, -14.0), Vector2(-6.0, -12.0), Vector2(16.0, -16.0), Vector2(-12.0, -4.0), Vector2(10.0, 14.0)]
+    var foes: Array[Node3D] = []
+    var lo: Array[Vector3] = []
+    var hi: Array[Vector3] = []
+    var turn: Array[float] = []
+    var last_yaw: Array[float] = []
+    for i in types.size():
+        var e: Node3D = EnemyFactory.spawn(types[i], room, spots[i].x, -INF, INF, 1.0, spots[i].y)
+        e.set("leash_radius", 6.0)
+        foes.append(e)
+        lo.append(Vector3.INF)
+        hi.append(-Vector3.INF)
+        turn.append(0.0)
+        last_yaw.append(NAN)
+    for f in int(PHYSICS_HZ * 6.0):
+        await physics_frame
+        for i in foes.size():
+            var at: Vector3 = foes[i].global_position
+            lo[i] = lo[i].min(at)
+            hi[i] = hi[i].max(at)
+            var h: Vector3 = foes[i].get("heading") if "heading" in foes[i] else foes[i].get("facing")
+            var yaw: float = atan2(h.z, h.x)
+            if not is_nan(last_yaw[i]):
+                turn[i] += absf(angle_difference(last_yaw[i], yaw))
+            last_yaw[i] = yaw
+    var roam_report: Array[String] = []
+    var roam_ok: bool = true
+    for i in foes.size():
+        var span: Vector3 = hi[i] - lo[i]
+        var ok: bool = span.z > 1.5 and span.x > 1.0 and turn[i] > 1.0
+        roam_ok = roam_ok and ok
+        roam_report.append("%s x%.1f z%.1f turn%.1f%s" % [types[i], span.x, span.z, turn[i], "" if ok else " FAIL"])
+    _check(roam_ok, "idle 3D enemies roam their leash in X and Z with turns (%s)" % ", ".join(roam_report))
+    room.call("clear_enemies")
+    await _frames(3)
+
+    # The raised platform (x 10..18, z 3.5..11.5, top 2.6): a long idle run with a leash wider
+    # than the platform, and nobody walks off it.
+    var onboard: Array[Node3D] = []
+    var on_spots: Array[Vector2] = [Vector2(12.0, 6.0), Vector2(16.0, 6.0), Vector2(12.0, 10.0), Vector2(16.0, 10.0), Vector2(14.0, 8.0)]
+    var on_types: Array[StringName] = [&"husk", &"knight", &"hound", &"crawler", &"archer"]
+    for i in on_types.size():
+        var e2: Node3D = EnemyFactory.spawn(on_types[i], room, on_spots[i].x, -INF, INF, 3.6, on_spots[i].y)
+        e2.set("leash_radius", 12.0)
+        onboard.append(e2)
+    var strays: Dictionary = {}
+    var nearest_edge: float = INF
+    for f in int(PHYSICS_HZ * 26.0):
+        await physics_frame
+        if f == int(PHYSICS_HZ * 20.0):
+            p.call("teleport_to", Vector3(17.6, 3.7, 11.1))  # then a fight on the platform's corner
+        if f > int(PHYSICS_HZ * 20.0):
+            hp.restore_full()
+        for e3: Node3D in onboard:
+            if not is_instance_valid(e3) or bool(e3.call("is_dead")):
+                continue
+            var q: Vector3 = e3.global_position
+            nearest_edge = minf(nearest_edge, minf(minf(q.x - 10.0, 18.0 - q.x), minf(q.z - 3.5, 11.5 - q.z)))
+            if q.x < 9.9 or q.x > 18.1 or q.z < 3.3 or q.z > 11.7 or q.y < 2.4:
+                strays[e3.name] = q.snapped(Vector3.ONE * 0.1)
+    _check(strays.is_empty() and nearest_edge < 1.2, "over a 20 s idle run and a fight at the corner no 3D enemy walks off its platform (closest to an edge %.2f m; %s)" % [nearest_edge, strays])
+    p.call("teleport_to", far)
+    room.call("clear_enemies")
+    await _frames(3)
+
+    # Engaged: a Husk circles you between swings (its bearing round you keeps changing).
+    var centre: Vector3 = Vector3(0.0, 1.0, 0.0)
+    p.call("teleport_to", centre)
+    var husk: Node3D = EnemyFactory.spawn(&"husk", room, 0.0, -INF, INF, 1.0, -5.0)
+    var swept: float = 0.0
+    var last_b: float = NAN
+    for f in int(PHYSICS_HZ * 7.0):
+        await physics_frame
+        hp.restore_full()
+        if p.global_position.distance_to(centre) > 0.3:
+            p.call("teleport_to", centre)
+        var o: Vector3 = husk.global_position - centre
+        if Vector2(o.x, o.z).length() < 3.0:
+            var b: float = atan2(o.z, o.x)
+            if not is_nan(last_b):
+                swept += absf(angle_difference(last_b, b))
+            last_b = b
+    _check(swept > 1.2, "an engaged 3D Husk circles round you between swings (%.1f rad swept)" % swept)
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+
+    # Two Husks from the same side spread out and come at you from different angles.
+    p.call("teleport_to", centre)
+    var a: Node3D = EnemyFactory.spawn(&"husk", room, -0.4, -INF, INF, 1.0, -8.5)
+    var b2: Node3D = EnemyFactory.spawn(&"husk", room, 0.4, -INF, INF, 1.0, -8.8)
+    var spread: float = 0.0
+    for f in int(PHYSICS_HZ * 3.0):
+        await physics_frame
+        hp.restore_full()
+        if p.global_position.distance_to(centre) > 0.3:
+            p.call("teleport_to", centre)
+        var oa: Vector3 = a.global_position - centre
+        var ob: Vector3 = b2.global_position - centre
+        if Vector2(oa.x, oa.z).length() < 4.5 and Vector2(ob.x, ob.z).length() < 4.5:
+            spread = maxf(spread, absf(angle_difference(atan2(oa.z, oa.x), atan2(ob.z, ob.x))))
+    _check(spread > 0.6, "two 3D Husks flank you from different angles (%.0f deg apart)" % rad_to_deg(spread))
+    room.call("clear_enemies")
+    hp.restore_full()
+    await _frames(3)
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
     _bind()
 
 

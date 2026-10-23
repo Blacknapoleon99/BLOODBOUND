@@ -29,17 +29,30 @@ func _build_body() -> void:
         _add_mesh(Vector3(0.08, 0.3, 0.6), Vector3(side, -0.75, 0.0), null, "Legs")
 
 
-func _tick(_delta: float, target: Node3D) -> void:
+func _roam_style() -> Roam3D.Style:
+    return Roam3D.Style.SKITTER
+
+
+func _tick(delta: float, target: Node3D) -> void:
     match state:
         &"idle":
             stop()
-            if ai_enabled and target != null:
+            if ai_enabled and target == null:
+                roam_idle(delta, run_speed * 0.5)  # 3D: skitters round its platform in bursts
+            elif ai_enabled and target != null:
                 var off: Vector3 = planar_to(target)
                 face(off)
                 if off.length() < fuse_range and absf(target.global_position.y - global_position.y) < 1.6 and _silenced_left <= 0.0:
                     set_state(&"fuse")
-                else:
+                elif roam == null:
                     move_dir(chase_dir(target), run_speed)
+                else:
+                    # 3D: scuttles in on a zig-zag from its own angle of the pack.
+                    engage(delta, target, fuse_range * 0.5, run_speed, run_speed * 0.5)
+                    if off.length() > 3.0:
+                        var v: Vector3 = Vector3(velocity.x, 0.0, velocity.z).rotated(Vector3.UP, sin(_t * 9.0) * 0.45)
+                        velocity.x = v.x
+                        velocity.z = v.z
         &"fuse":
             stop()
             if _t >= fuse_time:

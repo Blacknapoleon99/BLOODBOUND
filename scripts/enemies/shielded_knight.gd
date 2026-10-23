@@ -65,15 +65,23 @@ func try_block(info: DamageInfo) -> bool:
     return true
 
 
+func _roam_style() -> Roam3D.Style:
+    return Roam3D.Style.GUARD
+
+
 func _tick(delta: float, target: Node3D) -> void:
     match state:
         &"idle":
             stop()
-            if ai_enabled and target != null:
+            if ai_enabled and target == null:
+                roam_idle(delta, walk_speed * 0.7)  # 3D: paces a guard loop round its post
+            elif ai_enabled and target != null:
                 var off: Vector3 = planar_to(target)
                 face(off)
                 if off.length() < bash_range and _silenced_left <= 0.0 and is_on_floor():
                     set_state(&"windup")
+                elif roam != null:
+                    engage(delta, target, bash_range * 0.85, walk_speed, walk_speed * 0.6)  # 3D: flanks in
                 elif off.length() > 1.2:
                     move_dir(chase_dir(target), walk_speed)
         &"windup":

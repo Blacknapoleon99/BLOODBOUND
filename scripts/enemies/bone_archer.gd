@@ -33,8 +33,18 @@ var facing: float = -1.0
 var plane_locked: bool = true
 var leash_radius: float = 12.0
 var heading: Vector3 = Vector3(-1.0, 0.0, 0.0)
-var home: Vector3
+## Leash centre. Setting it (e.g. an arena ring's centre) before the first physics frame keeps it.
+var home: Vector3:
+    set(value):
+        home = value
+        _home_set = true
+        if roam != null:
+            roam.set_home(value, leash_radius)
 var _home_set: bool = false
+## Full-3D steering (DEC-058): repositions on its platform, keeps range and a clear shot.
+var roam: Roam3D
+## Preferred shooting distance in 3D (between shots it drifts toward it, strafing).
+var keep_range: float = 6.5
 var health: Health
 var hurtbox: Hurtbox
 var poise: int = 2
@@ -101,9 +111,14 @@ func silence(seconds: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if not plane_locked and roam == null:
+        roam = Roam3D.new(self, Roam3D.Style.KEEP, heading)
+        if _home_set:
+            roam.set_home(home, leash_radius)
     if not _home_set:
-        _home_set = true
         home = global_position
+    elif roam != null and roam.leash != maxf(0.5, leash_radius):
+        roam.set_home(home, leash_radius)
     _t += delta
     _stun_left = maxf(0.0, _stun_left - delta)
     _silenced_left = maxf(0.0, _silenced_left - delta)
@@ -116,7 +131,10 @@ func _physics_process(delta: float) -> void:
         State.IDLE:
             if not _hopping:
                 _set_planar(Vector3.ZERO)
-            if ai_enabled and target != null and _silenced_left <= 0.0 and not _hopping:
+            if ai_enabled and target == null and roam != null and not _hopping:
+                _set_planar(roam.idle_velocity(delta, move_speed * 0.6))  # 3D: repositions, watches
+                _face(roam.heading)
+            elif ai_enabled and target != null and _silenced_left <= 0.0 and not _hopping:
                 var off: Vector3 = _planar_to(target)
                 _face(off)
                 if off.length() < retreat_distance and _can_step(-heading):
@@ -124,6 +142,13 @@ func _physics_process(delta: float) -> void:
                         _hop(-heading)  # Bone Hop
                     else:
                         _set_planar(-heading * move_speed)
+                elif roam != null and not _clear_shot(target) and _t < 2.5:
+                    # 3D: no line of sight: side-step round the obstacle before drawing.
+                    var side: Vector3 = heading.cross(Vector3.UP) * roam.circle_sign
+                    if not _can_step(side):
+                        roam.circle_sign = -roam.circle_sign
+                        side = -side
+                    _set_planar(side * move_speed)
                 else:
                     _set_state(State.AIM)
                     Audio.sfx(&"archer_draw")
@@ -150,6 +175,13 @@ func _physics_process(delta: float) -> void:
         State.RECOVER:
             if not _hopping:
                 _set_planar(Vector3.ZERO)
+                if ai_enabled and roam != null and target != null:
+                    # 3D: between shots it repositions: strafes round you toward its range.
+                    var v: Vector3 = roam.engage_velocity(target, keep_range, move_speed, move_speed * 0.7, delta)
+                    if _can_step(v):
+                        _set_planar(v)
+                    _face(_planar_to(target))
+                    roam.heading = heading
             if ai_enabled and target != null and not _hopping and _hop_left <= 0.0 and is_on_floor():
                 var near: Vector3 = _planar_to(target)
                 if near.length() < retreat_distance and _can_step(-near, 3.0):
@@ -169,6 +201,9 @@ func _physics_process(delta: float) -> void:
         velocity.y = 0.0
     if plane_locked:
         velocity.z = 0.0
+    if roam != null and state != State.HITSTUN and state != State.DEAD:
+        roam.update_floor(delta)
+        velocity = roam.guard(velocity, delta)  # never walks or hops off its platform on its own
     move_and_slide()
     if plane_locked:
         position.z = 0.0
@@ -236,7 +271,17 @@ func _can_step(dir: Vector3, step: float = 0.6) -> bool:
     next.y = 0.0
     var now: Vector3 = global_position - home
     now.y = 0.0
+    if roam != null and not roam.safe_step(dir, step):
+        return false  # 3D: an edge that way
     return next.length() < leash_radius or next.length() < now.length()
+
+
+## 3D: true if nothing solid stands between the bow and `target`.
+func _clear_shot(target: Node3D) -> bool:
+    var from: Vector3 = global_position + Vector3(0.0, 0.15, 0.0)
+    var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, target.global_position, 1, [get_rid()])
+    var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+    return hit.is_empty() or hit["collider"] == target or hit["collider"] is CharacterBody3D
 
 
 func _on_hit(info: DamageInfo) -> void:
