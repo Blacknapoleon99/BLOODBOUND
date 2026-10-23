@@ -194,6 +194,7 @@ func _run() -> void:
     await _m25_moveset_checks()
     await _m26_climb_checks()
     await _m27_motor_contract_checks()
+    await _m28_hero_moveset_checks()  # DEC-059: the full animation moveset
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -3325,7 +3326,8 @@ func _m24_3d_room_checks() -> void:
         await _seconds(0.4)
         _key(KEY_SPACE, true)
         await _seconds(0.25)
-        var rising_air: float = float(animator.tree.get("parameters/air/blend_amount"))
+        # DEC-059: with the real moveset the rising jump is a held clip (base); the fall is the air loop.
+        var rising_air: float = maxf(float(animator.tree.get("parameters/air/blend_amount")), float(animator.tree.get("parameters/base/blend_amount")))
         var rising: bool = _player.velocity.y > 0.0
         _key(KEY_SPACE, false)
         var landed: bool = false
@@ -3335,7 +3337,7 @@ func _m24_3d_room_checks() -> void:
                 landed = true
                 break
         await _seconds(0.35)
-        var after_air: float = float(animator.tree.get("parameters/air/blend_amount"))
+        var after_air: float = maxf(float(animator.tree.get("parameters/air/blend_amount")), float(animator.tree.get("parameters/base/blend_amount")))
         _check(rising and rising_air > 0.5 and landed and after_air < 0.05 and fall_node.use_custom_timeline and fall_node.timeline_length < fall_len * 0.5,
                 "the hero's air pose follows the jump (rising %.2f, landed %.2f) and the fall loop skips the clip's collapse (%.2f of %.2f s)" % [rising_air, after_air, fall_node.timeline_length, fall_len])
     # No side walls: running sideways carries you past the hall's open edge and off it.
@@ -3826,6 +3828,88 @@ func _m26_climb_checks() -> void:
 ## docs/superpowers/specs/2026-10-22-movement-reference-spec.md section 5.3) and the SM64-style
 ## feel (facing-led run, squared stick, accel curve, brake/decel/land, committed air, bonk,
 ## chain window, slopes). States are compared by NAME so the block parses against any motor.
+## DEC-059: every motor pose plays a real clip, the combo swings three distinct whole clips, and
+## each swing's contact frame lands in the attack's ACTIVE window.
+func _m28_hero_moveset_checks() -> void:
+    change_scene_to_file("res://scenes/playground_3d.tscn")
+    await _frames(15)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    var stations: Dictionary = room.get("stations")
+    var animator: ArtAnimator = p.find_child("ArtAnimator", true, false) as ArtAnimator
+    _check(animator != null and animator.real_moveset, "the hero model carries the full moveset clips (DEC-059)")
+    if animator == null:
+        return
+    # Every pose PlatformerMotor.anim_state() can name (see its match) has a real clip.
+    var motor_poses: Array[StringName] = [&"idle", &"walk", &"push", &"land", &"brake", &"skid", &"crouch", &"slide",
+        &"slope_slide", &"wall_slide", &"hang", &"shimmy", &"pull_up", &"climb", &"climb_leap", &"pound_spin",
+        &"pound_fall", &"pound_land", &"knockback", &"bonk", &"dash", &"attack", &"triple", &"backflip", &"side_flip",
+        &"long_jump", &"wall_kick", &"jump", &"fall"]
+    var placeholders: Array[StringName] = [&"idle", &"walk", &"run", &"jump", &"fall", &"hit_to_body_01"]
+    var bad: Array[String] = []
+    for pose_name: StringName in motor_poses:
+        var row: Array = animator.poses.get(pose_name, [])
+        if row.is_empty():
+            bad.append("%s: no row" % pose_name)
+        elif row[0] == &"hold":
+            var clip: StringName = row[1]
+            if not animator.player.has_animation(clip) or clip in placeholders:
+                bad.append("%s: %s" % [pose_name, clip])
+            else:
+                var length: float = animator.player.get_animation(clip).length
+                for i in range(3, row.size()):
+                    if row[2] != &"loop" and row[2] != &"play" and row[2] != &"stride" and float(row[i]) > length + 0.01:
+                        bad.append("%s: %.2f past %.2f" % [pose_name, row[i], length])
+                if row[2] in [&"play", &"loop", &"stride"] and (float(row[3]) > length or float(row[4]) > length + 0.01):
+                    bad.append("%s: window past %.2f" % [pose_name, length])
+        elif not (row[0] == &"loco" and pose_name in [&"idle", &"walk", &"push", &"attack", &"dash"]) and not (row[0] == &"air" and pose_name == &"fall"):
+            bad.append("%s: %s layer" % [pose_name, row[0]])
+    _check(bad.is_empty(), "every motor pose maps to a real moveset clip, no placeholder frames (%s)" % ", ".join(bad))
+    # The light combo swings three distinct clips; the heavy its own.
+    var combo: Array = [ArtAnimator.ATTACK_CLIPS[&"player_light"], ArtAnimator.ATTACK_CLIPS[&"player_light_2"], ArtAnimator.ATTACK_CLIPS[&"player_light_finisher"]]
+    var distinct: bool = combo[0] != combo[1] and combo[1] != combo[2] and combo[0] != combo[2] and not ArtAnimator.ATTACK_CLIPS[&"player_heavy"] in combo
+    _check(distinct and combo.all(func(c: StringName) -> bool: return animator.player.has_animation(c)),
+            "the light combo plays 3 distinct swing clips and the heavy its own (%s)" % str(combo))
+    # Each swing's contact frame (the sword hand's fastest frame) sits in its attack's ACTIVE window,
+    # with the wind-up before it and the follow-through after.
+    var aligned: Array[String] = []
+    var all_aligned: bool = true
+    for path: String in ["player_light", "player_light_2", "player_light_finisher", "player_heavy"]:
+        var data: AttackData = load("res://resources/attacks/%s.tres" % path) as AttackData
+        var plan: Dictionary = animator.attack_plan(ArtAnimator.ATTACK_CLIPS[data.id], data.startup, data.active, data.recovery)
+        if plan.is_empty():
+            all_aligned = false
+            aligned.append("%s: no plan" % path)
+            continue
+        var c: float = plan["contact"]
+        var at_open: float = ArtAnimator.plan_time(plan, data.startup)
+        var at_close: float = ArtAnimator.plan_time(plan, data.startup + data.active)
+        var whole: bool = float(plan["start"]) < c - 0.15 and float(plan["end"]) > c + 0.25
+        var ok: bool = at_open <= c and c <= at_close and whole
+        all_aligned = all_aligned and ok
+        aligned.append("%s %.2f in [%.2f, %.2f] of %.2f-%.2f" % [path, c, at_open, at_close, plan["start"], plan["end"]])
+    _check(all_aligned, "each swing's contact frame lands in its ACTIVE window, wind-up and follow-through around it (%s)" % "; ".join(aligned))
+    # In play: the first light swing shows its contact while the hitbox is live.
+    await _station(p, cam, stations["momentum"], 0.0)
+    await _seconds(0.3)
+    var melee: MeleeAttack = p.get("melee") as MeleeAttack
+    var light: AttackData = load("res://resources/attacks/player_light.tres") as AttackData
+    var plan1: Dictionary = animator.attack_plan(ArtAnimator.ATTACK_CLIPS[&"player_light"], light.startup, light.active, light.recovery)
+    _key(KEY_J, true)
+    var seen: float = -1.0
+    for i in 30:
+        await physics_frame
+        if melee.phase == MeleeAttack.Phase.ACTIVE:
+            seen = animator.action_src_time
+            break
+    _key(KEY_J, false)
+    var contact: float = float(plan1.get("contact", -10.0))
+    _check(absf(seen - contact) <= ArtAnimator.STRIKE_HALF + 0.05,
+            "in play the light swing is at its contact frame during ACTIVE (clip %.2f s, contact %.2f s)" % [seen, contact])
+    await _seconds(0.8)
+
+
 func _m27_motor_contract_checks() -> void:
     change_scene_to_file("res://scenes/playground_3d.tscn")
     await _frames(15)
