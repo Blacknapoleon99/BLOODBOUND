@@ -116,9 +116,7 @@ func _make_rubble(center: Vector3) -> StaticBody3D:
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = box.size
     mesh_node.mesh = mesh
-    var material: StandardMaterial3D = StandardMaterial3D.new()
-    material.albedo_color = Color(0.26, 0.22, 0.22)
-    mesh_node.material_override = material
+    mesh_node.material_override = GothicMaterials.block(&"wall")  # DEC-054
     body.add_child(mesh_node)
     body.visible = false
     add_child(body)

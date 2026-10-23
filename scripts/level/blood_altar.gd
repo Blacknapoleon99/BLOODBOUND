@@ -14,8 +14,7 @@ static func create(label: String, at: Vector3) -> BloodAltar:
     altar.name = label
     altar.add_to_group(&"blood_altar")
     altar.position = at
-    var stone: StandardMaterial3D = StandardMaterial3D.new()
-    stone.albedo_color = Color(0.3, 0.27, 0.3)
+    var stone: StandardMaterial3D = GothicMaterials.standard("masonry", Color(0.62, 0.56, 0.56), 1.2)  # DEC-054
     var pillar: MeshInstance3D = MeshInstance3D.new()
     var pillar_mesh: BoxMesh = BoxMesh.new()
     pillar_mesh.size = Vector3(0.7, 1.0, 0.7)

@@ -41,10 +41,7 @@ func consume() -> void:
 
 
 func _build() -> void:
-    var gold: StandardMaterial3D = StandardMaterial3D.new()
-    gold.albedo_color = Color(0.55, 0.4, 0.15)
-    gold.metallic = 0.8
-    gold.roughness = 0.35
+    var gold: StandardMaterial3D = GothicMaterials.standard("wood", Color(0.85, 0.66, 0.42), 0.8)  # DEC-054
     var body: MeshInstance3D = MeshInstance3D.new()
     var body_mesh: BoxMesh = BoxMesh.new()
     body_mesh.size = Vector3(1.2, 0.7, 0.8)

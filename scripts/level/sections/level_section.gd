@@ -484,25 +484,10 @@ func platform_under(x: float, z: float, top: float) -> int:
 
 ## A glowing archway over the exit pad: the goal reads from anywhere on the course (decor only).
 func _exit_arch() -> void:
-    var bone: StandardMaterial3D = StandardMaterial3D.new()
-    bone.albedo_color = Color(0.3, 0.26, 0.22)
-    bone.emission_enabled = true
-    bone.emission = Color(0.75, 0.1, 0.05) * 0.65  # a blood-lit gate: the goal reads from anywhere
-    var parts: Array = [
-        [Vector3(width - 1.0, 3.5, -3.7), Vector3(0.5, 7.0, 0.5)],
-        [Vector3(width - 1.0, 3.5, 3.7), Vector3(0.5, 7.0, 0.5)],
-        [Vector3(width - 1.0, 7.2, 0.0), Vector3(0.6, 0.6, 7.9)],
-    ]
-    for part: Array in parts:
-        var mesh_node: MeshInstance3D = MeshInstance3D.new()
-        mesh_node.name = "Exit arch"
-        var mesh: BoxMesh = BoxMesh.new()
-        mesh.size = part[1]
-        mesh_node.mesh = mesh
-        mesh_node.material_override = bone
-        var at: Vector3 = part[0]
-        mesh_node.position = Vector3(gx(at.x), at.y, at.z)
-        add_child(mesh_node)
+    var arch: Node3D = GothicDressing.exit_arch()  # carved pointed arch, blood-lit inside (DEC-054)
+    arch.name = "Exit arch"
+    arch.position = Vector3(gx(width - 1.0), 0.0, 0.0)
+    add_child(arch)
 
 
 ## After `_course()`: climbs become advanced links from the platforms at their feet.

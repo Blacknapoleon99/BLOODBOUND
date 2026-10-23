@@ -23,8 +23,7 @@ func player_in_reach(player: Node3D) -> bool:
 
 
 func _build() -> void:
-    var wood: StandardMaterial3D = StandardMaterial3D.new()
-    wood.albedo_color = Color(0.3, 0.22, 0.16)
+    var wood: StandardMaterial3D = GothicMaterials.standard("wood", Color(0.75, 0.62, 0.52), 1.2)  # DEC-054
     var table: MeshInstance3D = MeshInstance3D.new()
     var table_mesh: BoxMesh = BoxMesh.new()
     table_mesh.size = Vector3(2.4, 0.9, 1.0)

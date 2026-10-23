@@ -25,8 +25,7 @@ static func create(lever_at: Vector3, x0: float, x1: float, top: float, z: float
     var post_mesh: BoxMesh = BoxMesh.new()
     post_mesh.size = Vector3(0.2, 1.2, 0.2)
     post.mesh = post_mesh
-    var brass: StandardMaterial3D = StandardMaterial3D.new()
-    brass.albedo_color = Color(0.7, 0.55, 0.2)
+    var brass: StandardMaterial3D = GothicMaterials.standard("rust_iron", Color(1.0, 0.78, 0.35), 0.5, false)  # DEC-054
     brass.emission_enabled = true
     brass.emission = Color(0.6, 0.4, 0.1) * 0.5
     post.material_override = brass
@@ -47,7 +46,7 @@ static func create(lever_at: Vector3, x0: float, x1: float, top: float, z: float
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = box.size
     mesh_node.mesh = mesh
-    s._bridge_material = StandardMaterial3D.new()
+    s._bridge_material = GothicMaterials.standard("cracked", Color(0.85, 0.78, 0.66), 1.6)  # bone-pale stone
     s._bridge_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
     s._bridge_material.albedo_color = Color(0.85, 0.8, 0.68, 0.12)
     mesh_node.material_override = s._bridge_material

@@ -56,6 +56,36 @@ static func kind_for_label(label: String) -> StringName:
     return &""
 
 
+## A fresh textured StandardMaterial3D (PBR set + triplanar mapping) for props whose scripts
+## animate the material (telegraph emission, fades, consumed glows): the existing emission /
+## albedo code keeps working on it. `world` = world-space triplanar (static props); otherwise
+## object-space (moving props: pendulums). Sets: flagstone, masonry, cobble, rust_iron,
+## cracked, rubble, climb, wood. Works in Compatibility and Forward+.
+static func standard(set_name: String, tint: Color = Color.WHITE, scale: float = 1.5, world: bool = true) -> StandardMaterial3D:
+    var m: StandardMaterial3D = StandardMaterial3D.new()
+    m.albedo_texture = _tex(set_name, "diff")
+    m.albedo_color = tint
+    m.normal_enabled = true
+    m.normal_texture = _tex(set_name, "nor")
+    m.ao_enabled = true
+    m.ao_texture = _tex(set_name, "arm")
+    m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+    m.ao_light_affect = 0.35
+    m.roughness = 1.0
+    m.roughness_texture = _tex(set_name, "arm")
+    m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+    m.metallic = 1.0 if set_name == "rust_iron" else 0.0
+    if set_name == "rust_iron":
+        m.metallic_texture = _tex(set_name, "arm")
+        m.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
+    m.uv1_triplanar = true
+    m.uv1_world_triplanar = world
+    m.uv1_triplanar_sharpness = 4.0
+    m.uv1_scale = Vector3.ONE / scale
+    m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+    return m
+
+
 ## A fresh (unshared) copy: for blocks that animate their material (collapsing slabs).
 static func unique(kind: StringName, room_tint: Color = Color(0, 0, 0, 0)) -> ShaderMaterial:
     return block(kind, room_tint).duplicate() as ShaderMaterial
@@ -168,6 +198,19 @@ static func _make(kind: StringName, tint: Color) -> ShaderMaterial:
             m.set_shader_parameter(&"emission_color", Color(0.7, 0.12, 0.05))
             m.set_shader_parameter(&"emission_cracks", 0.35)
             m.set_shader_parameter(&"moss", 0.0)
+        &"bone_wall":  # ambush walls (rotated ring segments: local mapping), red-lit cracks
+            m = _block_material("cracked", "cracked")
+            m.set_shader_parameter(&"local_space", true)
+            m.set_shader_parameter(&"top_scale", 1.4)
+            m.set_shader_parameter(&"side_scale", 1.4)
+            m.set_shader_parameter(&"top_tint", Color(1.0, 0.9, 0.74))
+            m.set_shader_parameter(&"side_tint", Color(1.0, 0.9, 0.74))
+            m.set_shader_parameter(&"side_fade", 9.0)
+            m.set_shader_parameter(&"side_dark", 0.5)
+            m.set_shader_parameter(&"moss", 0.0)
+            m.set_shader_parameter(&"blood", 0.8)
+            m.set_shader_parameter(&"emission_color", Color(0.9, 0.08, 0.04))
+            m.set_shader_parameter(&"emission_cracks", 1.2)
         &"breakable":
             m = _block_material("cracked", "cracked")
             m.set_shader_parameter(&"top_scale", 1.4)

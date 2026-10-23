@@ -174,11 +174,7 @@ func _make_wall(x: float) -> StaticBody3D:
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = Vector3(0.6, 6.0, Lane.DEPTH_3D if three_d else 3.0)
     mesh_node.mesh = mesh
-    var bone: StandardMaterial3D = StandardMaterial3D.new()
-    bone.albedo_color = Color(0.7, 0.66, 0.56)
-    bone.emission_enabled = true
-    bone.emission = Color(0.6, 0.05, 0.05) * 0.6
-    mesh_node.material_override = bone
+    mesh_node.material_override = GothicMaterials.block(&"bone_wall")  # bone-packed stone, red-lit cracks (DEC-054)
     wall.add_child(mesh_node)
     wall.visible = false
     add_child(wall)
@@ -202,11 +198,7 @@ func _make_ring_wall(angle: float, length: float) -> StaticBody3D:
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = size
     mesh_node.mesh = mesh
-    var bone: StandardMaterial3D = StandardMaterial3D.new()
-    bone.albedo_color = Color(0.7, 0.66, 0.56)
-    bone.emission_enabled = true
-    bone.emission = Color(0.6, 0.05, 0.05) * 0.6
-    mesh_node.material_override = bone
+    mesh_node.material_override = GothicMaterials.block(&"bone_wall")  # bone-packed stone, red-lit cracks (DEC-054)
     wall.add_child(mesh_node)
     wall.visible = false
     add_child(wall)

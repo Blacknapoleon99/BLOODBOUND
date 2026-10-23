@@ -14,6 +14,7 @@ from the public API (`https://api.polyhaven.com/files/<id>`): diffuse (`_diff`),
 | `cracked`   | castle_brick_broken_06   | https://polyhaven.com/a/castle_brick_broken_06         | collapsing slabs, breakable floors, ossuary sides |
 | `rubble`    | rock_wall_08             | https://polyhaven.com/a/rock_wall_08                   | crumbled undersides of floating platforms |
 | `climb`     | rough_block_wall         | https://polyhaven.com/a/rough_block_wall               | climb walls (behind the bone handholds) |
+| `wood`      | medieval_wood            | https://polyhaven.com/a/medieval_wood                  | merchant stall, reliquary chests |
 
 Licence text: https://polyhaven.com/license (CC0 1.0 Universal,
 https://creativecommons.org/publicdomain/zero/1.0/).

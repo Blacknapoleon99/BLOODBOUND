@@ -179,6 +179,20 @@
   - Side-view backdrop materials.
   - Boss arena and Reality Fracture blocks.
   - Spike-trap and pendulum art.
+- **Follow-up (after merging DEC-053/055):**
+  - `GothicMaterials.standard(set, tint, scale, world)` is a textured triplanar StandardMaterial3D for props whose scripts animate their material, so telegraphs keep working: the spike plate's red pulse, the lever bridge's fade-in, the altar's spent glow, the chest's opened glow.
+  - These now use the stone/iron/wood scans:
+    - spike plates and spikes (rusted iron);
+    - pendulum rod and blade (object-space iron, red edge glow kept);
+    - lever (brass-tinted iron, glow kept) and its bridge (pale cracked stone, still fades in);
+    - Bishop causeway slabs (flagstone; breakable slabs stay lighter than the solid ends) and their rubble;
+    - blood altar (masonry; the bowl glow is unchanged);
+    - merchant stall and reliquary chests (new CC0 `medieval_wood` set);
+    - ambush bone walls (new `bone_wall` kind: local mapping for rotated ring segments, red-lit cracks).
+  - Exit arch: `GothicDressing.exit_arch()` builds a carved pointed arch. It has plinths, piers, capitals, voussoirs, a skull keystone, a blood-red glowing inner moulding and a red torch light, and replaces the red box frame.
+  - Hero readability: GothicEnvironment adds two short-range, shadowless lights that follow the player. A warm fill sits on the camera side and a cool rim behind. They use fast falloff, so the scene's mood is kept.
+  - Dev tools: `tools/dev/audit_materials.gd` lists the remaining flat-material meshes in a 3D run. `shot_ground.gd` also captures each exit arch and the Bishop causeway.
+  - Left alone: characters, the Reality Fracture (veil, ring, chapel), shard pickups, checkpoint banners and VFX.
 
 ## DEC-055 — The background world around the open courses (2026-10-23)
 

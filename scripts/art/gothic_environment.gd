@@ -30,6 +30,11 @@ var abyss_fog: FogVolume
 var ash: GPUParticles3D
 var embers: GPUParticles3D
 var sky_material: ShaderMaterial
+## Hero readability (DEC-054 follow-up): a soft, shadowless key from the camera side and a cold
+## rim from behind, both short-ranged and following the player, so the dark hero separates from
+## the stone without lifting the whole scene.
+var hero_fill: OmniLight3D
+var hero_rim: OmniLight3D
 
 
 static func create() -> GothicEnvironment:
@@ -181,6 +186,8 @@ func _build() -> void:
 
     ash = _make_ash()
     add_child(ash)
+    hero_fill = _hero_light("HeroFill", Color(1.0, 0.86, 0.74), 2.2, 3.6)
+    hero_rim = _hero_light("HeroRim", Color(0.62, 0.72, 1.0), 1.6, 3.0)
     embers = _make_embers()
     add_child(embers)
 
@@ -228,6 +235,30 @@ func _process(_delta: float) -> void:
     ash.global_position = p
     embers.global_position = p + Vector3(0.0, -4.0, 0.0)
     abyss_fog.global_position = Vector3(snappedf(p.x, 4.0), -23.0, snappedf(p.z, 4.0))
+    var hero: Node3D = get_tree().get_first_node_in_group(&"player") as Node3D
+    if hero != null:
+        var chest: Vector3 = hero.global_position + Vector3(0.0, 1.0, 0.0)
+        var to_cam: Vector3 = p - chest
+        to_cam.y = 0.0
+        to_cam = to_cam.normalized() if to_cam.length() > 0.01 else Vector3.BACK
+        hero_fill.global_position = chest + to_cam * 1.6 + Vector3(0.0, 0.9, 0.0)
+        hero_rim.global_position = chest - to_cam * 1.3 + Vector3(0.0, 1.4, 0.0)
+    hero_fill.visible = hero != null
+    hero_rim.visible = hero != null
+
+
+func _hero_light(light_name: String, color: Color, energy: float, light_range: float) -> OmniLight3D:
+    var l: OmniLight3D = OmniLight3D.new()
+    l.name = light_name
+    l.light_color = color
+    l.light_energy = energy
+    l.omni_range = light_range
+    l.omni_attenuation = 2.2  # falls off fast: lights the hero, barely the floor round it
+    l.shadow_enabled = false
+    l.light_volumetric_fog_energy = 0.0
+    l.light_specular = 0.6
+    add_child(l)
+    return l
 
 
 ## Cold blue-black shadows, desaturated mids, a faint warm lift in the highlights.

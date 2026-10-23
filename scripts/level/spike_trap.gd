@@ -49,15 +49,13 @@ func _build() -> void:
     var plate_mesh: BoxMesh = BoxMesh.new()
     plate_mesh.size = Vector3(width, 0.04, depth)
     plate.mesh = plate_mesh
-    _plate_material = StandardMaterial3D.new()
-    _plate_material.albedo_color = Color(0.25, 0.2, 0.2)
+    _plate_material = GothicMaterials.standard("rust_iron", Color(0.55, 0.42, 0.38), 0.8)  # a rusted grate (DEC-054)
     plate.material_override = _plate_material
     plate.position.y = 0.02
     add_child(plate)
     _spikes = Node3D.new()
     add_child(_spikes)
-    _spike_material = StandardMaterial3D.new()
-    _spike_material.albedo_color = Color(0.86, 0.82, 0.7)
+    _spike_material = GothicMaterials.standard("rust_iron", Color(0.95, 0.88, 0.8), 0.6, false)
     var count: int = maxi(2, int(width / 0.45))
     var rows: int = 1 if depth <= 2.6 else int(depth / 0.9)  # a bed of spikes across a 3D hall
     for r in rows:

@@ -44,6 +44,11 @@ func _run() -> void:
         shots.append(["%s_entry" % room.id, Vector3(x + 2.0, 4.5, 8.0), Vector3(x + 14.0, 0.5, -1.0)])
         shots.append(["%s_mid" % room.id, Vector3(x + room.width * 0.5 - 6.0, 6.0, 14.0), Vector3(x + room.width * 0.5, 1.0, 0.0)])
         shots.append(["%s_under" % room.id, Vector3(x + room.width * 0.4, -6.0, 18.0), Vector3(x + room.width * 0.5, 2.0, 0.0)])
+        shots.append(["%s_exit" % room.id, Vector3(x + room.width - 11.0, 3.0, 4.0), Vector3(x + room.width - 1.0, 4.0, 0.0)])
+    var arena: BossArena = main.get("boss_arena")
+    if arena != null:
+        var ax: float = arena.left_x()
+        shots.append(["bishop_causeway", Vector3(ax - 3.0, 4.0, 6.0), Vector3(ax + 10.0, 0.0, 0.0)])
     for shot: Array in shots:
         eye.global_position = shot[1]
         eye.look_at(shot[2], Vector3.UP)

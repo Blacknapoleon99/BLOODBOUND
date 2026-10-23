@@ -273,6 +273,81 @@ static func _fence(at: Vector3, corner: Vector2, size: Vector3, rng: RandomNumbe
     _add(parts, "rail", Transform3D(rail_basis, start + dir * (rail_len * 0.5 - 0.12) + Vector3(0.0, 0.5, 0.0)))
 
 
+# --- Exit arch ----------------------------------------------------------------------------
+
+## The goal over every exit pad: a carved pointed (gothic) arch spanning z -3.7..3.7, with stepped
+## plinths, capitals, a skull keystone and a blood-red glowing inner moulding plus a red light,
+## so the exit reads from anywhere on the course. Local origin at the pad top (y = 0), arch
+## plane at x = 0. Visual only.
+static func exit_arch() -> Node3D:
+    var arch: Node3D = Node3D.new()
+    var stone: ShaderMaterial = GothicMaterials.block(&"column")
+    var glow: StandardMaterial3D = StandardMaterial3D.new()
+    glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    glow.albedo_color = Color(0.9, 0.1, 0.05)
+    glow.emission_enabled = true
+    glow.emission = Color(1.0, 0.12, 0.05)
+    glow.emission_energy_multiplier = 2.2
+    const HALF: float = 3.7
+    const SPRING: float = 4.6  # height where the arch springs from the piers
+    const R: float = 4.7       # arc radius (centres 1.0 m past the axis: a pointed arch)
+    for side: float in [-1.0, 1.0]:
+        var z: float = side * HALF
+        _arch_box(arch, Vector3(0.0, 0.3, z), Vector3(1.3, 0.6, 1.3), Basis.IDENTITY, stone)
+        _arch_box(arch, Vector3(0.0, 0.75, z), Vector3(1.05, 0.3, 1.05), Basis.IDENTITY, stone)
+        _arch_box(arch, Vector3(0.0, 2.6, z), Vector3(0.8, 3.4, 0.8), Basis.IDENTITY, stone)
+        _arch_box(arch, Vector3(0.0, 4.4, z), Vector3(1.1, 0.4, 1.1), Basis.IDENTITY, stone)
+        # Inner glowing groove down the pier's inside face.
+        _arch_box(arch, Vector3(0.0, 2.6, z - side * 0.41), Vector3(0.22, 3.2, 0.04), Basis.IDENTITY, glow)
+        # Arc: from the springing point up to the apex, centre on the far side of the axis.
+        var centre: Vector2 = Vector2(-side * (R - HALF), SPRING)  # (z, y)
+        var apex_angle: float = acos((R - HALF) / R)  # where the arc crosses the axis (z = 0)
+        var segs: int = 7
+        var prev: Vector2 = Vector2(z, SPRING)
+        for k in range(1, segs + 1):
+            var t: float = float(k) / segs
+            var ang: float = lerpf(0.0, apex_angle, t)
+            var pt: Vector2 = centre + Vector2(side * R * cos(ang), R * sin(ang))
+            _arch_segment(arch, prev, pt, 0.75, 0.8, stone, Vector3.ZERO)
+            # The glowing inner moulding, a little inside the stone.
+            var inner_prev: Vector2 = centre + (prev - centre).normalized() * (R - 0.42)
+            var inner_pt: Vector2 = centre + (pt - centre).normalized() * (R - 0.42)
+            _arch_segment(arch, inner_prev, inner_pt, 0.08, 0.24, glow, Vector3.ZERO)
+            prev = pt
+    # Skull keystone at the apex.
+    var apex_y: float = SPRING + sqrt(R * R - (R - HALF) * (R - HALF))
+    var skull: MeshInstance3D = MeshInstance3D.new()
+    skull.name = "Keystone skull"
+    skull.mesh = _mesh("skull")
+    skull.scale = Vector3.ONE * 3.2
+    skull.rotation.y = -PI * 0.5  # faces the oncoming player (-X)
+    skull.position = Vector3(-0.35, apex_y - 0.55, 0.0)
+    arch.add_child(skull)
+    var light: OmniLight3D = GothicEnvironment.torch_light(Vector3(-0.6, 3.2, 0.0), 2.6, 7.5)
+    light.light_color = Color(1.0, 0.16, 0.08)
+    arch.add_child(light)
+    return arch
+
+
+static func _arch_box(parent: Node3D, at: Vector3, size: Vector3, basis: Basis, mat: Material) -> void:
+    var node: MeshInstance3D = MeshInstance3D.new()
+    var box: BoxMesh = BoxMesh.new()
+    box.size = size
+    node.mesh = box
+    node.material_override = mat
+    node.transform = Transform3D(basis, at)
+    parent.add_child(node)
+
+
+## One voussoir from `a` to `b` (points in the arch plane: x = z, y = y), `thick` radially.
+static func _arch_segment(parent: Node3D, a: Vector2, b: Vector2, thick: float, depth: float, mat: Material, offset: Vector3) -> void:
+    var d: Vector2 = b - a
+    var mid: Vector2 = (a + b) * 0.5
+    var ang: float = atan2(d.y, d.x)  # angle of the chord in the z/y plane
+    var basis: Basis = Basis(Vector3.RIGHT, -ang)  # box's Z axis along the chord
+    _arch_box(parent, Vector3(0.0, mid.y, mid.x) + offset, Vector3(depth, thick, d.length() + 0.12), basis, mat)
+
+
 # --- Prop meshes --------------------------------------------------------------------------
 
 static func _mesh(part: String) -> Mesh:

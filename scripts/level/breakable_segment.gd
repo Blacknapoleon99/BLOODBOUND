@@ -31,9 +31,9 @@ static func create(label: String, center: Vector3, slab_size: Vector3, color: Co
     var mesh: BoxMesh = BoxMesh.new()
     mesh.size = slab_size
     segment._mesh.mesh = mesh
-    segment._material = StandardMaterial3D.new()
-    segment._material.albedo_color = color if can_break else color.darkened(0.15)
-    segment._material.roughness = 0.9
+    # Flagstone (DEC-054); breakable slabs stay a shade lighter than the solid ends.
+    var tone: Color = Color(0.82, 0.78, 0.74) if can_break else Color(0.6, 0.57, 0.56)
+    segment._material = GothicMaterials.standard("flagstone", tone.lerp(color * 4.0, 0.15), 2.6)
     segment._mesh.material_override = segment._material
     segment.add_child(segment._mesh)
     return segment

@@ -44,9 +44,7 @@ func reset() -> void:
 
 
 func _build() -> void:
-    var iron: StandardMaterial3D = StandardMaterial3D.new()
-    iron.albedo_color = Color(0.3, 0.28, 0.3)
-    iron.metallic = 0.6
+    var iron: StandardMaterial3D = GothicMaterials.standard("rust_iron", Color(0.6, 0.5, 0.46), 0.6, false)  # DEC-054
     _arm = Node3D.new()
     add_child(_arm)
     var rod: MeshInstance3D = MeshInstance3D.new()
@@ -63,9 +61,7 @@ func _build() -> void:
         span = blade_span  # open 3D courses size each blade to the walkway it guards
     blade_mesh.size = Vector3(1.6, 0.5, span)
     blade.mesh = blade_mesh
-    var edge: StandardMaterial3D = StandardMaterial3D.new()
-    edge.albedo_color = Color(0.75, 0.72, 0.7)
-    edge.metallic = 0.8
+    var edge: StandardMaterial3D = GothicMaterials.standard("rust_iron", Color(1.0, 0.95, 0.92), 0.9, false)
     edge.emission_enabled = true
     edge.emission = Color(0.5, 0.05, 0.05) * 0.4
     blade.material_override = edge
