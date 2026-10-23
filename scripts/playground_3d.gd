@@ -5,9 +5,9 @@ extends Node3D
 ## Co-op). Esc pauses.
 ##
 ## Stations (all reachable from the start pad, x grows to the right of the spawn):
-##   Momentum strip   60 m straight run: speed builds to 10.8 m/s over ~1.5 s (SM64 curve).
+##   Momentum strip   60 m straight run: a 6 m/s run in ~0.4 s, a 7.25 m/s sprint after ~0.8 s.
 ##   Triple tower     a 3.4 m ledge: out of reach of a single jump; triple jump or backflip.
-##   Long-jump gap    an 8 m gap over the abyss.
+##   Long-jump gap    a 5.5 m gap over the abyss.
 ##   Wall-jump shaft  two walls 3 m apart, 10 m tall, a ledge on top.
 ##   Ledge wall       a 3 m wall to catch, shimmy along and pull up.
 ##   Slide tunnel     a 1.2 m-high gap under a slab.
@@ -87,17 +87,17 @@ func _build() -> void:
     # Start pad and the momentum strip (+X).
     _solid("Start pad", Vector3(0.0, -0.5, 0.0), Vector3(12.0, 1.0, 12.0), stone)
     _solid("Momentum strip", Vector3(36.0, -0.5, 0.0), Vector3(60.0, 1.0, 5.0), stone.darkened(0.1))
-    _sign("MOMENTUM RUN  →\nrun straight: speed builds to 10.8 m/s\nlet go: brake · reverse: skid", Vector3(7.0, 2.6, -2.0))
+    _sign("MOMENTUM RUN  →\nrun straight: 6 m/s, then a sprint to 7.25\nlet go: brake · reverse: skid", Vector3(7.0, 2.6, -2.0))
     stations["momentum"] = Vector3(6.0, 1.2, 0.0)
     # Triple tower (-Z side of the pad): a 3.4 m ledge.
     _solid("Triple ground", Vector3(0.0, -0.5, -16.0), Vector3(12.0, 1.0, 20.0), stone)
     _solid("Triple tower", Vector3(0.0, 1.7, -24.0), Vector3(8.0, 3.4, 4.0), accent)
     _sign("TRIPLE JUMP / BACKFLIP\n3.4 m ledge", Vector3(-4.5, 2.6, -10.0))
     stations["triple"] = Vector3(0.0, 1.2, -9.0)
-    # Long-jump gap (-X): run-up, 8 m of abyss, landing.
+    # Long-jump gap (-X): run-up, 5.5 m of abyss (past a running jump), landing (DEC-060).
     _solid("Long run-up", Vector3(-16.0, -0.5, 0.0), Vector3(20.0, 1.0, 5.0), stone)
-    _solid("Long landing", Vector3(-36.0, -0.5, 0.0), Vector3(4.0, 1.0, 5.0), accent)
-    _sign("LONG JUMP  ←\n8 m gap: run, Ctrl, Space", Vector3(-8.0, 2.6, -2.5))
+    _solid("Long landing", Vector3(-33.5, -0.5, 0.0), Vector3(4.0, 1.0, 5.0), accent)
+    _sign("LONG JUMP  ←\n5.5 m gap: run, Ctrl, Space", Vector3(-8.0, 2.6, -2.5))
     stations["long"] = Vector3(-8.0, 1.2, 0.0)
     # Wall-jump shaft (+Z): two walls 3 m apart, 10 m tall, a ledge on top.
     _solid("Shaft floor", Vector3(0.0, -0.5, 14.0), Vector3(10.0, 1.0, 16.0), stone)

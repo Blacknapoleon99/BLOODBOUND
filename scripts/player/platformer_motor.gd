@@ -32,33 +32,40 @@ enum State {
 }
 enum Jump { NONE, SINGLE, DOUBLE, TRIPLE, LONG, BACKFLIP, SIDE_FLIP, WALL_KICK, FALL }
 
-# --- Tuning (hero-scaled SM64 numbers from the spec: ×1.125 for a 1.8 m hero) -----------------
+# --- Tuning (a regular platformer pace for a 1.8 m hero, DEC-060; was SM64 x1.125, DEC-051) ---
 # Ground run.
-const RUN_SPEED: float = 10.8  # full-tilt target (spec 2.1)
-const GROUND_CAP: float = 16.2  # absolute ground speed cap
-const START_SPEED: float = 2.7  # instant first step
-const ACCEL_BASE: float = 11.1  # drag-limited accel = ACCEL_BASE - ACCEL_DRAG * speed (m/s²)
-const ACCEL_DRAG: float = 0.8  # -> ~1.6 s from a standstill to 10.8 m/s; the last 30% takes ~1 s
+const RUN_SPEED: float = 6.0  # full-tilt run
+const SPRINT_SPEED: float = 7.25  # after running straight at full tilt for SPRINT_DELAY
+const SPRINT_DELAY: float = 0.8
+const SPRINT_ACCEL: float = 1.5  # m/s² from the run up to the sprint (about 0.8 s)
+const SPRINT_TURN: float = 1.5  # rad/s: turning harder than this resets the sprint build-up
+const GROUND_CAP: float = 10.0  # absolute ground speed cap
+const START_SPEED: float = 2.5  # instant first step
+const ACCEL_BASE: float = 12.0  # drag-limited accel = ACCEL_BASE - ACCEL_DRAG * speed (m/s²)
+const ACCEL_DRAG: float = 0.8  # -> 2.5 to 6.0 m/s in ~0.4 s
 const ACCEL_MIN: float = 2.0  # floor for the curve (haste pushes the target past its zero)
-const OVER_SPEED_DECEL: float = 10.0  # above the stick's target speed
+const STICK_POWER: float = 1.5  # target = RUN_SPEED × tilt^1.5: half tilt walks at ~2.1 m/s
+const OVER_SPEED_DECEL: float = 8.0  # above the stick's target speed
 const TURN_RATE: float = 6.0  # rad/s (~344°/s): the facing turns toward the stick at this rate
 const PIVOT_SPEED: float = 1.0  # slower than this, the facing snaps to the stick (a standing start)
 const STICK_DEADZONE: float = 0.05
-const DECEL_RATE: float = 10.0  # stick released below BRAKE_MIN_SPEED: glide to a stop
-const BRAKE_RATE: float = 40.5  # stick released at a run: skid to a stop
-const BRAKE_MIN_SPEED: float = 5.4
+const DECEL_RATE: float = 8.0  # stick released below BRAKE_MIN_SPEED: glide to a stop
+const BRAKE_RATE: float = 30.0  # stick released at a run: skid to a stop
+const BRAKE_MIN_SPEED: float = 4.0
 const SKID_ANGLE_DEG: float = 100.0  # stick this far from the facing at speed: turnaround skid
-const SKID_MIN_SPEED: float = 5.4
-const SKID_RATE: float = 40.5
-const SKID_EXIT_SPEED: float = 2.7  # walks off the new way at this speed
+const SKID_MIN_SPEED: float = 4.0
+const SKID_RATE: float = 30.0
+const SKID_EXIT_SPEED: float = 2.0  # walks off the new way at this speed
 const PUSH_SPEED: float = 2.0  # walking head-on into a wall clamps the speed (and plays "push")
 const PUSH_HEAD_ON_DOT: float = 0.5  # facing within 60° of the wall's inward normal
-const STRAFE_ACCEL: float = 70.0  # locked on: vector steering (snappy, for combat)
-const STRAFE_DECEL: float = 90.0
-const CROUCH_SPEED: float = 2.5
-const CROUCH_ACCEL: float = 30.0
-const SLIDE_MIN_SPEED: float = 3.4  # crouching faster than this slides
-const SLIDE_FRICTION: float = 9.0
+const BLOCKED_RATIO: float = 0.25  # really moving less than this share of the run: blocked (push)
+const STRAFE_ACCEL: float = 45.0  # locked on: vector steering (snappy, for combat)
+const STRAFE_DECEL: float = 60.0
+const CROUCH_SPEED: float = 2.0
+const CROUCH_ACCEL: float = 20.0
+const SLIDE_MIN_SPEED: float = 3.0  # crouching faster than this slides
+const SLIDE_FRICTION: float = 6.0
+const SLIDE_END_SPEED: float = 1.8
 const SLIDE_MAX_TIME: float = 0.9
 const SLIDE_TURN: float = 1.5  # rad/s the stick steers a crouch slide
 # Landing and jumps.
@@ -68,38 +75,39 @@ const LAND_BONK_TIME: float = 0.3
 const LAND_KEEP: float = 0.98  # speed kept per 1/30 s while landing with the stick held
 const LAND_MIN_AIR: float = 0.1  # shorter airtime (a step down) lands straight into GROUND
 const CHAIN_WINDOW: float = 0.25  # jump this soon after touchdown to chain the next jump
-const TRIPLE_MIN_SPEED: float = 6.75  # the triple needs this forward speed at the chained jump
+const TRIPLE_MIN_SPEED: float = 4.5  # the triple needs this forward speed at the chained jump
 const JUMP_CARRY: float = 0.8  # single/double/triple keep this much forward speed
-const LONG_ENTRY_SPEED: float = 3.4  # crouch + jump faster than this is a long jump
+const LONG_ENTRY_SPEED: float = 3.0  # crouch + jump faster than this is a long jump
 const HEIGHT: Dictionary = {
     Jump.SINGLE: 2.3, Jump.DOUBLE: 2.9, Jump.TRIPLE: 3.8, Jump.LONG: 1.0,
     Jump.BACKFLIP: 3.6, Jump.SIDE_FLIP: 3.2, Jump.WALL_KICK: 2.6,
 }
-const LONG_GRAVITY_SCALE: float = 0.45
-const LONG_MIN_SPEED: float = 14.0
-const LONG_MAX_SPEED: float = 16.0
-const LONG_LAND_SPEED: float = 11.0  # a long jump lands running at most this fast
-const BACKFLIP_BACK_SPEED: float = 2.5
-const SIDE_FLIP_SPEED: float = 4.5
+const LONG_GRAVITY_SCALE: float = 0.32  # the same 1 m height, floatier: ~0.74 s of flight
+const LONG_BOOST: float = 2.5  # the long jump launches this much faster than the run
+const LONG_MIN_SPEED: float = 8.0
+const LONG_MAX_SPEED: float = 9.0
+const LONG_LAND_SPEED: float = 6.0  # a long jump lands running at most this fast
+const BACKFLIP_BACK_SPEED: float = 2.0
+const SIDE_FLIP_SPEED: float = 3.0
 # Air steering: the facing is fixed; the stick changes forward speed and adds a drift.
-const AIR_DRAG: float = 3.5
-const AIR_ACCEL: float = 15.2  # × tilt × cos(stick vs facing)
-const AIR_DRIFT: float = 3.4  # sideways m/s × tilt × sin(stick vs facing), never builds up
-const AIR_BACK_LIMIT: float = -5.4  # pulling back can drift you backwards this fast at most
-const AIR_CAP: float = 10.8
-const LONG_AIR_CAP: float = 16.0
-const AIR_OVER_DRAG: float = 10.0  # extra drag above the cap
+const AIR_DRAG: float = 2.0
+const AIR_ACCEL: float = 9.0  # × tilt × cos(stick vs facing)
+const AIR_DRIFT: float = 2.4  # sideways m/s × tilt × sin(stick vs facing), never builds up
+const AIR_BACK_LIMIT: float = -3.0  # pulling back can drift you backwards this fast at most
+const AIR_CAP: float = 7.25  # the stick can build air speed up to the sprint
+const LONG_AIR_CAP: float = 9.0
+const AIR_OVER_DRAG: float = 8.0  # extra drag above the cap
 const COMMITTED_AIR_SCALE: float = 0.5  # backflip / wall kick steer at half strength
 const AIR_POSE_GRACE: float = 0.08  # stepping off a lip shows the fall pose only after this
 # Walls.
-const BONK_MIN_SPEED: float = 5.4
+const BONK_MIN_SPEED: float = 4.5
 const BONK_HEAD_ON_DOT: float = 0.707  # facing within 45° of the wall's inward normal
-const BONK_BACK_SPEED: float = 2.7
-const BONK_HARD_SPEED: float = 12.8
-const BONK_HARD_BACK: float = 5.4
+const BONK_BACK_SPEED: float = 2.0
+const BONK_HARD_SPEED: float = 8.5
+const BONK_HARD_BACK: float = 3.5
 const WALL_KICK_WINDOW: float = 0.17  # jump this soon after a bonk to kick off the wall
 const WALL_SLIDE_SPEED: float = 3.5
-const WALL_KICK_SPEED: float = 7.5
+const WALL_KICK_SPEED: float = 6.0
 const WALL_KICK_LOCK: float = 0.22
 const WALL_MIN_HEIGHT: float = 1.0  # no wall slide this close above the floor
 # Ledges.
@@ -131,8 +139,8 @@ const STEEP_MIN_NORMAL_Y: float = 0.29  # steeper than ~73° is a wall, not a sl
 const SLIDE_DEG: Dictionary = {&"grip": 999.0, &"default": 38.0, &"slide": 20.0, &"ice": 10.0}  # forces a slide
 const SLOPE_DEG: Dictionary = {&"grip": 999.0, &"default": 15.0, &"slide": 10.0, &"ice": 5.0}  # walking speeds up / slows
 const SURFACE_FRICTION: Dictionary = {&"grip": 0.92, &"default": 0.92, &"slide": 0.96, &"ice": 0.98}  # slide speed kept per 1/30 s
-const SLOPE_WALK_ACCEL: float = 15.0  # × sin(slope) while walking on a slope
-const SLOPE_SLIDE_ACCEL: float = 70.0  # × sin(slope) down a slide
+const SLOPE_WALK_ACCEL: float = 10.0  # × sin(slope) while walking on a slope
+const SLOPE_SLIDE_ACCEL: float = 45.0  # × sin(slope) down a slide
 const SLOPE_STEER: float = 1.5  # rad/s the stick steers a slope slide
 const SLOPE_SLIDE_STOP: float = 1.2  # a slide on a walkable floor ends below this speed
 const SLOPE_JUMP_DELAY: float = 0.17
@@ -166,7 +174,8 @@ var pushing: bool = false
 var anim_travel: float = 0.0
 ## The jump that ended in the current LAND (the animator and the landing time read it).
 var land_kind: Jump = Jump.NONE
-var run_time: float = 0.0  # kept for compatibility (the boost became the accel curve)
+## Seconds of running straight at full tilt (the sprint builds after SPRINT_DELAY, DEC-060).
+var run_time: float = 0.0
 var ledge_normal: Vector3 = Vector3.ZERO
 var ledge_top: float = 0.0
 var wall_normal: Vector3 = Vector3.ZERO
@@ -189,6 +198,10 @@ var _pull_from: Vector3
 var _pull_to: Vector3
 var _pull_time: float = PULL_UP_TIME
 var _prev_pos: Vector3
+## Planar speed the body really moved last step (platform motion removed) and the run speed
+## the motor asked for: a run that doesn't move is blocked (DEC-060).
+var _real_speed: float = 0.0
+var _last_run_speed: float = 0.0
 var _last_yaw: float = 0.0
 var _shape: CapsuleShape3D
 var _collision: CollisionShape3D
@@ -250,6 +263,7 @@ func reset() -> void:
     jump_kind = Jump.NONE
     chain = 0
     run_time = 0.0
+    _last_run_speed = 0.0
     forward_speed = 0.0
     pushing = false
     _control_lock = 0.0
@@ -281,7 +295,10 @@ func knockback() -> void:
     pushing = false
     _control_lock = 0.0
     player._jump_rising = false
+    run_time = 0.0
+    _last_run_speed = 0.0
     state = State.KNOCKBACK
+    player.floor_stop_on_slope = true
     state_time = 0.0  # a second hit restarts the reaction
     player.emit_signal(&"move_event", &"knockback")
 
@@ -306,7 +323,10 @@ func begin_external(kind: State) -> void:
     chain = 0
     pushing = false
     _control_lock = 0.0
+    run_time = 0.0
+    _last_run_speed = 0.0
     state = kind
+    player.floor_stop_on_slope = true
     state_time = 0.0
 
 
@@ -320,11 +340,14 @@ func anim_state() -> Dictionary:
     var speed: float = absf(forward_speed)
     var pose: StringName = &"idle"
     var progress: float = state_time
+    var planar: float = Vector2(player.velocity.x, player.velocity.z).length()
     match state:
         State.GROUND:
+            if _strafing():
+                speed = planar  # strafing round a target: the legs keep pace with the body, not the facing
             if pushing:
                 pose = &"push"
-                speed = maxf(speed, PUSH_SPEED)
+                speed = PUSH_SPEED
             else:
                 pose = &"walk" if speed > 0.05 else &"idle"
         State.DECEL:
@@ -366,11 +389,12 @@ func anim_state() -> Dictionary:
         State.BONK:
             pose = &"bonk"
         State.DASH:
-            pose = &"dash"
-            speed = Vector2(player.velocity.x, player.velocity.z).length()
+            # In the air the legs take the air pose, never the run cycle (DEC-060).
+            pose = &"dash" if player.is_on_floor() else &"dash_air"
+            speed = planar
         State.ATTACK:
-            pose = &"attack"
-            speed = Vector2(player.velocity.x, player.velocity.z).length()
+            pose = &"attack" if player.is_on_floor() else &"attack_air"
+            speed = planar
         State.AIR:
             match jump_kind:
                 Jump.TRIPLE:
@@ -479,6 +503,8 @@ func _track_motion(delta: float) -> void:
     var pos: Vector3 = player.global_position
     var moved: float = pos.distance_to(_prev_pos)
     _prev_pos = pos
+    var real: Vector3 = player.get_real_velocity() - player.get_platform_velocity()
+    _real_speed = Vector2(real.x, real.z).length()
     _shimmy_moved = state == State.HANG and moved > 0.0005
     if state in [State.HANG, State.CLIMB] and moved < 1.0:
         anim_travel += moved
@@ -566,6 +592,7 @@ func _step_run(wish: Vector2, delta: float) -> void:
         return
     var want: Vector2 = wish / mag
     var f: Vector2 = _face2()
+    var turn_step: float = absf(f.angle_to(want))
     if forward_speed < PIVOT_SPEED:
         f = want  # a standing start faces the stick at once
         _face(f)
@@ -579,29 +606,44 @@ func _step_run(wish: Vector2, delta: float) -> void:
     else:
         f = _turn_facing(want, TURN_RATE * delta)
     var target: float = _target_speed(mag)
+    # Sprint: running straight at full tilt for SPRINT_DELAY lets the speed build past the run.
+    var full_tilt: bool = mag > 0.95 and absf(turn_step) < SPRINT_TURN * delta and forward_speed >= target - 0.05
+    run_time = run_time + delta if full_tilt or (run_time > 0.0 and mag > 0.95 and absf(turn_step) < SPRINT_TURN * delta) else 0.0
+    var sprint: bool = run_time > SPRINT_DELAY and mag > 0.95
     if forward_speed < START_SPEED and target > forward_speed:
         forward_speed = minf(START_SPEED, target)  # the instant first step
     if forward_speed < target:
         var accel: float = maxf(ACCEL_MIN, ACCEL_BASE - ACCEL_DRAG * forward_speed)
         forward_speed = minf(target, forward_speed + accel * delta)
-    else:
+    elif sprint and forward_speed < SPRINT_SPEED * _haste():
+        forward_speed = minf(SPRINT_SPEED * _haste(), forward_speed + SPRINT_ACCEL * delta)
+    elif forward_speed > target and not (sprint and forward_speed <= SPRINT_SPEED * _haste()):
         forward_speed = maxf(target, forward_speed - OVER_SPEED_DECEL * delta)
     forward_speed += _slope_gain(f) * delta
-    run_time += delta
-    # Walking into a wall head-on: slow to a push (glancing walls just slide you along).
+    # Walking into a wall head-on: slow to a push (glancing walls just slide you along). Anything
+    # else that stops the body (a corner, a low lip, a body in the way) counts as a wall too: the
+    # legs never run on the spot while the body stands still.
+    var blocked: bool = _last_run_speed > 1.0 and _real_speed < _last_run_speed * BLOCKED_RATIO
     if player.is_on_wall():
         var n: Vector3 = player.get_wall_normal()
         if absf(n.y) < 0.3 and f.dot(-Vector2(n.x, n.z).normalized()) > PUSH_HEAD_ON_DOT:
-            forward_speed = minf(forward_speed, PUSH_SPEED)
-            pushing = true
+            blocked = true
+    if blocked:
+        forward_speed = minf(forward_speed, PUSH_SPEED)
+        pushing = true
+        run_time = 0.0
     forward_speed = clampf(forward_speed, 0.0, GROUND_CAP)
+    _last_run_speed = forward_speed
     _set_planar(f * forward_speed)
 
 
-## Squared stick: half tilt asks for a quarter of the run speed (careful walking is easy).
+## Shaped stick: half tilt asks for about a third of the run speed (careful walking is easy).
 func _target_speed(mag: float) -> float:
-    var haste: float = float(player._haste_mult) if float(player._haste_left) > 0.0 else 1.0
-    return RUN_SPEED * mag * mag * haste
+    return RUN_SPEED * pow(mag, STICK_POWER) * _haste()
+
+
+func _haste() -> float:
+    return float(player._haste_mult) if float(player._haste_left) > 0.0 else 1.0
 
 
 ## Walking on a slope (above its class's threshold): downhill speeds you up, uphill slows you.
@@ -684,7 +726,7 @@ func _step_slide(wish: Vector2, delta: float) -> void:
     _face(dir)
     forward_speed = speed
     _set_planar(dir * speed)
-    if speed < 2.5 or state_time > SLIDE_MAX_TIME:
+    if speed < SLIDE_END_SPEED or state_time > SLIDE_MAX_TIME:
         _set_state(State.CROUCH)
 
 
@@ -714,13 +756,13 @@ func _ground_jump() -> void:
             kind = Jump.LONG
             gravity_scale = LONG_GRAVITY_SCALE
             var dir: Vector2 = Vector2(player.velocity.x, player.velocity.z).normalized() if forward_speed > 0.1 else f
-            planar = dir * clampf(forward_speed + 3.0, LONG_MIN_SPEED, LONG_MAX_SPEED)
+            planar = dir * clampf(forward_speed + LONG_BOOST, LONG_MIN_SPEED, LONG_MAX_SPEED)
             _face(dir)
         State.CROUCH:
             if forward_speed >= LONG_ENTRY_SPEED:
                 kind = Jump.LONG
                 gravity_scale = LONG_GRAVITY_SCALE
-                planar = f * clampf(forward_speed + 3.0, LONG_MIN_SPEED, LONG_MAX_SPEED)
+                planar = f * clampf(forward_speed + LONG_BOOST, LONG_MIN_SPEED, LONG_MAX_SPEED)
             else:
                 kind = Jump.BACKFLIP
                 planar = -f * BACKFLIP_BACK_SPEED
@@ -1384,6 +1426,12 @@ func _set_state(next: State) -> void:
     if next != state:
         state = next
         state_time = 0.0
+        _last_run_speed = 0.0
+        if next != State.GROUND:
+            run_time = 0.0
+    # A slope slide starts from rest: Godot's floor_stop_on_slope cancels small down-slope motion
+    # of a body on a floor, so a slow start froze the slide (pose sliding, body still; DEC-060).
+    player.floor_stop_on_slope = next != State.SLOPE_SLIDE
 
 
 ## The hero's facing on the ground plane (the motor owns it in full 3D).

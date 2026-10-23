@@ -380,3 +380,23 @@
 - **Still weak:** Kimodo gave no real hanging take (the hang loop is a shimmy take, arms up, legs dangling), no feet-first slide (a low crawl-slide), a modest knockback stagger, and the fall loop stays the Tripo clip. Draw/sheathe, hurt (light), cast and death stay Tripo clips.
 - **Tests:** `_m28` adds 5 checks (every motor pose maps to a real clip, 3 distinct combo clips, contact inside ACTIVE for all four attacks, and in play the light swing shows its contact during ACTIVE). DEC-048's air-pose check now reads the held-clip layer too, since the rising jump is a held clip. 549/549.
 - **Captures:** `docs/screenshots/anim_attacks.png`, `anim_air.png`, `anim_wall.png`, `anim_ground.png` (studio sheets of the windows the game plays) and `anim_3d_combo.png`, `anim_3d_moves.png`, `anim_3d_wall.png` (in the playground).
+
+## DEC-060 — A regular platformer pace, and the stuck-pose/slide causes found by a soak (2026-10-23)
+
+- **Playtest (run25):** "the movement is way too fast ... and the character still sometimes gets stuck in animations and starts to slide".
+- **New pace** (`PlatformerMotor`; jump heights unchanged, the dash unchanged; side view unchanged):
+  - first step 2.5 m/s, run 6.0 m/s in about 0.4 s (12 − 0.8·v m/s²), sprint 7.25 m/s after 0.8 s of running straight;
+  - stick tilt^1.5 (half tilt walks at ~2.1 m/s); brake 30 m/s² from 4 m/s, skid from 4 m/s;
+  - air: 9 m/s² against 2 m/s² drag, cap 7.25, drift 2.4, back −3; long jump 8–9 m/s, same 1 m height at 0.32 g (6.9 m measured);
+  - side flip 3, backflip back 2, wall kick 6, bonk from 4.5 m/s, crouch-slide from 3 m/s, slope accel 10 / slide 45.
+  - Swings walk at the motor's run pace; a dash ends at the run speed. The playground's long-jump gap is 5.5 m (was 8).
+  - Locomotion: the run clip's 5.5 m/s reference scales its playback to the body's speed (6 m/s plays at 1.09×); the sprint blend now spans 6.3–7.2 m/s.
+- **Validator** (`LevelSection`): reach comes from the motor's numbers. The takeoff speed is what the run reaches over the surface's own run-up toward the target (a 1 m pillar gives 4.9 m/s, not 6), times the jump's carry, built up by air control; ×0.75 safety. Basic reach 3.48 m on the level (was 4.46). Ledge grab ≤ 3 m up (3.2–3.6 m across) and long jump (4.9 m) replace the fixed 3.5 m / 7 m. All 12 rooms keep every route (36 working); no layout needed changes.
+- **Root causes** (reproduced by `tests/soak_motion.gd`, each now a check in `_dec060_motion_checks`):
+  1. `ArtAnimator`: a standing swing's whole-body one-shot, with its 0.25 s follow-through tail, kept playing after the hero ran off. Now a whole-body action belongs to the motor state that started it and fades out (0.08 s) once the motor leaves it and the hero moves.
+  2. `ArtAnimator._moving()`: a swing started from standstill with the stick held played whole-body while the swing walked the body. The stick now counts as moving (upper-body swing).
+  3. `PlatformerMotor.anim_state()`: ATTACK/DASH mapped to the run cycle even in mid-air. They now map to `attack_air`/`dash_air` (the air pose).
+  4. `anim_state()` GROUND read the speed along the facing: a locked-on sideways strafe showed idle at full speed. Strafing now uses the body's speed.
+  5. `_step_run`: only a head-on wall counted as pushing, so a run wedged under a ledge played the run cycle on the spot. A run that really moves under 25% of its speed is now blocked (push pose).
+  6. Godot's `floor_stop_on_slope` cancelled a slow-starting slope slide: it was stuck in the slide pose forever. It is now off during SLOPE_SLIDE only.
+- **Soak:** `godot --headless --path . --fixed-fps 60 -s res://tests/soak_motion.gd -- --seed=N --seconds=600`. It drives random seeded input (moves, analog tilt, jumps, crouch, dash, light/heavy, lock-on, cards, camera) in the playground and real 3D runs, with teleports onto edges, climbs, movers and enemies, and random hits. It checks 12 anomaly kinds every frame. Before the fixes: 20–25 anomalies per 240 s seed. After: 0 on seeds 1, 2, 3, 7 and 11 at 600 s each. Tests: 560/560 smoke, kit 153/153, backdrop 5/5.

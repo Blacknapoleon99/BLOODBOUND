@@ -39,7 +39,7 @@ const UPPER_BONES: Array[String] = ["Spine", "Spine1", "Spine2", "Neck", "Head",
 const HERO_POSES: Dictionary = {
     &"idle": [&"loco"], &"walk": [&"loco"], &"push": [&"loco"], &"land": [&"loco"], &"crouch": [&"loco"],
     &"attack": [&"loco"], &"dash": [&"loco"],
-    &"jump": [&"air"], &"fall": [&"air"], &"triple": [&"air"], &"backflip": [&"air"], &"side_flip": [&"air"],
+    &"jump": [&"air"], &"fall": [&"air"], &"attack_air": [&"air"], &"dash_air": [&"air"], &"triple": [&"air"], &"backflip": [&"air"], &"side_flip": [&"air"],
     &"long_jump": [&"air"], &"wall_kick": [&"air"], &"pound_spin": [&"air"], &"pound_fall": [&"air"], &"bonk": [&"air"],
     &"brake": [&"hold", &"idle", &"frame", 0.0], &"skid": [&"hold", &"idle", &"frame", 0.0],
     &"slide": [&"hold", &"idle", &"frame", 0.0], &"slope_slide": [&"hold", &"idle", &"frame", 0.0],
@@ -59,7 +59,7 @@ const HERO_POSES: Dictionary = {
 ##   &"at" t                    one held frame.
 const HERO_MOVESET: Dictionary = {
     &"idle": [&"loco"], &"walk": [&"loco"], &"push": [&"loco"], &"attack": [&"loco"], &"dash": [&"loco"],
-    &"fall": [&"air"],
+    &"fall": [&"air"], &"attack_air": [&"air"], &"dash_air": [&"air"],
     &"crouch": [&"hold", &"crouch", &"loop", 0.3, 3.0, 1.0],
     &"land": [&"hold", &"land_hard", &"play", 0.1, 0.4, 1.2],
     &"jump": [&"hold", &"air_jump", &"play", 0.43, 0.95, 1.4],
@@ -100,16 +100,19 @@ const STRIKE_HALF: float = 0.06
 const FOLLOW_TAIL: float = 0.25
 const MAX_SWING_RATE: float = 4.0
 const ATTACK_FADE_OUT: float = 0.18
-## Boost sprint over the run (m/s at which it starts and is fully in).
-const SPRINT_FROM: float = 7.5
-const SPRINT_FULL: float = 10.0
+## Boost sprint over the run (m/s at which it starts and is fully in): PlatformerMotor's 6 m/s
+## run to its 7.25 m/s sprint (DEC-060).
+const SPRINT_FROM: float = 6.3
+const SPRINT_FULL: float = 7.2
+## A whole-body action left behind by the motor state that started it fades out this fast.
+const ABANDON_FADE: float = 0.08
 ## Clips that loop on their own (locomotion and stance).
 const LOOP_CLIPS: Array[StringName] = [&"idle", &"walk", &"run", &"fall", &"combat_idle", &"sprint"]
 ## Seconds both held-clip slots cross-fade when the held clip changes.
 const HOLD_SWAP: float = 0.1
 ## Metres of shimmy/climb per walk-clip cycle (hands and feet keep pace with the body).
 const HOLD_STRIDE: float = 1.4
-## Locomotion playback may speed up this far past the run clip (feet planted at 10.8 m/s+).
+## Locomotion playback may speed up this far past the run clip (feet planted at any speed).
 const LOCO_MAX_RATE: float = 3.0
 
 var body: Node3D
@@ -161,6 +164,9 @@ var _sprint_ref: float = 4.4
 var _plan: Dictionary = {}
 var _plan_t: float = 0.0
 var action_src_time: float = -1.0
+## The 3D hero: the motor state (PlatformerMotor.State) that owns the whole-body one-shot now
+## playing (a standing swing: ATTACK; the dash roll: DASH), or -1.
+var full_owner: int = -1
 ## Cached busiest-window start per Animation resource.
 static var _window_cache: Dictionary = {}
 ## Cached [start, length] spans found from the hips' height (see _hips_span).
@@ -360,6 +366,8 @@ func act(clip: StringName, duration: float, kind: StringName, upper: bool) -> bo
     if not _plan.is_empty() and _plan["layer"] == layer:
         _plan = {}  # a new action on the same layer interrupts the swing
         action_src_time = -1.0
+    if layer == &"full":
+        full_owner = -1
     (root.get_node(layer) as AnimationNodeOneShot).fadeout_time = FADE_OUT
     var shot: AnimationNodeAnimation = root.get_node(StringName("%s_clip" % layer)) as AnimationNodeAnimation
     shot.animation = clip
@@ -424,6 +432,8 @@ func act_plan(plan: Dictionary, upper: bool) -> void:
     _plan = plan.duplicate()
     _plan["layer"] = layer
     _plan_t = 0.0
+    if layer == &"full":
+        full_owner = PlatformerMotor.State.ATTACK if _hero_motor() != null else -1
     action_src_time = float(plan["start"])
     _step_plan(0.0)
     tree.set("parameters/%s/request" % layer, AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
@@ -645,6 +655,8 @@ func _on_dodge(_dir: Variant = null) -> void:
     var duration: float = float(body.get("dodge_invulnerable_time")) if "dodge_invulnerable_time" in body else 0.35
     if real_moveset and player.has_animation(&"roll"):
         act(&"roll", maxf(0.3, duration + 0.14), &"roll", false)  # a whole forward roll
+        if _hero_motor() != null:
+            full_owner = PlatformerMotor.State.DASH
         return
     act(&"dive", maxf(0.3, duration + 0.06), &"dive", false)
 
@@ -691,7 +703,12 @@ func _on_died() -> void:
 
 
 func _moving() -> bool:
-    return Vector2(_velocity.x, _velocity.z).length() > 1.0
+    if Vector2(_velocity.x, _velocity.z).length() > 1.0:
+        return true
+    # The 3D hero swinging with the stick held walks through the swing: upper body only, so the
+    # legs keep walking instead of standing in the swing while the body moves (DEC-060).
+    var wish: Variant = body.get("_wish_3d") if _hero_motor() != null else null
+    return wish is Vector2 and (wish as Vector2).length() > 0.2
 
 
 func _grounded() -> bool:
@@ -809,6 +826,7 @@ func character_velocity() -> Vector3:
 ## The 3D hero: one pose from the motor picks the layer (locomotion / air / held clip), the
 ## locomotion speed and the held clip's position. No velocity or floor guessing.
 func _drive_hero(motor: PlatformerMotor, delta: float) -> void:
+    _settle_actions(motor)
     var a: Dictionary = motor.anim_state()
     pose = a["pose"]
     var row: Array = poses.get(pose, [&"loco"])
@@ -831,6 +849,38 @@ func _drive_hero(motor: PlatformerMotor, delta: float) -> void:
     tree.set("parameters/hold_ab/blend_amount", _ab)
     tree.set("parameters/air/blend_amount", _air)
     tree.set("parameters/base/blend_amount", _hold)
+
+
+## A whole-body one-shot belongs to the motor state that started it (a standing swing to ATTACK,
+## the roll to DASH). Once the motor has left that state and the hero moves, leaves the ground or
+## does anything but stand, the one-shot fades out at once: legs frozen in a swing's
+## follow-through while the body runs off was the "stuck in an animation and sliding" bug
+## (DEC-060). Standing still, the follow-through tail plays out; a roll may finish running out of
+## the dash.
+func _settle_actions(motor: PlatformerMotor) -> void:
+    if full_owner < 0:
+        return
+    if not bool(tree.get("parameters/full/active")):
+        if int(tree.get("parameters/full/request")) == AnimationNodeOneShot.ONE_SHOT_REQUEST_NONE:
+            full_owner = -1  # finished (a request still pending has not started yet)
+        return
+    if motor.state == full_owner:
+        return
+    var keep: bool = motor.state in [PlatformerMotor.State.GROUND, PlatformerMotor.State.LAND]             and absf(motor.forward_speed) < 0.5 and Vector2(_velocity.x, _velocity.z).length() < 0.5
+    if full_owner == PlatformerMotor.State.DASH:
+        # The roll reads as motion: it may finish while the dash runs or brakes out on the ground,
+        # but a jump, a fall, a swing or a hit takes over at once.
+        keep = motor.state in [PlatformerMotor.State.GROUND, PlatformerMotor.State.DECEL, PlatformerMotor.State.BRAKE,
+                PlatformerMotor.State.LAND] and _grounded()
+    if keep:
+        return
+    var root: AnimationNodeBlendTree = tree.tree_root as AnimationNodeBlendTree
+    (root.get_node(&"full") as AnimationNodeOneShot).fadeout_time = ABANDON_FADE
+    tree.set("parameters/full/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FADE_OUT)
+    if not _plan.is_empty() and _plan["layer"] == &"full":
+        _plan = {}
+        action_src_time = -1.0
+    full_owner = -1
 
 
 ## Combat stance (sword drawn, standing) and boost sprint (top speed) over the locomotion.

@@ -526,6 +526,8 @@ func _apply_attack_motion(input_x: float, input_z: float, on_floor: bool, delta:
     var target: Vector2 = Vector2(input_x, input_z).limit_length(1.0) * move_speed * data.move_multiplier
     var rate: float = ground_deceleration if on_floor else air_acceleration
     if _full_3d():
+        # The 3D hero walks through a swing at its own (slower) run pace (DEC-060).
+        target = Vector2(input_x, input_z).limit_length(1.0) * PlatformerMotor.RUN_SPEED * data.move_multiplier
         var planar: Vector2 = Vector2(velocity.x, velocity.z).move_toward(target, decel3d * delta)
         velocity.x = planar.x
         velocity.z = planar.y
@@ -639,7 +641,7 @@ func _soft_lock_facing() -> void:
 
 ## Drops dodge speed back to run speed so the burst does not turn into a long slide.
 func _end_dodge() -> void:
-    var planar: Vector2 = Vector2(velocity.x, velocity.z).limit_length(move_speed)
+    var planar: Vector2 = Vector2(velocity.x, velocity.z).limit_length(PlatformerMotor.RUN_SPEED if _full_3d() else move_speed)
     velocity.x = planar.x
     velocity.z = planar.y
 

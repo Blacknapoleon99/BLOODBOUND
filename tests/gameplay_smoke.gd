@@ -195,6 +195,7 @@ func _run() -> void:
     await _m26_climb_checks()
     await _m27_motor_contract_checks()
     await _m28_hero_moveset_checks()  # DEC-059: the full animation moveset
+    await _dec060_motion_checks()  # DEC-060: a regular pace; the stuck-pose causes the soak found
     await _m10_audio_checks()  # last: checks that every sound was heard somewhere in the suite
 
     _check(_max_abs_z_in_2d < 0.001, "no Z drift during 2.5D play (max |z|=%.4f)" % _max_abs_z_in_2d)
@@ -2845,14 +2846,15 @@ func _m22_3d_core_checks() -> void:
     p.call("teleport_to", Vector3(0.0, 1.0, 6.0))
     cam.yaw = 0.0
     await _seconds(0.4)
-    var top: float = float(p.get("move_speed"))
+    var top: float = PlatformerMotor.RUN_SPEED
     _key(KEY_W, true)
     var t_full: int = 0
     while Vector2(p.velocity.x, p.velocity.z).length() < top * 0.95 and t_full < 60:
         await physics_frame
         t_full += 1
-    # DEC-051 (SM64 feel): an instant first step, then a drag-limited climb (was <= 0.12 s).
-    _check(t_full / PHYSICS_HZ >= 0.5 and t_full / PHYSICS_HZ <= 1.2, "the run builds to %.1f m/s in %.2f s (0.5-1.2, SM64 curve)" % [top, t_full / PHYSICS_HZ])
+    # DEC-060 (a regular platformer pace): an instant first step, then 6 m/s in about 0.4 s
+    # (DEC-051's SM64 curve took 0.83 s to 8.5 m/s; before that <= 0.12 s).
+    _check(t_full / PHYSICS_HZ >= 0.25 and t_full / PHYSICS_HZ <= 0.55, "the run builds to %.1f m/s in %.2f s (0.25-0.55, responsive)" % [top, t_full / PHYSICS_HZ])
     _key(KEY_D, true)
     _key(KEY_W, false)
     var t_turn: int = 0
@@ -2870,7 +2872,7 @@ func _m22_3d_core_checks() -> void:
         await physics_frame
         t_rev += 1
         skidded = skidded or (p.get("motor") as PlatformerMotor).state == PlatformerMotor.State.SKID
-    # DEC-051: the turnaround skid brakes at 40.5 m/s² and walks off the new way at 2.7 m/s
+    # DEC-051/060: the turnaround skid brakes at 30 m/s² and walks off the new way at 2 m/s
     # (was: relaunch to full speed in <= 0.30 s).
     _check(t_rev / PHYSICS_HZ <= 0.45 and skidded, "a full reversal skids and walks off the other way in %.2f s (<= 0.45)" % (t_rev / PHYSICS_HZ))
     _key(KEY_A, false)
@@ -2880,7 +2882,7 @@ func _m22_3d_core_checks() -> void:
         await physics_frame
         t_stop += 1
     var slide: float = (p.global_position - stop_from).length()
-    # DEC-051: letting go brakes (40.5 m/s² at a run) or decelerates (10 m/s² at a walk); was <= 0.5 m.
+    # DEC-051/060: letting go brakes (30 m/s² at a run) or decelerates (8 m/s² at a walk); was <= 0.5 m.
     _check(slide <= 1.6, "releasing the stick stops you in %.2f m (<= 1.6), braking, no ice-skating" % slide)
     await _seconds(0.3)
     var y0: float = p.global_position.y
@@ -3547,14 +3549,17 @@ func _m25_moveset_checks() -> void:
     var stations: Dictionary = room.get("stations")
     var hp: Health = p.get("health") as Health
 
-    # Momentum: speed builds past the base run speed while running straight.
+    # Momentum: running straight builds from the 6 m/s run to the 7.25 m/s sprint (DEC-060).
     await _station(p, cam, stations["momentum"], -PI * 0.5)
     _key(KEY_W, true)
     await _seconds(0.3)
     var early: float = Vector2(p.velocity.x, p.velocity.z).length()
+    await _seconds(0.7)
+    var run: float = Vector2(p.velocity.x, p.velocity.z).length()
     await _seconds(1.3)
     var late: float = Vector2(p.velocity.x, p.velocity.z).length()
-    _check(early < 9.0 and late > 10.5, "running straight builds momentum (%.1f -> %.1f m/s)" % [early, late])
+    _check(early < PlatformerMotor.RUN_SPEED and absf(run - PlatformerMotor.RUN_SPEED) < 0.3 and late > PlatformerMotor.SPRINT_SPEED - 0.15 and late < 7.6,
+            "running straight: %.1f -> run %.1f -> sprint %.1f m/s (a regular pace)" % [early, run, late])
     # Skid + side flip.
     _key(KEY_W, false)
     _key(KEY_S, true)
@@ -3603,7 +3608,8 @@ func _m25_moveset_checks() -> void:
     var long_dist: float = Vector2(p.global_position.x - from.x, p.global_position.z - from.z).length()
     _key(KEY_CTRL, false)
     _key(KEY_W, false)
-    _check(long_kind and long_dist > 8.0 and long_rise < 1.4, "a long jump flies %.1f m, only %.2f m high" % [long_dist, long_rise])
+    # DEC-060: 8-9 m/s for ~0.74 s at the 6 m/s run (was 14-16 m/s, over 8 m).
+    _check(long_kind and long_dist > 5.5 and long_dist < 7.5 and long_rise < 1.4, "a long jump flies %.1f m, only %.2f m high" % [long_dist, long_rise])
 
     # Backflip: crouch + jump standing still: high and backwards.
     await _station(p, cam, stations["triple"], 0.0)
@@ -3623,7 +3629,7 @@ func _m25_moveset_checks() -> void:
     await _seconds(0.05)
     var sliding: bool = motor.state == PlatformerMotor.State.SLIDE and motor.crouched
     var through: bool = false
-    for i in int(PHYSICS_HZ * 4.0):
+    for i in int(PHYSICS_HZ * 6.0):  # DEC-060: a 6 m/s slide, then a crouch-walk
         await physics_frame
         if p.global_position.x > 25.5:
             through = true
@@ -3845,7 +3851,7 @@ func _m28_hero_moveset_checks() -> void:
     var motor_poses: Array[StringName] = [&"idle", &"walk", &"push", &"land", &"brake", &"skid", &"crouch", &"slide",
         &"slope_slide", &"wall_slide", &"hang", &"shimmy", &"pull_up", &"climb", &"climb_leap", &"pound_spin",
         &"pound_fall", &"pound_land", &"knockback", &"bonk", &"dash", &"attack", &"triple", &"backflip", &"side_flip",
-        &"long_jump", &"wall_kick", &"jump", &"fall"]
+        &"long_jump", &"wall_kick", &"jump", &"fall", &"attack_air", &"dash_air"]
     var placeholders: Array[StringName] = [&"idle", &"walk", &"run", &"jump", &"fall", &"hit_to_body_01"]
     var bad: Array[String] = []
     for pose_name: StringName in motor_poses:
@@ -3863,7 +3869,7 @@ func _m28_hero_moveset_checks() -> void:
                         bad.append("%s: %.2f past %.2f" % [pose_name, row[i], length])
                 if row[2] in [&"play", &"loop", &"stride"] and (float(row[3]) > length or float(row[4]) > length + 0.01):
                     bad.append("%s: window past %.2f" % [pose_name, length])
-        elif not (row[0] == &"loco" and pose_name in [&"idle", &"walk", &"push", &"attack", &"dash"]) and not (row[0] == &"air" and pose_name == &"fall"):
+        elif not (row[0] == &"loco" and pose_name in [&"idle", &"walk", &"push", &"attack", &"dash"]) and not (row[0] == &"air" and pose_name in [&"fall", &"attack_air", &"dash_air"]):
             bad.append("%s: %s layer" % [pose_name, row[0]])
     _check(bad.is_empty(), "every motor pose maps to a real moveset clip, no placeholder frames (%s)" % ", ".join(bad))
     # The light combo swings three distinct clips; the heavy its own.
@@ -3908,6 +3914,145 @@ func _m28_hero_moveset_checks() -> void:
     _check(absf(seen - contact) <= ArtAnimator.STRIKE_HALF + 0.05,
             "in play the light swing is at its contact frame during ACTIVE (clip %.2f s, contact %.2f s)" % [seen, contact])
     await _seconds(0.8)
+
+
+## DEC-060: a regular platformer pace, and the stuck-pose/slide causes found by the movement soak
+## (tests/soak_motion.gd), each as a permanent repro in the movement playground.
+func _dec060_motion_checks() -> void:
+    change_scene_to_file("res://scenes/playground_3d.tscn")
+    await _frames(15)
+    var room: Node3D = current_scene
+    var p: CharacterBody3D = room.get("player")
+    var cam: ThirdPersonCamera = room.get("cam")
+    var motor: PlatformerMotor = p.get("motor")
+    var stations: Dictionary = room.get("stations")
+    var animator: ArtAnimator = p.find_child("ArtAnimator", true, false) as ArtAnimator
+    var melee: MeleeAttack = p.get("melee") as MeleeAttack
+    if animator == null:
+        _check(false, "DEC-060: the playground hero has an ArtAnimator")
+        return
+    var full_on: Callable = func() -> bool: return bool(animator.tree.get("parameters/full/active"))
+    var upper_on: Callable = func() -> bool: return bool(animator.tree.get("parameters/upper/active"))
+
+    # The validator is honest about the new pace: its full-run reach is within a real running
+    # jump, and a short run-up (a 1 m pillar) counts for less.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.6)
+    var from: Vector3 = p.global_position
+    await _jump_rise(p)
+    var jumped: float = Vector2(p.global_position.x - from.x, p.global_position.z - from.z).length()
+    _key(KEY_W, false)
+    Lane.full_3d = true
+    var reach: float = LevelSection.jump_reach(0.0)
+    var short_reach: float = LevelSection.jump_reach(0.0, 1.0)
+    Lane.full_3d = false
+    _check(reach <= jumped * 0.8 and short_reach < reach and reach > 3.0,
+            "the 3D validator counts on %.2f m of a %.2f m running jump (%.2f m off a 1 m run-up)" % [reach, jumped, short_reach])
+    await _seconds(0.5)
+
+    # Cause 1 (art_animator: the standing swing's 0.25 s follow-through tail on the whole body was
+    # never stopped when the hero ran off): the full-body swing fades as soon as you move.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _tap(KEY_J)
+    var standing_full: bool = false
+    for i in 40:
+        await physics_frame
+        standing_full = standing_full or full_on.call()
+        if not melee.is_busy() and i > 3:
+            break
+    _key(KEY_W, true)
+    var stale: float = 0.0
+    for i in 30:
+        await physics_frame
+        if full_on.call() and motor.state != PlatformerMotor.State.ATTACK:
+            stale += 1.0 / PHYSICS_HZ
+    _key(KEY_W, false)
+    _check(standing_full and stale <= 0.12, "a standing swing's whole-body follow-through stops when you run off (%.2f s over the run)" % stale)
+    await _seconds(0.4)
+
+    # Cause 2: swinging with the stick held plays on the upper body; the legs keep walking.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.1)
+    _key(KEY_W, false)
+    _key(KEY_W, true)
+    _tap(KEY_J)
+    var walk_upper: bool = false
+    var walk_full: bool = false
+    for i in 12:
+        await physics_frame
+        walk_upper = walk_upper or upper_on.call()
+        walk_full = walk_full or full_on.call()
+    _key(KEY_W, false)
+    _check(walk_upper and not walk_full, "a swing with the stick held plays on the upper body (upper %s, whole body %s)" % [walk_upper, walk_full])
+    await _seconds(0.6)
+
+    # Cause 3 (platformer_motor.anim_state: ATTACK/DASH mapped to locomotion even in the air): a
+    # swing in mid-air shows the air pose, never running legs.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_SPACE, true)
+    await _seconds(0.15)
+    _tap(KEY_J)
+    await _seconds(0.2)
+    var air_pose: String = String(motor.anim_state()["pose"])
+    var air_w: float = float(animator.tree.get("parameters/air/blend_amount"))
+    var swinging: bool = motor.state == PlatformerMotor.State.ATTACK and not p.is_on_floor()
+    _key(KEY_SPACE, false)
+    _check(swinging and air_pose == "attack_air" and air_w > 0.8, "a swing in mid-air keeps the legs in the air pose (pose '%s', air %.2f)" % [air_pose, air_w])
+    await _seconds(0.8)
+
+    # Cause 4 (anim_state read the speed along the facing: locked on, a sideways strafe showed
+    # the idle pose at full speed): strafing runs the legs at the body's speed.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    var target: Node3D = Node3D.new()
+    room.add_child(target)
+    target.global_position = p.global_position + Vector3(12.0, 0.0, 0.0)
+    p.set("lock_target", target)
+    _key(KEY_D, true)  # camera looks down +X: D strafes toward +Z
+    await _seconds(0.6)
+    var strafe_v: float = Vector2(p.velocity.x, p.velocity.z).length()
+    var shown: float = float(animator.get("_speed_smoothed"))
+    var strafe_pose: String = String(animator.pose)
+    _key(KEY_D, false)
+    p.set("lock_target", null)
+    target.queue_free()
+    _check(strafe_v > 3.0 and strafe_pose == "walk" and shown > strafe_v * 0.8, "locked on, a sideways strafe runs the legs (%.1f m/s shown at %.1f m/s, pose '%s')" % [shown, strafe_v, strafe_pose])
+    await _seconds(0.4)
+
+    # Cause 5 (platformer_motor._step_run: only a head-on wall counted as pushing): wedged under a
+    # low ceiling (the intact pound slab over its pit) the body can't move: the push pose, never
+    # the run cycle on the spot.
+    p.call("teleport_to", Vector3(-20.0, -1.6, 14.0))
+    cam.yaw = -PI * 0.5
+    await _seconds(0.4)
+    _key(KEY_A, true)
+    await _seconds(0.6)
+    var wedged_pose: String = String(animator.pose)
+    var wedged_moved: float = Vector2(p.get_real_velocity().x, p.get_real_velocity().z).length()
+    _key(KEY_A, false)
+    _check(wedged_moved < 0.5 and wedged_pose in ["push", "idle"], "a run that can't move shows the push pose, not legs running on the spot (pose '%s', %.2f m/s)" % [wedged_pose, wedged_moved])
+    await _seconds(0.3)
+
+    # The dash roll may finish running out of the dash, but a jump takes over at once.
+    await _station(p, cam, stations["momentum"], -PI * 0.5)
+    _key(KEY_W, true)
+    await _seconds(0.3)
+    _tap(KEY_SHIFT)
+    await _seconds(0.26)
+    _key(KEY_SPACE, true)
+    var roll_left: float = 0.0
+    for i in 30:
+        await physics_frame
+        if full_on.call() and motor.state == PlatformerMotor.State.AIR:
+            roll_left += 1.0 / PHYSICS_HZ
+    _key(KEY_SPACE, false)
+    _key(KEY_W, false)
+    _check(roll_left <= 0.12, "a jump out of a dash ends the roll at once (%.2f s of roll in the air)" % roll_left)
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
 
 
 func _m27_motor_contract_checks() -> void:
@@ -4090,15 +4235,15 @@ func _m27_motor_contract_checks() -> void:
     _check(t_turn > 0 and turn_s > 0.18 and turn_s < 0.36 and worst_turn < 5.0,
             "a 90-degree turn takes %.2f s (about 340 deg/s) and velocity follows the facing (worst %.1f deg)" % [turn_s, worst_turn])
 
-    # Squared stick: half tilt runs at about a quarter of full speed.
+    # Shaped stick: half tilt walks at about a third of the run (DEC-060: tilt^1.5, ~2.1 m/s).
     await _station(p, cam, stations["momentum"], -PI * 0.5)
     Input.action_press(&"move_forward", 0.5)
     await _seconds(1.5)
     var half: float = Vector2(p.velocity.x, p.velocity.z).length()
     Input.action_release(&"move_forward")
-    _check(half > 2.2 and half < 3.3, "half tilt walks at %.2f m/s (squared stick: ~2.7)" % half)
+    _check(half > 1.8 and half < 2.6, "half tilt walks at %.2f m/s (~2.1)" % half)
 
-    # Accel curve: an instant first step, then a drag-limited climb to the 10.8 m/s run.
+    # Accel curve: an instant first step, then a quick climb to the 6 m/s run (DEC-060).
     await _station(p, cam, stations["momentum"], -PI * 0.5)
     _key(KEY_W, true)
     var first: float = 0.0
@@ -4126,8 +4271,8 @@ func _m27_motor_contract_checks() -> void:
         await physics_frame
         t_stop += 1
     var brake_dist: float = (p.global_position - stop_from).length()
-    _check(first > 2.0 and first < 4.0 and t95 / PHYSICS_HZ > 0.9 and t95 / PHYSICS_HZ < 2.0,
-            "running starts at %.1f m/s and reaches 95%% of 10.8 m/s in %.2f s" % [first, t95 / PHYSICS_HZ])
+    _check(first > 2.0 and first < 3.0 and t95 / PHYSICS_HZ > 0.2 and t95 / PHYSICS_HZ < 0.55,
+            "running starts at %.1f m/s and reaches 95%% of the 6 m/s run in %.2f s" % [first, t95 / PHYSICS_HZ])
     _check(braking and brake_dist < 1.8 and t_stop / PHYSICS_HZ < 0.45, "letting go at a run brakes (BRAKE) to a stop in %.2f m, %.2f s" % [brake_dist, t_stop / PHYSICS_HZ])
     # Decelerate: letting go at a walk glides to a stop on a slowing walk cycle.
     Input.action_press(&"move_forward", 0.6)
@@ -4196,7 +4341,8 @@ func _m27_motor_contract_checks() -> void:
     var bounced: bool = false
     for i in int(PHYSICS_HZ * 3.0):
         await physics_frame
-        if p.global_position.x > 45.0 and p.is_on_floor() and motor.jump_kind == PlatformerMotor.Jump.NONE:
+        # DEC-060: at the 6 m/s run, jump close enough to meet the wall (face at x 51) in the air.
+        if p.global_position.x > 46.8 and p.is_on_floor() and motor.jump_kind == PlatformerMotor.Jump.NONE:
             _key(KEY_SPACE, true)
         if p.global_position.x > 48.5:
             _key(KEY_W, false)

@@ -515,46 +515,131 @@ func _finish_course() -> void:
 
 # --- Reachability ---------------------------------------------------------------------
 
-## Player jump numbers, from scenes/player.tscn defaults (checked by the smoke test).
+## Player jump numbers, from scenes/player.tscn defaults (checked by the smoke test). The side
+## view runs at RUN_SPEED; the full-3D hero's pace comes from PlatformerMotor (DEC-060).
 const RUN_SPEED: float = 8.5
 const JUMP_SPEED: float = 9.5
 const RISE_GRAVITY: float = 22.0
 const FALL_GRAVITY: float = 30.0
 const SAFETY: float = 0.75  # only count on 75% of the theoretical reach
 ## The full-3D jump (player.gd jump_height3d / jump_fall_time3d; the rise to the apex, apex hang
-## included, measured at 0.43 s).
+## included, measured at 0.43 s). Gravity itself comes from the designed 0.36 s rise.
 const APEX_3D: float = 2.3
 const RISE_TIME_3D: float = 0.43
 const FALL_TIME_3D: float = 0.27
-## Advanced moves the route check allows (PlatformerMotor: triple jump apex 3.8 m and 3.4 m
-## measured, backflip 3.6 m, a ledge grab off a single jump; long jump about 9 m).
+const GRAVITY_RISE_TIME_3D: float = 0.36
+## Advanced moves the route check allows (PlatformerMotor): a ledge grab off a running jump up to
+## ADV_RISE m up (the triple and the backflip go higher still), and the long jump (level or
+## down). Their reach is computed from the motor's numbers, like the basic jump's (DEC-060).
 const ADV_RISE: float = 3.0
-const ADV_UP_REACH: float = 3.5
-const LONG_REACH: float = 7.0
+## The ledge grab catches a top 0.7..1.4 m above the body's centre (PlatformerMotor), which sits
+## 0.85 m above the feet: the hands reach a top 2.25 m above the feet.
+const GRAB_REACH: float = 2.25
+## Long jump apex (PlatformerMotor.HEIGHT[LONG], flown at LONG_GRAVITY_SCALE).
+const LONG_HEIGHT: float = 1.0
+## Metres of a surface lost to stepping on and to taking off before its edge.
+const RUN_UP_MARGIN: float = 0.4
+
+static var _run_up_cache: Dictionary = {}
 
 
 static func jump_apex() -> float:
     return APEX_3D if Lane.full_3d else JUMP_SPEED * JUMP_SPEED / (2.0 * RISE_GRAVITY)
 
 
-## Horizontal distance a running jump covers when landing `dy` higher (negative = lower).
-static func jump_reach(dy: float) -> float:
+## Full 3D: the speed a run reaches from a standstill over `run_up` metres (PlatformerMotor's first
+## step and acceleration curve; the sprint is never counted). Cached per centimetre.
+static func run_up_speed(run_up: float) -> float:
+    var key: int = int(clampf(run_up, 0.0, 50.0) * 100.0)
+    if _run_up_cache.has(key):
+        return _run_up_cache[key]
+    var v: float = PlatformerMotor.START_SPEED
+    var d: float = 0.0
+    var dt: float = 1.0 / 120.0
+    while d < run_up and v < PlatformerMotor.RUN_SPEED:
+        var a: float = maxf(PlatformerMotor.ACCEL_MIN, PlatformerMotor.ACCEL_BASE - PlatformerMotor.ACCEL_DRAG * v)
+        v = minf(PlatformerMotor.RUN_SPEED, v + a * dt)
+        d += v * dt
+    _run_up_cache[key] = v
+    return v
+
+
+## Full 3D: metres flown in `t` seconds starting at `v0` along the facing with the stick held
+## forward (PlatformerMotor._air_control: AIR_ACCEL against AIR_DRAG, up to `cap`).
+static func air_distance(v0: float, cap: float, t: float) -> float:
+    var a: float = PlatformerMotor.AIR_ACCEL - PlatformerMotor.AIR_DRAG
+    if v0 >= cap or a <= 0.0:
+        return v0 * t
+    var t_cap: float = (cap - v0) / a
+    if t <= t_cap:
+        return v0 * t + 0.5 * a * t * t
+    return v0 * t_cap + 0.5 * a * t_cap * t_cap + cap * (t - t_cap)
+
+
+## Seconds a full-3D running jump takes to come back down to `height` metres over its takeoff.
+static func _air_time_3d(height: float) -> float:
+    return RISE_TIME_3D + FALL_TIME_3D * sqrt(maxf(0.0, APEX_3D - height) / APEX_3D)
+
+
+## Horizontal distance a running jump covers when landing `dy` higher (negative = lower). Full 3D:
+## the takeoff speed is what the run reaches over `run_up` metres (INF: a full run) times the
+## jump's carry, then the air control builds it up (DEC-060).
+static func jump_reach(dy: float, run_up: float = INF) -> float:
     var apex: float = jump_apex()
     if dy > apex * SAFETY:
         return -1.0
+    if Lane.full_3d:
+        var v0: float = run_up_speed(run_up) * PlatformerMotor.JUMP_CARRY
+        return air_distance(v0, PlatformerMotor.AIR_CAP, _air_time_3d(dy)) * SAFETY
     var t_up: float = JUMP_SPEED / RISE_GRAVITY
     var t_down: float = sqrt(2.0 * maxf(0.0, apex - dy) / FALL_GRAVITY)
-    if Lane.full_3d:
-        t_up = RISE_TIME_3D
-        t_down = FALL_TIME_3D * sqrt(maxf(0.0, apex - dy) / apex)
     return minf(9.0, RUN_SPEED * (t_up + t_down) * SAFETY)
 
 
+## Full 3D: how far a running jump carries to catch a ledge `dy` up (ADV_RISE at most): the hands
+## must meet the top before the body has fallen past it.
+static func grab_reach(dy: float, run_up: float = INF) -> float:
+    if dy > ADV_RISE:
+        return -1.0
+    var feet: float = dy - GRAB_REACH  # feet height when the hands meet the top
+    if feet > APEX_3D * SAFETY:
+        return -1.0
+    var v0: float = run_up_speed(run_up) * PlatformerMotor.JUMP_CARRY
+    return air_distance(v0, PlatformerMotor.AIR_CAP, _air_time_3d(feet)) * SAFETY
+
+
+## Full 3D: how far a long jump flies landing `dy` higher (0.3 at most). Run, crouch, jump: it
+## launches at the run-up's speed plus PlatformerMotor.LONG_BOOST, clamped to its range.
+static func long_reach(dy: float, run_up: float = INF) -> float:
+    if dy > 0.3:
+        return -1.0
+    var v: float = clampf(run_up_speed(run_up) + PlatformerMotor.LONG_BOOST, PlatformerMotor.LONG_MIN_SPEED, PlatformerMotor.LONG_MAX_SPEED)
+    var g_up: float = 2.0 * APEX_3D / pow(GRAVITY_RISE_TIME_3D, 2.0) * PlatformerMotor.LONG_GRAVITY_SCALE
+    var g_down: float = 2.0 * APEX_3D / pow(FALL_TIME_3D, 2.0) * PlatformerMotor.LONG_GRAVITY_SCALE
+    var t: float = sqrt(2.0 * LONG_HEIGHT / g_up) + sqrt(2.0 * maxf(0.0, LONG_HEIGHT - dy) / g_down)
+    return air_distance(v, PlatformerMotor.LONG_AIR_CAP, t) * SAFETY
+
+
+## Full 3D: the straight run-up a surface gives toward `to` (its longest chord along the jump's
+## direction, less a margin): a short pillar can't build a full run.
+static func run_up_toward(from: Rect2, to: Rect2, from_z: Vector2, to_z: Vector2) -> float:
+    var a: Vector2 = Vector2(from.get_center().x, (from_z.x + from_z.y) * 0.5)
+    var b: Vector2 = Vector2(to.get_center().x, (to_z.x + to_z.y) * 0.5)
+    var d: Vector2 = b - a
+    if d.length_squared() < 0.0001:
+        return 0.0
+    d = d.normalized()
+    var chord: float = minf(from.size.x / maxf(absf(d.x), 0.0001), (from_z.y - from_z.x) / maxf(absf(d.y), 0.0001))
+    return maxf(0.0, chord - RUN_UP_MARGIN)
+
+
 ## Can a running jump get from `from` to `to`? Depth ranges (`from_z`, `to_z`: z from, z to)
-## count in full 3D: the gap is the planar distance between the two surfaces.
+## count in full 3D: the gap is the planar distance between the two surfaces, and the run-up is
+## what `from` allows toward `to`.
 static func can_jump(from: Rect2, to: Rect2, from_z: Vector2 = Vector2(-2.0, 2.0), to_z: Vector2 = Vector2(-2.0, 2.0)) -> bool:
     var dy: float = to.position.y - from.position.y
-    var reach: float = jump_reach(dy)
+    var run_up: float = run_up_toward(from, to, from_z, to_z) if Lane.full_3d else INF
+    var reach: float = jump_reach(dy, run_up)
     if reach < 0.0:
         return false
     var gap: float = _gap(from, to, from_z, to_z)
@@ -568,14 +653,18 @@ static func can_jump(from: Rect2, to: Rect2, from_z: Vector2 = Vector2(-2.0, 2.0
             or from_z.x < to_z.x - 0.8 or from_z.y > to_z.y + 0.8
 
 
-## Advanced jumps for route checks: the triple jump / backflip / ledge grab (up to 3 m up, 3.5 m across)
-## and the long jump (up to 7 m across, level or down), on top of every basic jump.
+## Advanced jumps for route checks (full 3D): a ledge grab off a running jump (up to ADV_RISE up)
+## and the long jump (level or down), each reaching what the motor's numbers allow over the
+## run-up, on top of every basic jump.
 static func can_jump_adv(from: Rect2, to: Rect2, from_z: Vector2, to_z: Vector2) -> bool:
     if can_jump(from, to, from_z, to_z):
         return true
     var dy: float = to.position.y - from.position.y
     var gap: float = _gap(from, to, from_z, to_z)
-    return (dy <= ADV_RISE and gap <= ADV_UP_REACH) or (dy <= 0.3 and gap <= LONG_REACH)
+    var run_up: float = run_up_toward(from, to, from_z, to_z)
+    var grab: float = grab_reach(dy, run_up)
+    var long: float = long_reach(dy, run_up)
+    return (grab >= 0.0 and gap <= grab) or (long >= 0.0 and gap <= long)
 
 
 ## Planar gap between two surfaces (0 when they overlap in plan).
