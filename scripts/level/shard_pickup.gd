@@ -30,6 +30,18 @@ static func create(at: Vector3, value: int = 3) -> ShardPickup:
     bone.albedo_color = Color(0.92, 0.86, 0.68)
     bone.emission_enabled = true
     bone.emission = Color(0.95, 0.7, 0.35) * 0.8
+    # A carved, splintered bone shard with glowing runes (DEC-057).
+    var carved: StandardMaterial3D = GothicMaterials.standard("bone", Color(1.0, 0.94, 0.8), 0.25, false)
+    carved.emission_enabled = true
+    carved.emission = Color(0.95, 0.7, 0.35) * 0.45
+    var runes: StandardMaterial3D = StandardMaterial3D.new()
+    runes.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    runes.albedo_color = Color(1.0, 0.72, 0.3)
+    var model: MeshInstance3D = GothicProps.instance("bone_shard", {&"bone": carved, &"glow": runes}, "Shard")
+    if model != null:
+        model.rotation.z = 0.25
+        pickup._visual.add_child(model)
+        return pickup
     var shard: MeshInstance3D = MeshInstance3D.new()
     var prism: PrismMesh = PrismMesh.new()
     prism.size = Vector3(0.28, 0.5, 0.14)

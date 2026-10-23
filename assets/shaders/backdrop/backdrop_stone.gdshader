@@ -16,9 +16,16 @@ uniform float haze_start = 40.0;
 uniform float haze_end = 1100.0;
 uniform float haze_max = 0.82;
 uniform float self_light = 0.18;
+// Triplanar stone detail (DEC-057): masonry scan on buildings, rubble scan where vertex alpha
+// is ~0.75 (rock). detail_scale = repeats per metre; the textures average ~0.42.
+uniform sampler2D detail_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D rock_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform float detail_scale = 0.16;
+uniform float detail_strength = 0.0;
 
 varying vec3 wpos;
 varying vec4 vcol;
+varying vec3 wnrm;
 
 float hash3(vec3 p) {
 	p = fract(p * 0.3183099 + vec3(0.1, 0.17, 0.13));
@@ -39,6 +46,7 @@ float vnoise(vec3 x) {
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vcol = COLOR;
+	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {
@@ -48,6 +56,17 @@ void fragment() {
 	// Weathered stone: two octaves of world-space noise, darker toward the abyss.
 	float n = vnoise(wpos * 0.21) * 0.6 + vnoise(wpos * 0.9) * 0.4;
 	vec3 base = stone_color.rgb * vcol.rgb * (0.7 + 0.6 * n);
+	if (detail_strength > 0.0) {
+		vec3 bw = pow(abs(wnrm), vec3(4.0));
+		bw /= (bw.x + bw.y + bw.z + 1e-4);
+		vec3 p = wpos * detail_scale;
+		float rocky = step(0.5, vcol.a) * (1.0 - step(0.875, vcol.a));
+		vec3 dm = texture(detail_tex, p.zy).rgb * bw.x + texture(detail_tex, p.xz).rgb * bw.y + texture(detail_tex, p.xy).rgb * bw.z;
+		vec3 q = p * 0.6;
+		vec3 dr = texture(rock_tex, q.zy).rgb * bw.x + texture(rock_tex, q.xz).rgb * bw.y + texture(rock_tex, q.xy).rgb * bw.z;
+		vec3 detail = mix(dm, dr, rocky) / 0.42;
+		base *= mix(vec3(1.0), detail, detail_strength);
+	}
 	base *= mix(0.35, 1.0, smoothstep(-90.0, 30.0, wpos.y));
 	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 3.0);
 	// Flicker: each window cell (2 m) breathes on its own.

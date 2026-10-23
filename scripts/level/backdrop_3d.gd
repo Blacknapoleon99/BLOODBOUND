@@ -114,6 +114,15 @@ func _build_near(rng: RandomNumberGenerator) -> void:
 ## A clustered gothic pillar rising from deep in the abyss to a broken top at `top`.
 func _pillar(m: BackdropKit.Merge, top: Vector3, r: float, rng: RandomNumberGenerator) -> void:
     var base: Vector3 = Vector3(top.x, -150.0, top.z)
+    if not BackdropKit.model("bd_pillar_top").is_empty():
+        # Modelled broken crown (DEC-057): capital and snapped drum, its tip at `top`.
+        var crown: Vector3 = top + Vector3.DOWN * r * 3.0
+        BackdropKit.column(m, base, crown.y - base.y, r, 1.0, 12, BackdropKit.C_STONE)
+        for k in 4:
+            var a: float = TAU * k / 4.0 + PI * 0.25
+            BackdropKit.column(m, base + Vector3(cos(a), 0, sin(a)) * r * 0.95, crown.y - base.y, r * 0.38, 1.0, 8, BackdropKit.C_DARK)
+        BackdropKit.add_model(m, "bd_pillar_top", Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * r), crown))
+        return
     BackdropKit.column(m, base, top.y - base.y, r, 1.0, 8, BackdropKit.C_STONE)
     for k in 4:
         var a: float = TAU * k / 4.0 + PI * 0.25
@@ -128,6 +137,9 @@ func _pillar(m: BackdropKit.Merge, top: Vector3, r: float, rng: RandomNumberGene
 func _ruin_wall(m: BackdropKit.Merge, base: Vector3, h: float, side: float, rng: RandomNumberGenerator) -> void:
     var w: float = rng.randf_range(9.0, 14.0)
     var yaw: Basis = Basis(Vector3.UP, rng.randf_range(-0.35, 0.35))
+    # Modelled ruin (DEC-057): ragged courses, a glowing lancet, buttresses (faces both ways).
+    if BackdropKit.add_model(m, "bd_ruin_wall", Transform3D(yaw * Basis.from_scale(Vector3(w, h, 2.2)), base)):
+        return
     BackdropKit.box(m, base + Vector3.UP * h * 0.5, Vector3(w, h, 2.2), BackdropKit.C_STONE, yaw)
     # Ragged top: steps of broken masonry.
     for i in 4:

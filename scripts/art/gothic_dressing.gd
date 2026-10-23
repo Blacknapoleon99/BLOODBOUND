@@ -14,6 +14,13 @@ const HEADROOM: float = 2.6     # clear space kept above any lower platform
 const KEEP_CLEAR: float = 1.7   # props stay this far (x/z) from gameplay objects
 const PROP_CHANCE: float = 0.5
 
+## Modelled props (assets/models/props/, DEC-057); the old procedural parts remain the
+## fallback when a model is missing.
+const MODELS: Array[String] = ["skull_pile_a", "skull_pile_b", "candles_a", "candles_b", "candelabra", "column_tall",
+        "column_short", "column_drum", "gravestone_a", "gravestone_b", "sarcophagus", "fence_section", "fence_bent", "iron_cage"]
+const FLAMED: Array[String] = ["candles_a", "candles_b", "candelabra"]
+const MAX_LIGHTS: int = 4  # candle lights per room
+
 static var _meshes: Dictionary = {}
 
 
@@ -33,22 +40,25 @@ static func dress(room: LevelSection) -> void:
         _hang_rubble(rubble, b, i, blocks, rng, room._palette)
         if rng.randf() < PROP_CHANCE:
             _place_props(b, i, blocks, clear, rng, parts)
+    var lights: int = 0
     for part: String in parts:
         var list: Array = parts[part]
         if list.is_empty():
             continue
-        var multi: MultiMesh = MultiMesh.new()
-        multi.transform_format = MultiMesh.TRANSFORM_3D
-        multi.mesh = _mesh(part)
-        multi.instance_count = list.size()
-        for k in list.size():
-            multi.set_instance_transform(k, list[k])
-        var node: MultiMeshInstance3D = MultiMeshInstance3D.new()
-        node.name = "Props: " + part
-        node.multimesh = multi
-        if part == "flame":
-            node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-        room.add_child(node)
+        if part == "light":
+            for xf: Transform3D in list:
+                if lights >= MAX_LIGHTS:
+                    break
+                room.add_child(GothicEnvironment.torch_light(xf.origin, 1.4, 4.5))
+                lights += 1
+            continue
+        if part in MODELS and GothicProps.available(part):
+            # Modelled prop (DEC-057): its flames go in a second, shadowless MultiMesh.
+            room.add_child(_multi(GothicProps.subset(part, [&"flame"], true), list, "Props: " + part, true))
+            if part in FLAMED:
+                room.add_child(_multi(GothicProps.subset(part, [&"flame"]), list, "Props: " + part + " flames", false))
+            continue
+        room.add_child(_multi(_mesh(part), list, "Props: " + part, part != "flame"))
 
 
 # --- Rubble -------------------------------------------------------------------------------
@@ -89,13 +99,16 @@ static func _hang_rubble(parent: Node3D, b: Dictionary, index: int, blocks: Arra
 ## A faceted, roughly conical rock chunk: its top ring matches (just inside) the block's
 ## footprint, it tapers to a crooked point `depth` below. Flat-shaded triangles.
 static func _rubble_mesh(hx: float, hz: float, depth: float, rng: RandomNumberGenerator) -> ArrayMesh:
-    var segs: int = 14
-    var rings: int = 6
+    var segs: int = 18
+    var rings: int = 9
     var pts: Array = []
     var tip: Vector3 = Vector3(rng.randf_range(-0.25, 0.25) * hx, -depth, rng.randf_range(-0.25, 0.25) * hz)
+    var strata_phase: float = rng.randf() * TAU
     for r in rings:
         var t: float = float(r) / rings
-        var shrink: float = pow(1.0 - t, 0.8) * (0.97 if r == 0 else 1.0)
+        # Strata (DEC-057): alternate ledges and undercuts so the chunk reads as layered rock.
+        var ledge: float = 1.0 + (0.09 if r % 2 == 1 else -0.05) * (1.0 - t) * (0.6 + 0.4 * sin(strata_phase + r))
+        var shrink: float = pow(1.0 - t, 0.8) * (0.97 if r == 0 else ledge)
         var ring: Array = []
         for k in segs:
             var a: float = TAU * (k + (0.0 if r == 0 else rng.randf_range(-0.3, 0.3))) / segs
@@ -121,6 +134,19 @@ static func _rubble_mesh(hx: float, hz: float, depth: float, rng: RandomNumberGe
                 _tri(st, upper[k], lower[k2], lower[k], core)
             else:
                 _tri(st, upper[k], upper[k2], tip, core)
+    # Stalactite drips of rock hanging off the lower rings.
+    for k in rng.randi_range(2, 4):
+        var ring: Array = pts[rng.randi_range(2, rings - 2)]
+        var j: int = rng.randi() % segs
+        var root_a: Vector3 = ring[j]
+        var root_b: Vector3 = ring[(j + 1) % segs]
+        var root_c: Vector3 = (root_a + root_b) * 0.5 * 0.82
+        var drip: Vector3 = (root_a + root_b) * 0.5 * 0.9 + Vector3(0.0, -rng.randf_range(0.4, 1.1) * minf(depth, 2.5) * 0.45, 0.0)
+        drip.y = maxf(drip.y, -depth * 0.97)  # never below the headroom-capped tip
+        var mid: Vector3 = (root_a + root_b + root_c + drip) * 0.25
+        _tri(st, root_a, root_b, drip, mid)
+        _tri(st, root_b, root_c, drip, mid)
+        _tri(st, root_c, root_a, drip, mid)
     # Cap the top (hidden under the block, but closes the mesh for shadows/AO).
     var top_ring: Array = pts[0]
     for k in segs:
@@ -182,6 +208,9 @@ static func _place_props(b: Dictionary, index: int, blocks: Array[Dictionary], c
         var at: Vector3 = Vector3(pos.x + corner.x * (size.x * 0.5 - inset), top, pos.z + corner.y * (size.z * 0.5 - inset))
         if not _free(at, index, blocks, clear):
             continue
+        if _modelled():
+            _place_model(at, corner, size, rng, parts)
+            return
         var roll: float = rng.randf()
         if roll < 0.32:
             _skull_pile(at, rng, parts)
@@ -214,6 +243,69 @@ static func _add(parts: Dictionary, part: String, xf: Transform3D) -> void:
     if not parts.has(part):
         parts[part] = []
     (parts[part] as Array).append(xf)
+
+
+static func _multi(m: Mesh, list: Array, label: String, shadows: bool) -> MultiMeshInstance3D:
+    var multi: MultiMesh = MultiMesh.new()
+    multi.transform_format = MultiMesh.TRANSFORM_3D
+    multi.mesh = m
+    multi.instance_count = list.size()
+    for k in list.size():
+        multi.set_instance_transform(k, list[k])
+    var node: MultiMeshInstance3D = MultiMeshInstance3D.new()
+    node.name = label
+    node.multimesh = multi
+    if not shadows:
+        node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    return node
+
+
+static func _modelled() -> bool:
+    return GothicProps.available("skull_pile_a")
+
+
+## The modelled corner props (DEC-057).
+static func _place_model(at: Vector3, corner: Vector2, size: Vector3, rng: RandomNumberGenerator, parts: Dictionary) -> void:
+    var inward: Vector3 = Vector3(-corner.x, 0.0, -corner.y).normalized()
+    var face: float = atan2(inward.x, inward.z)
+    var roll: float = rng.randf()
+    if roll < 0.24:
+        var s: float = rng.randf_range(0.9, 1.2)
+        _add(parts, "skull_pile_a" if rng.randf() < 0.5 else "skull_pile_b", Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), at))
+    elif roll < 0.48:
+        _add(parts, "candles_a" if rng.randf() < 0.5 else "candles_b", Transform3D(Basis(Vector3.UP, rng.randf() * TAU), at))
+        if rng.randf() < 0.6:
+            _add(parts, "light", Transform3D(Basis.IDENTITY, at + Vector3(0.0, 0.7, 0.0)))
+    elif roll < 0.58:
+        _add(parts, "candelabra", Transform3D(Basis(Vector3.UP, rng.randf() * TAU), at))
+        _add(parts, "light", Transform3D(Basis.IDENTITY, at + Vector3(0.0, 1.5, 0.0)))
+    elif roll < 0.74 and size.x >= 4.0 and size.z >= 4.0:
+        if rng.randf() < 0.2 and size.x >= 5.0 and size.z >= 5.0:
+            # A sarcophagus along the platform edge, a little in from the corner.
+            var along: Basis = Basis(Vector3.UP, face + PI * 0.5 + rng.randf_range(-0.15, 0.15))
+            _add(parts, "sarcophagus", Transform3D(along, at + inward * 0.7))
+            return
+        var tall: bool = rng.randf() < 0.55
+        _add(parts, "column_tall" if tall else "column_short", Transform3D(Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.03, 0.03)), at))
+        var lying: Basis = Basis(Vector3.UP, face + rng.randf_range(0.8, 2.2))
+        _add(parts, "column_drum", Transform3D(lying.scaled(Vector3(rng.randf_range(0.6, 0.9), 1.0, 1.0)), at + inward * 1.1))
+    elif roll < 0.86:
+        # A few headstones, leaning, stepping in from the corner.
+        for k in rng.randi_range(1, 3):
+            var off: Vector3 = Vector3(rng.randf_range(-0.3, 0.3), 0.0, rng.randf_range(-0.3, 0.3)) + inward * (k * 0.55)
+            var lean: Basis = Basis(Vector3.UP, face + rng.randf_range(-0.35, 0.35)) * Basis(Vector3.RIGHT, rng.randf_range(-0.12, 0.08)) * Basis(Vector3.FORWARD, rng.randf_range(-0.08, 0.08))
+            _add(parts, "gravestone_a" if rng.randf() < 0.65 else "gravestone_b", Transform3D(lean.scaled(Vector3.ONE * rng.randf_range(0.85, 1.1)), at + off + Vector3.DOWN * 0.03))
+    else:
+        # A run of wrought-iron railing along the longer outer edge.
+        var along_x: bool = size.x >= size.z
+        var dir: Vector3 = Vector3(-corner.x, 0.0, 0.0) if along_x else Vector3(0.0, 0.0, -corner.y)
+        var start: Vector3 = at + (Vector3(0.0, 0.0, corner.y * 0.3) if along_x else Vector3(corner.x * 0.3, 0.0, 0.0))
+        var room_len: float = (size.x if along_x else size.z) - 1.6
+        var sections: int = clampi(rng.randi_range(1, 3), 1, maxi(1, int(room_len / 1.2)))
+        var yaw: float = atan2(-dir.z, dir.x)  # local +X along `dir`
+        for k in sections:
+            var bent: bool = rng.randf() < 0.35
+            _add(parts, "fence_bent" if bent else "fence_section", Transform3D(Basis(Vector3.UP, yaw + rng.randf_range(-0.03, 0.03)), start + dir * (k * 1.2)))
 
 
 static func _skull_pile(at: Vector3, rng: RandomNumberGenerator, parts: Dictionary) -> void:
@@ -281,6 +373,15 @@ static func _fence(at: Vector3, corner: Vector2, size: Vector3, rng: RandomNumbe
 ## plane at x = 0. Visual only.
 static func exit_arch() -> Node3D:
     var arch: Node3D = Node3D.new()
+    var model: MeshInstance3D = GothicProps.instance("exit_arch", {}, "Exit arch")
+    if model != null:
+        # Modelled arch (DEC-057): clustered piers on stepped plinths, leaf capitals, a
+        # three-order archivolt with crockets and a finial, a skull keystone, a blood moulding.
+        arch.add_child(model)
+        var lamp: OmniLight3D = GothicEnvironment.torch_light(Vector3(-0.6, 3.2, 0.0), 2.6, 7.5)
+        lamp.light_color = Color(1.0, 0.16, 0.08)
+        arch.add_child(lamp)
+        return arch
     var stone: ShaderMaterial = GothicMaterials.block(&"column")
     var glow: StandardMaterial3D = StandardMaterial3D.new()
     glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

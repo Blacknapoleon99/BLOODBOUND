@@ -13,6 +13,28 @@ static var _materials: Dictionary = {}
 static func _bat_mesh() -> ArrayMesh:
     if _mesh != null:
         return _mesh
+    var model: Array = BackdropKit.model("bd_bat")
+    if not model.is_empty():
+        # The modelled bat (DEC-057): furred body, ears, scalloped wings. Its head points +Z;
+        # flip it to face -Z (and keep the winding).
+        var mv: PackedVector3Array = (model[0] as PackedVector3Array).duplicate()
+        var mn: PackedVector3Array = (model[1] as PackedVector3Array).duplicate()
+        for i in mv.size():
+            mv[i] = Vector3(mv[i].x, mv[i].y, -mv[i].z)
+            mn[i] = Vector3(mn[i].x, mn[i].y, -mn[i].z)
+        var mi: PackedInt32Array = (model[3] as PackedInt32Array).duplicate()
+        for t in range(0, mi.size() - 2, 3):
+            var swap: int = mi[t + 1]
+            mi[t + 1] = mi[t + 2]
+            mi[t + 2] = swap
+        var marrays: Array = []
+        marrays.resize(Mesh.ARRAY_MAX)
+        marrays[Mesh.ARRAY_VERTEX] = mv
+        marrays[Mesh.ARRAY_NORMAL] = mn
+        marrays[Mesh.ARRAY_INDEX] = mi
+        _mesh = ArrayMesh.new()
+        _mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, marrays)
+        return _mesh
     var v: PackedVector3Array = PackedVector3Array()
     # Body.
     v.append_array(PackedVector3Array([Vector3(0, 0, -0.18), Vector3(0.05, 0, 0.12), Vector3(-0.05, 0, 0.12)]))

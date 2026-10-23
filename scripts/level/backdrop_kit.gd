@@ -13,6 +13,12 @@ extends RefCounted
 
 const STONE_SHADER: Shader = preload("res://assets/shaders/backdrop/backdrop_stone.gdshader")
 const KENNEY_DIR: String = "res://assets/models/backdrop/kenney_castle/"
+## Modelled pieces (DEC-057): original, built headless by tools/blender/build_backdrop.py.
+## Each surface's material name is a role, turned into the vertex colours below.
+const MODEL_DIR: String = "res://assets/models/backdrop/gothic/"
+const PROP_DIR: String = "res://assets/models/props/"
+const DETAIL_TEX: String = "res://assets/textures/gothic/masonry_diff.jpg"
+const ROCK_TEX: String = "res://assets/textures/gothic/rubble_diff.jpg"
 
 ## Tints (vertex colour rgb multiplies the material's stone colour).
 const C_STONE: Color = Color(1.0, 1.0, 1.0, 1.0)
@@ -24,11 +30,14 @@ const C_WOOD: Color = Color(0.85, 0.7, 0.6, 1.0)
 ## Glow (alpha 0): rgb scales the material's glow colour.
 const C_GLOW: Color = Color(1.0, 1.0, 1.0, 0.0)
 const C_GLOW_DIM: Color = Color(0.45, 0.45, 0.45, 0.0)
+## Alpha 0.75 = natural rock (the shader details it with the rubble scan instead of masonry).
+const C_ROCK: Color = Color(1.0, 1.0, 1.0, 0.75)
 
 static var _prims: Dictionary = {}
 static var _rocks: Dictionary = {}
 static var _kenney: Dictionary = {}
 static var _materials: Dictionary = {}
+static var _models: Dictionary = {}
 
 
 ## Act themes: stone, glow, haze, rim. Act 0/1 = the bleeding cathedral (blood red), act 2 =
@@ -75,6 +84,13 @@ static func stone_material(act: int, far: bool) -> ShaderMaterial:
     m.set_shader_parameter("haze_end", 1500.0 if far else 420.0)
     m.set_shader_parameter("haze_max", 0.8 if far else 0.62)
     m.set_shader_parameter("rim_strength", 0.75 if far else 0.35)
+    # Triplanar stone detail (DEC-057): masonry on buildings, rubble on rock, scaled to the band.
+    if ResourceLoader.exists(DETAIL_TEX):
+        m.set_shader_parameter("detail_tex", load(DETAIL_TEX))
+    if ResourceLoader.exists(ROCK_TEX):
+        m.set_shader_parameter("rock_tex", load(ROCK_TEX))
+    m.set_shader_parameter("detail_scale", 0.05 if far else 0.16)
+    m.set_shader_parameter("detail_strength", 0.55 if far else 0.85)
     _materials[key] = m
     return m
 
@@ -111,6 +127,18 @@ class Merge:
             for i in idx:
                 indices.append(base + i)
 
+    ## Appends pre-coloured arrays (a modelled piece) under `xf`; rgb multiplied by `tint`.
+    func add_colored(v: PackedVector3Array, n: PackedVector3Array, c: PackedColorArray, idx: PackedInt32Array, xf: Transform3D, tint: Color) -> void:
+        var base: int = verts.size()
+        var nb: Basis = xf.basis.inverse().transposed()
+        for i in v.size():
+            verts.append(xf * v[i])
+            normals.append((nb * n[i]).normalized())
+            var col: Color = c[i]
+            colors.append(Color(col.r * tint.r, col.g * tint.g, col.b * tint.b, col.a))
+        for i in idx:
+            indices.append(base + i)
+
     func add_mesh(mesh: Mesh, xf: Transform3D, color: Color) -> void:
         for s in mesh.get_surface_count():
             var arr: Array = mesh.surface_get_arrays(s)
@@ -141,6 +169,111 @@ static func instance(m: Merge, act: int, far: bool, label: String) -> MeshInstan
     mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
     return mi
+
+
+# --- Modelled pieces (DEC-057) -----------------------------------------------------------
+
+## The vertex colour for a modelled surface's role.
+static func role_color(role: String) -> Color:
+    match role:
+        "stone_dark":
+            return C_DARK
+        "stone_pale":
+            return C_LIGHT
+        "rock":
+            return C_ROCK
+        "rock_top":
+            return Color(1.3, 1.25, 1.25, 0.75)
+        "glow":
+            return C_GLOW
+        "glow_dim":
+            return C_GLOW_DIM
+        "iron":
+            return C_IRON
+        "bone":
+            return C_BONE
+        "wood":
+            return C_WOOD
+        "dark":
+            return Color(0.35, 0.33, 0.36, 1.0)
+        "flame":
+            return C_GLOW_DIM
+    return C_STONE
+
+
+## [verts, normals, colors, indices] of a modelled piece (all surfaces merged, role colours
+## baked), or [] when it isn't available (callers then fall back to the procedural shape).
+static func model(piece: String, dir: String = MODEL_DIR) -> Array:
+    var key: String = dir + piece
+    if _models.has(key):
+        return _models[key]
+    var result: Array = []
+    var path: String = key + ".glb"
+    if ResourceLoader.exists(path):
+        var scene: PackedScene = load(path) as PackedScene
+        if scene != null:
+            var root: Node = scene.instantiate()
+            var v: PackedVector3Array = PackedVector3Array()
+            var n: PackedVector3Array = PackedVector3Array()
+            var c: PackedColorArray = PackedColorArray()
+            var idx: PackedInt32Array = PackedInt32Array()
+            for node: Node in root.find_children("*", "MeshInstance3D", true, false):
+                var mesh: Mesh = (node as MeshInstance3D).mesh
+                for s in mesh.get_surface_count():
+                    var arr: Array = mesh.surface_get_arrays(s)
+                    var sv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+                    var sn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+                    var si: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+                    var role: String = "stone"
+                    var mat: Material = mesh.surface_get_material(s)
+                    if mat != null:
+                        role = mat.resource_name.get_slice(".", 0)
+                    var col: Color = role_color(role)
+                    var base: int = v.size()
+                    v.append_array(sv)
+                    n.append_array(sn)
+                    for i in sv.size():
+                        c.append(col)
+                    if si.is_empty():
+                        for i in sv.size():
+                            idx.append(base + i)
+                    else:
+                        for i in si:
+                            idx.append(base + i)
+                break
+            root.free()
+            if not v.is_empty():
+                result = [v, n, c, idx]
+    _models[key] = result
+    return result
+
+
+## Appends a modelled piece under `xf` (rgb tinted by `tint`). False if it isn't available.
+static func add_model(m: Merge, piece: String, xf: Transform3D, tint: Color = Color.WHITE, dir: String = MODEL_DIR) -> bool:
+    var d: Array = model(piece, dir)
+    if d.is_empty():
+        return false
+    m.add_colored(d[0], d[1], d[2], d[3], xf, tint)
+    return true
+
+
+## Appends a unit tower model (w = 1, shaft 0..4, spire above) as a tower `w` wide with a
+## `h` shaft and a `spire` tall top: the shaft stretches to `h`, everything above the
+## parapet (pinnacles, spire or stump) scales by spire/3, so details keep their shape.
+static func add_tower_model(m: Merge, piece: String, base: Vector3, yaw: float, w: float, h: float, spire: float) -> bool:
+    var d: Array = model(piece)
+    if d.is_empty():
+        return false
+    var src: PackedVector3Array = d[0]
+    var v: PackedVector3Array = PackedVector3Array()
+    v.resize(src.size())
+    var k_up: float = spire / 3.0
+    for i in src.size():
+        var p: Vector3 = src[i]
+        var y: float = p.y * h / 4.0 if p.y <= 4.0 else h + (p.y - 4.0) * k_up
+        v[i] = Vector3(p.x * w, y, p.z * w)
+    m.add_colored(v, d[1], d[2], d[3], Transform3D(Basis(Vector3.UP, yaw), base), Color.WHITE)
+    return true
 
 
 # --- Primitives ------------------------------------------------------------------------
@@ -270,6 +403,8 @@ static func lancet(m: Merge, center: Vector3, normal: Vector3, w: float, h: floa
 ## A square gothic tower with corner pinnacles, a lit belfry and a spire. `broken` snaps the
 ## spire and bites the parapet.
 static func gothic_tower(m: Merge, base: Vector3, w: float, h: float, spire: float, broken: bool, rng: RandomNumberGenerator) -> void:
+    if add_tower_model(m, "bd_tower_broken" if broken else "bd_tower", base, rng.randf_range(-0.3, 0.3), w, h, spire):
+        return
     box(m, base + Vector3(0, h * 0.5, 0), Vector3(w, h, w), C_STONE)
     # Buttressed corners.
     for sx in [-1.0, 1.0]:
@@ -301,7 +436,11 @@ static func gothic_tower(m: Merge, base: Vector3, w: float, h: float, spire: flo
 ## A flying buttress: a pier with a pinnacle, and a strut leaning toward `to` (the wall it props).
 static func flying_buttress(m: Merge, pier_base: Vector3, pier_h: float, to: Vector3, w: float, broken: bool) -> void:
     box(m, pier_base + Vector3(0, pier_h * 0.5, 0), Vector3(w, pier_h, w), C_STONE)
-    column(m, pier_base + Vector3(0, pier_h, 0), w * 2.2, w * 0.45, 0.0, 4, C_DARK)
+    for k in 3:  # stepped offsets down the pier
+        var f: float = 0.25 + 0.25 * k
+        box(m, pier_base + Vector3(0, pier_h * f, 0), Vector3(w * 1.25, w * 0.5, w * 1.25), C_LIGHT)
+    if not add_model(m, "bd_pinnacle", Transform3D(Basis.from_scale(Vector3(w * 0.9, w * 0.55, w * 0.9)), pier_base + Vector3(0, pier_h, 0))):
+        column(m, pier_base + Vector3(0, pier_h, 0), w * 2.2, w * 0.45, 0.0, 4, C_DARK)
     var top: Vector3 = pier_base + Vector3(0, pier_h * 0.86, 0)
     var mid: Vector3 = top.lerp(to, 0.5) + Vector3.UP * w * 0.9
     beam(m, top, mid, w * 0.32, w * 0.28, 4, C_DARK)
@@ -316,6 +455,14 @@ static func flying_buttress(m: Merge, pier_base: Vector3, pier_h: float, to: Vec
 ## Local metres at `scale` 1: ~330 m long, ~250 m to the crossing spire's tip.
 static func cathedral(m: Merge, xf: Transform3D, rng: RandomNumberGenerator) -> void:
     var sub: Merge = Merge.new()
+    if add_model(sub, "bd_cathedral", Transform3D.IDENTITY):
+        # The modelled cathedral (DEC-057) on its torn-up rock, chained over the abyss.
+        rock(sub, Transform3D(Basis.from_scale(Vector3(230, 150, 150)), Vector3(170, -4, 0)), 7, C_DARK)
+        for k in 4:
+            var a: float = TAU * (k + 0.5) / 4.0
+            chain(sub, Vector3(170 + cos(a) * 170, -60, sin(a) * 120), 160.0, 6.0, C_IRON)
+        append(m, sub, xf)
+        return
     var nave_w: float = 70.0
     # Nave + aisles + roof.
     box(sub, Vector3(180, 55, 0), Vector3(240, 110, nave_w), C_STONE)
@@ -385,6 +532,8 @@ static func append(m: Merge, sub: Merge, xf: Transform3D) -> void:
 ## A floating rock island (flat-ish top at local y ≈ 0.16, a long ragged root below to y ≈ -1.9),
 ## unit radius; `variant` picks one of a few cached shapes.
 static func rock(m: Merge, xf: Transform3D, variant: int, color: Color) -> void:
+    if add_model(m, "bd_rock_%d" % (variant % 4), xf * Transform3D(Basis(Vector3.UP, variant * 1.3), Vector3.ZERO), Color(color.r, color.g, color.b)):
+        return
     var data: Array = _rock_tris(variant % 8)
     m.add_arrays(data[0], data[1], PackedInt32Array(), xf, color)
 
@@ -444,6 +593,9 @@ static func _rock_tris(variant: int) -> Array:
 
 ## A dead, crooked tree: a trunk splitting into bare branches (`depth` levels).
 static func dead_tree(m: Merge, base: Vector3, height: float, rng: RandomNumberGenerator, color: Color = C_WOOD) -> void:
+    var tilt: Basis = Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.12, 0.12))
+    if add_model(m, "bd_tree_%d" % rng.randi_range(0, 2), Transform3D(tilt.scaled(Vector3.ONE * height * 1.15), base), Color(color.r / C_WOOD.r, color.g / C_WOOD.g, color.b / C_WOOD.b)):
+        return
     _branch(m, base, Vector3(rng.randf_range(-0.15, 0.15), 1.0, rng.randf_range(-0.15, 0.15)).normalized(), height, height * 0.06, 3, rng, color)
 
 
@@ -472,6 +624,8 @@ static func chain(m: Merge, top: Vector3, length: float, link: float, color: Col
 ## A gibbet cage hanging from `hang` (its hook), `size` ≈ height, with a slumped corpse inside
 ## and a dim lantern. Points down from `hang`.
 static func cage(m: Merge, hang: Vector3, size: float, rng: RandomNumberGenerator) -> void:
+    if add_model(m, "iron_cage", Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * size * 0.71), hang), Color.WHITE, PROP_DIR):
+        return
     var r: float = size * 0.3
     var top: Vector3 = hang + Vector3.DOWN * size * 0.25
     var bottom: Vector3 = top + Vector3.DOWN * size
@@ -508,6 +662,8 @@ static func rib(m: Merge, root: Vector3, dir: Vector3, span: float, rise: float,
 ## A colossal carcass lying in the abyss: a spine along local X with ribs rising on both sides
 ## and a horned skull at the head.
 static func ribcage(m: Merge, xf: Transform3D, length: float, rng: RandomNumberGenerator) -> void:
+    if add_model(m, "bd_ribcage", xf * Transform3D(Basis.from_scale(Vector3.ONE * length), Vector3.ZERO)):
+        return
     var sub: Merge = Merge.new()
     var ribs: int = 9
     for i in ribs + 3:
@@ -591,6 +747,10 @@ static func kenney(piece: String) -> Array:
 ## A ruined Kenney hexagon tower (base, `floors` mid sections, a top or a broken stump) of
 ## width ≈ `scale` metres. Falls back to a procedural tower when the kit isn't imported.
 static func kenney_tower(m: Merge, base: Vector3, scale: float, floors: int, broken: bool, rng: RandomNumberGenerator) -> void:
+    if not model("bd_tower").is_empty():
+        # The modelled gothic towers (DEC-057) replace the Kenney hexagon stacks.
+        gothic_tower(m, base, scale * 0.7, scale * (floors + 1.2), scale * 2.0, broken, rng)
+        return
     var parts: Array[String] = ["tower-hexagon-base"]
     for i in floors:
         parts.append("tower-hexagon-mid")

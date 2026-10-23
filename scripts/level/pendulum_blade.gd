@@ -48,25 +48,50 @@ func _build() -> void:
     _arm = Node3D.new()
     add_child(_arm)
     var rod: MeshInstance3D = MeshInstance3D.new()
-    var rod_mesh: BoxMesh = BoxMesh.new()
-    rod_mesh.size = Vector3(0.12, arm_length, 0.12)
-    rod.mesh = rod_mesh
-    rod.material_override = iron
-    rod.position.y = -arm_length * 0.5
+    rod.name = "Arm"
+    # Modelled arm (pivot hub, flanged bar, clamp) stretched to the arm length (DEC-057).
+    var arm_mesh: ArrayMesh = GothicProps.stretched("pendulum_arm", 1, -1.0, 0.15, -arm_length, 0.15, 0.25, {&"iron": iron})
+    if arm_mesh != null:
+        rod.mesh = arm_mesh
+    else:
+        var rod_mesh: BoxMesh = BoxMesh.new()
+        rod_mesh.size = Vector3(0.12, arm_length, 0.12)
+        rod.mesh = rod_mesh
+        rod.material_override = iron
+        rod.position.y = -arm_length * 0.5
     _arm.add_child(rod)
-    var blade: MeshInstance3D = MeshInstance3D.new()
-    var blade_mesh: BoxMesh = BoxMesh.new()
     var span: float = Lane.depth() - 1.0 if Lane.full_3d else 0.15  # 3D: no walking round it
     if blade_span > 0.0:
         span = blade_span  # open 3D courses size each blade to the walkway it guards
-    blade_mesh.size = Vector3(1.6, 0.5, span)
-    blade.mesh = blade_mesh
     var edge: StandardMaterial3D = GothicMaterials.standard("rust_iron", Color(1.0, 0.95, 0.92), 0.9, false)
     edge.emission_enabled = true
     edge.emission = Color(0.5, 0.05, 0.05) * 0.4
-    blade.material_override = edge
-    blade.position.y = -arm_length
-    _arm.add_child(blade)
+    var crescent: ArrayMesh = GothicProps.mesh("pendulum_crescent", {&"blade": edge, &"iron": iron})
+    if crescent != null:
+        # A row of crescent blades on an iron spine across the walkway (one in the side view).
+        var blades: Node3D = Node3D.new()
+        blades.name = "Blade"
+        blades.position.y = -arm_length + 0.1
+        _arm.add_child(blades)
+        var n: int = 1 if span < 1.0 else maxi(2, ceili(span / 1.15))
+        for k in n:
+            var b: MeshInstance3D = MeshInstance3D.new()
+            b.mesh = crescent
+            b.position.z = 0.0 if n == 1 else lerpf(-span * 0.5 + 0.12, span * 0.5 - 0.12, float(k) / (n - 1))
+            blades.add_child(b)
+        if n > 1:
+            var spine: MeshInstance3D = MeshInstance3D.new()
+            spine.name = "Spine"
+            spine.mesh = GothicProps.stretched("pendulum_spine", 2, -0.53, 0.53, -span * 0.5, span * 0.5, 0.08, {&"iron": iron})
+            blades.add_child(spine)
+    else:
+        var blade: MeshInstance3D = MeshInstance3D.new()
+        var blade_mesh: BoxMesh = BoxMesh.new()
+        blade_mesh.size = Vector3(1.6, 0.5, span)
+        blade.mesh = blade_mesh
+        blade.material_override = edge
+        blade.position.y = -arm_length
+        _arm.add_child(blade)
     hitbox = Hitbox.new()
     hitbox.team = &"enemy"
     hitbox.damage = 1

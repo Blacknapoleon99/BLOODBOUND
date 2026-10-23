@@ -73,3 +73,32 @@ Record tool settings and costs, not API keys. Do not copy Tidebreaker, Shadow of
   - `tools/dev/shot_kit.gd`: close-ups of the cornice edge, paving, pier, climb wall, mover, slab, and both sides of a tall face;
   - `tools/dev/shot_ground.gd`: room views;
   - `tools/dev/kit_perf.gd`: fps, draw calls and primitives.
+
+## Modelled props, hazards and backdrop pieces (DEC-057)
+
+- **Source:** original models built headless in Blender (no live MCP session, no paid generation):
+  - `tools/blender/build_props.py` writes `assets/models/props/<name>.glb` (corner props, spike trap, pendulum, lever and bridge, altar, merchant, chest, shard, checkpoint standard, exit arch, ossuary wall module).
+  - `tools/blender/build_backdrop.py` writes `assets/models/backdrop/gothic/<name>.glb` (cathedral, towers, rocks, trees, pillar crown, ruin wall, ribcage, pinnacle, bat).
+  - `tools/blender/make_textures.py` writes the procedural `bone`, `cloth` and `wax` PBR sets into `assets/textures/gothic/`.
+  - Run: `"C:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe" -b --python tools/blender/<script>.py -- <repo> [names...] [--sheet preview.png]`. `--sheet` renders a Workbench contact sheet for a quick shape check. Then run `godot --headless --path . --import`.
+- **Conventions** (`tools/blender/gothic_common.py`):
+  - Builders take Godot coordinates (y up, +Z front). Origin at the ground contact unless the docstring says otherwise (the pendulum arm hangs from its pivot, the chest lid sits on its hinge, the wall module is centred).
+  - One joined object per GLB. Material slot names are **roles** (stone, stone_dark, stone_pale, rock, iron, blade, bone, wood, wax, flame, glow, cloth, gold, glass, dark). Textures are not embedded.
+- **Props in Godot:** `GothicProps` (`scripts/art/gothic_props.gd`) loads a GLB and maps each role to a textured, object-space triplanar PBR material.
+  - Scripts that animate a material pass it in `roles`, so telegraphs keep working: the spike plate's warning pulse, the lever bridge fade, the altar and chest glow, the checkpoint banner.
+  - `stretched()` nine-slices a model along one axis, so a 1 m pendulum arm or spine fits any length without stretching its hub.
+  - `subset()` splits candle flames from wax, so the flames cast no shadows.
+  - Every call returns null when a GLB is missing, and the old primitive is then built instead.
+- **Backdrop in Godot:** `BackdropKit.model()` / `add_model()` merge a GLB into the one-mesh-per-object `Merge`, turning roles into vertex colours. Alpha 0.75 marks rock.
+  - `add_tower_model()` stretches the tower shaft to the requested height and scales the spire part separately.
+  - `backdrop_stone.gdshader` adds triplanar detail: the masonry scan on buildings and the rubble scan on rock.
+- **Budgets** (triangles):
+  - Corner props: 0.5k–5k each.
+  - Bone wall module: 20k per 2 m (shown only during an ambush).
+  - Exit arch: 6.4k.
+  - Cathedral: 46k.
+  - Unit towers: about 2.5k.
+  - Rocks: 1.3k. Trees: 1k.
+- **Checks:**
+  - `tools/dev/shot_props.gd` (visible window) photographs every prop and hazard under the gothic lighting.
+  - `tests/backdrop_check.gd` keeps the background decor free of collision and shadows, and out of the play volume.
