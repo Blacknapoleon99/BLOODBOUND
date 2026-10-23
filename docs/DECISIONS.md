@@ -146,3 +146,17 @@
 
   Updated: the 3D "zig-zag ledges" check is now "completable and over 24 m across"; "floor spikes span the hall" is now "spike beds lie on their walkway"; the 3D ambush is now entered at its ring.
 - **Dev tools:** `tools/dev/room_stats.gd` prints every course's validator view; `tools/dev/shot_courses.gd` captures overviews (visible window).
+
+## DEC-055 — The background world around the open courses (2026-10-23)
+
+- **User direction:** a skybox, a world, backgrounds: "Super Mario 64 but a gorey dark gothic 3D platformer". The courses float in a void (DEC-052); now the void is a place. Decor only: no collision, no shadows, never in a course's play volume.
+- **Three bands** (`scripts/level/backdrop_3d.gd` `Backdrop3D`, one per course, spawned by one line in `LevelSection.build()` (full 3D) and in `OpeningGrounds.build_grounds()`; the playground spawns one too):
+  - **Near** (10-40 m past the course edge, tops below the course): clustered gothic pillars rising out of the abyss, loose masonry, a broken wall with a lit lancet per side, gibbet cages swinging on 40 m chains.
+  - **Mid** (|z| ≥ 60 m, 60-200 m out): 3-4 drifting rock islands with ruined towers (procedural or Kenney Castle Kit), roofless chapels, dead trees and hanging cages; one big feature per room (titan ribcage / broken flying buttresses / ruined arcade); a bat flock (MultiMesh).
+  - **Far** (`BackdropHorizon`, one per scene, follows the camera like a skybox of geometry): the colossal cathedral ~820 m ahead (+X, where the run heads) with a red rose window, lancets and chains holding its rock over the abyss; broken spires on floating rocks round the horizon; a titan carcass in the sea; two mountain rings; the blood sea (world-space noise shader, ember glints), a translucent mist layer, an additive sea-glow ring behind the mountains, rising embers.
+- **Theme** by act (`BackdropKit.theme`): act 0/1 blood red, act 2 violet-crimson; the horizon re-themes to the room under the camera. Room ids seed the layout (stable per room).
+- **Rendering:** every object is merged into one vertex-coloured mesh (one draw call each); custom fog-disabled shaders do their own distance haze, synced every 0.5 s to the environment's sky horizon / fog / background colour, so the far layers read in Compatibility and Forward+ whatever the lighting agent sets. A room's decor hides beyond 300 m (camera X). Measured at the opening (Compatibility, 1280×720): +25 draw calls, +82k primitives; ~8 ms build per room.
+- **Sources:** procedural (original) + 9 Kenney Castle Kit pieces (CC0), credited in `assets/models/backdrop/CREDITS.md`. No paid generation.
+- **Checks:** `tests/backdrop_check.gd` (5/5): one backdrop per course + opening, one horizon, no collision, no shadow casters, no vertex inside any course's play volume. Capture: `tools/dev/shot_backdrop.gd` (visible window, gameplay camera).
+- **Headless** (tests/CI): the decor is built but not animated (no `_process`, no embers). The smoke check "a loose Bone Shard is collected by touch" waited 6 *process* frames, which only sometimes contain the 3 physics ticks the area needs (2/5 failures in isolation even without the backdrop); it now waits 6 physics frames.
+- **Not done:** the sky itself (lighting/sky owner); per-room unique far landmarks; LOD impostors (not needed at current cost).

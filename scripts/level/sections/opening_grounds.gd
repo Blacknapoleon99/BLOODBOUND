@@ -25,6 +25,7 @@ func build_grounds() -> void:
     name = "Opening grounds"
     _course()
     _finish_course()
+    Backdrop3D.attach(self)  # background world (DEC-055)
 
 
 func _course() -> void:

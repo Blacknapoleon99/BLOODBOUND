@@ -36,6 +36,7 @@ func _ready() -> void:
     Lane.full_3d = false
     _environment()
     _build()
+    Backdrop3D.spawn(self, Vector2(-60.0, 70.0), Vector2(-32.0, 32.0), 10.0, 1, 4242, self)  # background world (DEC-055)
     player = PLAYER_SCENE.instantiate() as CharacterBody3D
     player.add_to_group(&"player")
     add_child(player)

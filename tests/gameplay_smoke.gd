@@ -3378,7 +3378,8 @@ func _open_course_checks() -> void:
     var pickup: ShardPickup = room.pickups[0]
     var shards0: int = RunState.shards
     _player.call("teleport_to", pickup.global_position)
-    await _frames(6)
+    for i in 6:  # physics ticks, not process frames: the area needs real steps to see the body
+        await physics_frame
     _check(pickup.taken and not pickup.visible and RunState.shards == shards0 + pickup.amount, "a loose Bone Shard is collected by touch (+%d)" % pickup.amount)
     var health: Health = _player.get("health") as Health
     health.restore_full()

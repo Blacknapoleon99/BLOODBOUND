@@ -39,3 +39,9 @@
 > Single original [character / prop] for a dark medieval action-platformer. Functional silhouette visible from a fixed side camera, readable negative space, weathered charcoal stone/bone/iron with restrained crimson accents. Neutral pose if animated, no base/pedestal, no text/logos, no environment; design appropriate for real-time 3D use. Target dimensions [meters], animation requirements [list], topology and texture constraints [budget]. Distinct from existing games/film designs.
 
 Record tool settings and costs, not API keys. Do not copy Tidebreaker, Shadow of the Colossus, or third-party signature character appearances.
+
+## Background world (DEC-055)
+
+- Backdrop decor is procedural (`scripts/level/backdrop_kit.gd`) plus CC0 kit pieces copied into `assets/models/backdrop/` with a `CREDITS.md` row each. Copy only the pieces used, with their licence file and any texture the GLB references (or the import logs errors).
+- Kit pieces are merged into one mesh per object and drawn with `assets/shaders/backdrop/backdrop_stone.gdshader` (vertex colour rgb = tint, alpha 0 = glowing). A replacement GLB only needs a single mesh at a sensible scale; `BackdropKit.kenney()` measures its AABB to stack it.
+- Backdrop meshes never get collision and never cast shadows; `tests/backdrop_check.gd` enforces that and keeps them out of every course's play volume.
