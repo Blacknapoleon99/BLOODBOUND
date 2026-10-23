@@ -78,21 +78,7 @@ func _process(_delta: float) -> void:
 
 
 func _environment() -> void:
-    var world: WorldEnvironment = WorldEnvironment.new()
-    var env: Environment = Environment.new()
-    env.background_mode = Environment.BG_COLOR
-    env.background_color = Color(0.03, 0.03, 0.05)
-    env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-    env.ambient_light_color = Color(0.35, 0.36, 0.48)
-    env.ambient_light_energy = 0.85
-    world.environment = env
-    add_child(world)
-    var moon: DirectionalLight3D = DirectionalLight3D.new()
-    moon.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
-    moon.light_color = Color(0.7, 0.72, 1.0)
-    moon.light_energy = 1.3
-    moon.shadow_enabled = true
-    add_child(moon)
+    add_child(GothicEnvironment.create())  # the full-3D look (DEC-053)
 
 
 func _build() -> void:

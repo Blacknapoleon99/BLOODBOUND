@@ -193,3 +193,36 @@
 - **Checks:** `tests/backdrop_check.gd` (5/5): one backdrop per course + opening, one horizon, no collision, no shadow casters, no vertex inside any course's play volume. Capture: `tools/dev/shot_backdrop.gd` (visible window, gameplay camera).
 - **Headless** (tests/CI): the decor is built but not animated (no `_process`, no embers). The smoke check "a loose Bone Shard is collected by touch" waited 6 *process* frames, which only sometimes contain the 3 physics ticks the area needs (2/5 failures in isolation even without the backdrop); it now waits 6 physics frames.
 - **Not done:** the sky itself (lighting/sky owner); per-room unique far landmarks; LOD impostors (not needed at current cost).
+
+## DEC-053 — Forward+ renderer and the gothic full-3D look (2026-10-23)
+
+- **User direction:** "Super Mario 64, but a gorey, dark, gothic 3D platformer" at AAA quality: a skybox, a world, background, atmosphere. Web is no longer the target.
+- **Renderer:** desktop uses **Forward+** (`rendering_method="forward_plus"`). Web and mobile keep **Compatibility** through the feature-tag overrides `rendering_method.web` / `.mobile` (the Godot docs say Web can only run Compatibility). Those builds get the reduced look; the Forward+-only effects (volumetric fog, SSIL, SSAO) never switch on there. Shadows: 4096 directional atlas with soft filter quality 3, plus MSAA 2x and FXAA.
+- **One module:** `GothicEnvironment` (`scripts/art/gothic_environment.gd`) builds the whole full-3D look. The 3D run (`main.gd`, full_3d only), the movement playground and proto_3d all use it. The side view and co-op keep their old flat lighting. ArtSwap skips its fill light and tonemap when it finds the gothic environment.
+- **Sky:** `assets/shaders/gothic_sky.gdshader` is fully procedural:
+  - a huge blood-red moon with maria and a halo;
+  - drifting fbm storm clouds, lit at the rims from the moon side;
+  - twinkling stars through the cloud gaps;
+  - a crimson horizon band, and a dark abyss below the horizon with a faint ember glow.
+  - The radiance pass skips stars and craters and uses fewer octaves. Radiance updates incrementally.
+  - No HDRI was downloaded. Poly Haven CC0 remains an option.
+- **The visible moon is placed apart from the light.** The moon disc sits about 12° up in the moonlight's azimuth, so the play camera keeps it in frame. The light itself comes from about 38° up, so the ground still gets a readable key angle and shadows.
+- **Lighting:**
+  - Moonlight is a rose key at energy 2.0 with 4-split PSSM shadows over 70 m (splits 0.08 / 0.22 / 0.5) and PCSS softness (`light_angular_distance` 0.6) on high.
+  - A cool, shadowless fill light comes from opposite the moon, plus a cool ambient.
+  - `GothicEnvironment.torch_light(pos)` returns a warm, flickering OmniLight3D for torches and candles.
+- **Atmosphere:**
+  - Fog: exponential depth fog plus height fog below y = -3. On high, volumetric fog (80 m) and an `AbyssFog` FogVolume that follows the camera under the courses add to it.
+  - SSAO everywhere, and SSIL on high. SDFGI stays off (too costly for procedurally built courses).
+  - Glow for the moon and embers. ACES tonemap, contrast 1.08, saturation 0.78, and a split-tone correction ramp (cold shadows, warm highlights).
+  - Ash (900) and embers (140) GPU particles follow the active camera.
+- **Quality preset:** `GameSettings.high_quality` is saved under `[graphics]` and toggled in Settings ("High graphics"). Low turns off volumetrics, SSIL, PCSS and the abyss volume, drops to 2 shadow splits, uses fewer particles and a 64 px radiance map. `GothicEnvironment.refresh_quality(tree)` applies a change live.
+- **Measured** (RTX 5090, 1280×720, vsync off, `tests/shot_gothic.gd`):
+
+  | Preset | 3D run | Playground |
+  |---|---|---|
+  | High | 440–630 fps | 400–1240 fps |
+  | Low | ~520 fps | ~1500 fps |
+
+  A mid GPU has not been measured yet.
+- **Captures:** `tests/shot_gothic.gd` (visible window) writes `docs/screenshots/23_gothic_*.png` and prints the fps. Pass `-- <dir> low` to capture the low preset.

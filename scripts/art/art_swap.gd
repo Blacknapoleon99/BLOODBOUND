@@ -121,8 +121,8 @@ static func _on_node_added(node: Node) -> void:
 ## Textured models need more light than flat greybox colours to stay readable at 22 m: a
 ## shadowless cool fill from the camera side (cheap on the Web build) plus a filmic tonemap.
 static func _light_for_art(level: Node3D) -> void:
-    if level.has_node("ArtFillLight"):
-        return
+    if level.has_node("ArtFillLight") or level.has_node("GothicEnvironment"):
+        return  # the gothic full-3D look brings its own fill and grade (DEC-053)
     var fill: DirectionalLight3D = DirectionalLight3D.new()
     fill.name = "ArtFillLight"
     fill.rotation_degrees = Vector3(-18.0, 8.0, 0.0)  # from slightly above/behind the camera, toward -Z
