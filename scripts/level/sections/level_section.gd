@@ -464,6 +464,10 @@ func hint(text: String, x: float, z: float, top: float) -> Label3D:
     label.pixel_size = 0.006
     label.modulate = Color(0.95, 0.88, 0.8)
     label.outline_size = 10
+    # Read from a distance, fade out up close so a sign never fills the screen.
+    label.visibility_range_begin = 3.5
+    label.visibility_range_begin_margin = 2.5
+    label.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
     add_child(label)
     return label
 

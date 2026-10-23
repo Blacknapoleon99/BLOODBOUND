@@ -300,6 +300,11 @@ func _process(delta: float) -> void:
         state = "3D RUN — WASD move / mouse look / SPACE jump / LEFT CLICK light / RIGHT CLICK heavy / SHIFT dodge / Q lock on / cards: 1-3 / E use"
         if cam3d.lock_target != null:
             state += "    LOCKED: " + String(cam3d.lock_target.name)
+    if cam3d != null:
+        # Full 3D: a clean status line (controls are on the opening's signs).
+        var lock: String = ("    LOCKED: " + String(cam3d.lock_target.name)) if cam3d.lock_target != null else ""
+        hud.text = hp + "    " + checkpoint_state + lock + "\n" + _message
+        return
     hud.text = "BLOODBOUND — GREYBOX VERTICAL SLICE\n" + state + "\n" + hp + "    " + objective + "    " + arena_state + "    " + checkpoint_state + "\n" + _message
 
 
