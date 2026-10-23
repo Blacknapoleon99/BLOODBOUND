@@ -46,3 +46,9 @@ Record tool settings and costs, not API keys. Do not copy Tidebreaker, Shadow of
 - Import settings (in the `.import` files): diffuse and ARM use VRAM compression with mipmaps; normal maps are lossless with mipmaps. Normals are OpenGL convention, and the shaders decode them by hand, so no normal-map import flag is needed.
 - To add a set: download the 1k `diff`, `nor_gl` and `arm` JPGs and name them `<set>_diff.jpg`, `<set>_nor.jpg` and `<set>_arm.jpg`. Copy the import params from an existing set, run `godot --headless --path . --import`, add a kind in `GothicMaterials._make`, and add a CREDITS row.
 - Check the look with `godot --path . -s res://tools/dev/shot_ground.gd -- <out_dir> [seed]` (a visible window, not headless).
+
+## Background world (DEC-055)
+
+- Backdrop decor is procedural (`scripts/level/backdrop_kit.gd`) plus CC0 kit pieces copied into `assets/models/backdrop/` with a `CREDITS.md` row each. Copy only the pieces used, with their licence file and any texture the GLB references (or the import logs errors).
+- Kit pieces are merged into one mesh per object and drawn with `assets/shaders/backdrop/backdrop_stone.gdshader` (vertex colour rgb = tint, alpha 0 = glowing). A replacement GLB only needs a single mesh at a sensible scale; `BackdropKit.kenney()` measures its AABB to stack it.
+- Backdrop meshes never get collision and never cast shadows; `tests/backdrop_check.gd` enforces that and keeps them out of every course's play volume.

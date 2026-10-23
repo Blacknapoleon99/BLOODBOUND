@@ -74,6 +74,7 @@ func build(at_x: float) -> void:
     if Lane.full_3d:
         _course()
         _finish_course()
+        Backdrop3D.attach(self)  # background world around the course (DEC-055)
     else:
         _design()
     checkpoint = Checkpoint.create(Vector3(gx(2.4), 1.2, 0.0), Vector3(2.0, 3.0, Lane.depth(3.0)))
