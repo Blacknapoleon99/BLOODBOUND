@@ -9,6 +9,7 @@ var gore_toggle: CheckButton
 var shake_slider: HSlider
 var shake_value: Label
 var hitstop_toggle: CheckButton
+var quality_toggle: CheckButton
 var music_slider: HSlider
 var sfx_slider: HSlider
 var back_button: Button
@@ -67,6 +68,14 @@ func _build() -> void:
         _save())
     column.add_child(hitstop_toggle)
 
+    quality_toggle = _toggle("High graphics (volumetric fog, soft shadows)")
+    quality_toggle.name = "HighQuality"
+    quality_toggle.toggled.connect(func(on: bool) -> void:
+        GameSettings.high_quality = on
+        GothicEnvironment.refresh_quality(get_tree())
+        _save())
+    column.add_child(quality_toggle)
+
 
     music_slider = _volume_row(column, "Music", "MusicVolume", func(v: float) -> void:
         GameSettings.music_volume = v
@@ -89,6 +98,7 @@ func open() -> void:
     shake_slider.set_value_no_signal(GameSettings.camera_shake)
     shake_value.text = "%d%%" % roundi(GameSettings.camera_shake * 100.0)
     hitstop_toggle.set_pressed_no_signal(GameSettings.hitstop_enabled)
+    quality_toggle.set_pressed_no_signal(GameSettings.high_quality)
     music_slider.set_value_no_signal(GameSettings.music_volume)
     sfx_slider.set_value_no_signal(GameSettings.sfx_volume)
     visible = true

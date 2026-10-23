@@ -1203,6 +1203,14 @@ func _flash(message: String, seconds: float) -> void:
 
 
 func _build_greybox() -> void:
+    if full_3d:
+        add_child(GothicEnvironment.create())  # blood-moon sky, fog, shadows, ash (DEC-053)
+    else:
+        _side_view_lighting()
+    _build_greybox_geometry()
+
+
+func _side_view_lighting() -> void:
     var world_env: WorldEnvironment = WorldEnvironment.new()
     var env: Environment = Environment.new()
     env.background_mode = Environment.BG_COLOR
@@ -1219,6 +1227,8 @@ func _build_greybox() -> void:
     moonlight.light_energy = 1.3
     add_child(moonlight)
 
+
+func _build_greybox_geometry() -> void:
     # Side-scrolling platforms, with a gap narrow enough for the starter jump.
     _make_solid("Starting causeway", Vector3(-13.0, -0.5, 0.0), Vector3(12.0, 1.0, 4.0), Color(0.18, 0.19, 0.23))
     _make_solid("Broken stone span", Vector3(-4.5, 0.0, 0.0), Vector3(3.0, 0.7, 3.7), Color(0.23, 0.23, 0.28))

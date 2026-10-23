@@ -19,6 +19,9 @@ static var hitstop_enabled: bool = true
 ## 0..1 linear volumes for the Music and SFX buses (see Audio).
 static var music_volume: float = 0.7
 static var sfx_volume: float = 0.9
+## Full-3D graphics preset (GothicEnvironment): true = high (volumetric fog, SSIL, soft
+## shadows, dense ash), false = low (plain depth fog, SSAO only, fewer particles).
+static var high_quality: bool = true
 
 
 static func load_settings(path: String = DEFAULT_PATH) -> void:
@@ -32,6 +35,7 @@ static func load_settings(path: String = DEFAULT_PATH) -> void:
     hitstop_enabled = bool(config.get_value("presentation", "hitstop", hitstop_enabled))
     music_volume = clampf(float(config.get_value("audio", "music", music_volume)), 0.0, 1.0)
     sfx_volume = clampf(float(config.get_value("audio", "sfx", sfx_volume)), 0.0, 1.0)
+    high_quality = bool(config.get_value("graphics", "high_quality", high_quality))
 
 
 static func save_settings(path: String = DEFAULT_PATH) -> Error:
@@ -43,6 +47,7 @@ static func save_settings(path: String = DEFAULT_PATH) -> Error:
     config.set_value("presentation", "hitstop", hitstop_enabled)
     config.set_value("audio", "music", music_volume)
     config.set_value("audio", "sfx", sfx_volume)
+    config.set_value("graphics", "high_quality", high_quality)
     return config.save(path)
 
 
@@ -52,3 +57,4 @@ static func reset_defaults() -> void:
     hitstop_enabled = true
     music_volume = 0.7
     sfx_volume = 0.9
+    high_quality = true
