@@ -172,3 +172,13 @@ User playtest of windows-run6: listen pass on the new audio, plus feel of the ne
 ### Next action
 - User playtest of co-op with a gamepad, and a solo run timing the map.
 - Online co-op when wanted (see DEC-039 for the path).
+
+## 2026-10-24 — DEC-062: open start, platformer camera, grounded feet, gore
+
+- Start area opened (no back wall; practice walls set back off the path). Camera holds level through jumps and auto-follows runs. Feet no longer sink while running; run lean pivots at the feet; no side-view tilt on 3D swings/hits.
+- Procedural gore: arterial sprays, blood decals and pools, gibs and bone shards, per-enemy fluids, hero bleeding; reduced-gore setting honoured.
+- Evidence: smoke 562/562, gore_check 22/22, soak seed 5 0 anomalies. Branch `claude/movement-feel-gore`.
+
+### Next action
+- User playtest on Windows (feel of camera auto-follow, gore amount/decal density).
+- Decide the open-world structure (hub vs. room chain).

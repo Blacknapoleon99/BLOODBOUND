@@ -411,3 +411,23 @@
 - **Rooms:** `catacomb_crawl` tunnels widened so the pit and the hop to the exit are 2.5 m (were 3 m; it had lost its basic route). `gravewarden_hall` Ossuary post moved off the floor's south-east corner (a 2.2 m jump-and-grab; it was 3.25 m away and unreachable).
 - **Tests:** playground ledge station moved to 3 m from the wall (the scripted approach jump landed short at 5 m/s; the motor's grab itself is unchanged). Expected numbers updated: half tilt ~1.77 m/s (1.5–2.1), validator reach floor 3.0 → 2.6, sprint upper bound = sprint + 0.35. New `_dec061_checks`: die → respawn → animator awake and the legs run; the 3D roll ends ≤ 0.15 s after the dash at ≤ 3.2× playback. `soak_motion.gd` injects real deaths (15% of synthetic hits) and flags `animator_dead_after_respawn` (reproduced before the fix); its DASH overstay limit is 0.45 s for the longer roll.
 - **Soak:** seeds 1, 5, 9, 13 at 300 s each (`--fixed-fps 60`): 0 anomalies (the first pass flagged only `overstay_DASH` at the old 0.3 s limit). Tests: 562/562 smoke, kit 153/153, backdrop 5/5.
+
+## DEC-062 — Open start, platformer camera, grounded feet, and procedural gore (2026-10-24)
+
+- **User direction:** "Mario movement like a 3D platformer with a gorey dark gothic feature, gorey with blood ... still very buggy, bad 3D platformer movement with the animation"; earlier: "we still have a side wall we want removed".
+- **Opening:** the 26 m "Opening back wall" behind the spawn is gone. The LEDGE GRAB wall and the CLIMB wall stood right on the causeway's edges (reading as side walls at spawn); each now stands 3 m back on its own floor (`Grab floor`, `Climb floor`). Validator and rewards unchanged in kind.
+- **Camera** (`ThirdPersonCamera`):
+  - the focus height follows the last ground through a jump (a 2.6 m band before it chases the body; falls are tracked at once); walls, ledges and climbs frame the hero where they are. The view no longer bobs with every jump;
+  - auto-follow: after 0.9 s without mouse/stick look, a grounded forward or diagonal run eases the yaw behind the hero (0.9 × speed/run per s). Never while locked on, airborne, strafing square across the view or running at the camera. `ThirdPersonCamera.auto_follow` turns it off.
+- **Animation:**
+  - foot grounding: the run/sprint clips put the toes up to 14 cm below the floor; on the ground the model is lifted so the lower toe never sinks (fast up, slow settle, capped 0.2 m);
+  - the run lean and turn roll now tilt from the feet, not the body's centre (the centre pivot swung the planted feet sideways in turns); flips still turn about the centre;
+  - `player.gd`'s side-view lean (±17-20° about world Z on swings and hits) no longer applies in full 3D, where it tipped the hero sideways or backwards depending on the heading.
+- **Gore** (`Gore`, `scripts/combat/gore.gd` + `scripts/combat/gore/`): presentation only.
+  - `HitFeedback.play` → `Gore.hit`: arterial spurts along the knockback, back-spatter toward the attacker, coarse spatter, heavy drops and mist; more for heavy hits and kills. Hitstop 0.05 / heavy 0.065 / kill 0.085 s.
+  - `Health` → `Gore.on_death` at 0 HP: a fountain burst, mist, gibs (flesh lumps or bone shards, ray-simulated, never physics bodies, cap 28) and a pool decal growing over 1.5 s.
+  - Landed droplets (one MultiMesh, up to 768, world-only rays) leave splats: `Decal`s with runtime-generated splatter textures (albedo, normal, wet low-roughness ORM) on Forward+/Mobile, alpha quads on Compatibility. Cap 120 live splats (oldest fade first, pools last).
+  - Per class: red blood (soldier, hound, knight, Gravewarden, Bishop, hero), brown ichor + bone shards (archer, crawler), violet-black mist (wraith), stone dust (breakables). The hero leaves a drip trail for 1.1 s when hurt.
+  - `reduced_gore`: ash mist and drops only, no splats, pools or gibs.
+- **Tests:** `tests/gore_check.gd` 22/22. Smoke 562/562; soak seed 5 (240 s) 0 anomalies. Dev captures: `tools/dev/shot_play3d.gd` (3D run through the gameplay camera), `tools/dev/shot_moveseq.gd` (frame sequences of run/turn/jump/swing), `tools/dev/shot_gore.gd`.
+- **Not done:** the run is still a chain of open courses along X, not one open world (needs a design decision: e.g. an SM64-style hub with course entrances); mist reads weakly in the 3D run under software rendering; no real-hardware playtest yet.

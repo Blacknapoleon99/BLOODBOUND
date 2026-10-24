@@ -469,6 +469,7 @@ static func _mist_mat() -> StandardMaterial3D:
         m.albedo_texture = BloodTextures.soft_dot()
         m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
         m.billboard_keep_scale = true
+        m.disable_fog = true  # the scene fog would swallow a dark mist entirely
         _mist_material = m
     return _mist_material
 

@@ -10,6 +10,7 @@ const CAPACITY: int = 768
 const GRAVITY: float = 21.0
 const DRAG: float = 0.7
 const WORLD_MASK: int = 1
+const DROP_SHADE: float = 0.55
 
 var _pos: PackedVector3Array = PackedVector3Array()
 var _vel: PackedVector3Array = PackedVector3Array()
@@ -77,7 +78,9 @@ func add(at: Vector3, velocity: Vector3, radius: float, color: Color, life: floa
     _pos[i] = at
     _vel[i] = velocity
     _radius[i] = radius
-    _color[i] = color
+    # Airborne drops are lit like glossy beads (and often right by the hero's lights), so they
+    # are drawn darker than the splat they leave, which keeps the full tint.
+    _color[i] = Color(color.r * DROP_SHADE, color.g * DROP_SHADE, color.b * DROP_SHADE, color.a)
     _life[i] = life
     _delay[i] = delay
     _splat[i] = splat_size
@@ -111,13 +114,17 @@ func _physics_process(delta: float) -> void:
             if not hit.is_empty() and not _is_character(hit.get(&"collider")):
                 landed = true
                 if _splat[i] > 0.0:
-                    Gore.splat(self, hit[&"position"], hit[&"normal"], _splat[i], _color[i], v)
+                    Gore.splat(self, hit[&"position"], hit[&"normal"], _splat[i], _undarken(_color[i]), v)
         _pos[i] = to
         _life[i] -= delta
         if landed or _life[i] <= 0.0:
             _remove(i)
         i -= 1
     _write_instances()
+
+
+func _undarken(c: Color) -> Color:
+    return Color(c.r / DROP_SHADE, c.g / DROP_SHADE, c.b / DROP_SHADE, c.a)
 
 
 func _is_character(collider: Variant) -> bool:
