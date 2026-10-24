@@ -64,5 +64,5 @@ func _course() -> void:
     hint("GROUND POUND\njump, then Ctrl: smash the cracked floor", 2.0, 5.0, 0.0)
     var base: int = plat(9.5, 9.5, 6.0, 5.0, 0.0, "Shaft floor")
     var top: int = kick_shaft(9.5, 9.5, base, 6.0, false, "Kick shaft")
-    shard(9.5, 13.5, platforms[top].position.y, 5)
+    shard(9.5, 13.5, local_top(top), 5)
     hint("WALL KICK\njump into a wall, Space as you touch it", 9.5, 6.0, 0.0)

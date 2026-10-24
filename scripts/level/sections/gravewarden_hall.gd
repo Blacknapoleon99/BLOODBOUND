@@ -71,9 +71,9 @@ func warden() -> Gravewarden:
 func _on_cleared(_a: Ambush) -> void:
     if reliquary != null:
         return
-    var at: Vector3 = Vector3(gx(34.0), 0.0, 0.0)
+    var at: Vector3 = Vector3(gx(34.0), gy(0.0), gz(0.0))
     if hall.ring and hall.three_d:  # 3D: on the warden's floor, toward the exit
-        at = Vector3(hall.ring_center.x + 4.0, 0.0, hall.ring_center.y)
+        at = Vector3(hall.ring_center.x + 4.0, gy(0.0), hall.ring_center.y)
     reliquary = LootChest.create(at)
     reliquary.kind = &"relics"
     add_child(reliquary)

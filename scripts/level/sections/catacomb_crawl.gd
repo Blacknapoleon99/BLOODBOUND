@@ -62,4 +62,4 @@ func _course() -> void:
     cellar(37.0, 15.0, 0.0, &"shards", 25)
     var base: int = plat(16.0, -9.0, 6.0, 6.0, 0.0, "Shaft floor")
     var perch: int = kick_shaft(18.0, -9.0, base, 6.0, true, "Kick shaft")
-    shard(22.0, -9.0, platforms[perch].position.y, 5)
+    shard(22.0, -9.0, local_top(perch), 5)

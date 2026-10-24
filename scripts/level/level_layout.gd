@@ -6,6 +6,10 @@ extends RefCounted
 ## Seeded by the run seed, so a seed always rebuilds the same map. Inside each act the rooms run
 ## easiest → hardest, with one random neighbour swap so the order still varies.
 ## `LevelLayout.classic = true` (scripted tests) inserts no rooms: the original short layout.
+##
+## The 3D run is an open world instead (DEC-063, `OpenWorld`): every room of both acts, the elite
+## and the merchant at once (`world_rooms`), laid out round the opening hub by the run seed.
+## `plan` still deals the side view's (and co-op's) chain.
 
 static var classic: bool = false
 
@@ -40,6 +44,19 @@ static func plan(run_seed: int) -> Array[Script]:
     order.append_array(_pick(rng, ACT2))
     order.append(MERCHANT)
     return order
+
+
+## Every 3D room for the open world, in a fixed order (OpenWorld shuffles their places by seed):
+## Act I, Act II, the elite, the merchant. Empty in classic mode.
+static func world_rooms() -> Array[Script]:
+    var rooms: Array[Script] = []
+    if classic:
+        return rooms
+    rooms.append_array(ACT1)
+    rooms.append_array(ACT2)
+    rooms.append(ELITE)
+    rooms.append(MERCHANT)
+    return rooms
 
 
 static func _pick(rng: RandomNumberGenerator, pool: Array[Script]) -> Array[Script]:

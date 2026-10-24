@@ -251,7 +251,10 @@ func _process(delta: float) -> void:
         var best_d: float = INF
         for node: Node in get_tree().get_nodes_in_group(&"backdrop_room"):
             var room: Backdrop3D = node as Backdrop3D
-            var d: float = absf(room.center().x - cam.global_position.x)
+            # Planar (DEC-063: rooms spread in X and Z); inside several (a room inside the whole
+            # world's backdrop), the smallest wins.
+            var area: float = (room.bounds_x.y - room.bounds_x.x) * (room.bounds_z.y - room.bounds_z.x)
+            var d: float = room.distance_to(cam.global_position) + area * 1e-6
             if d < best_d:
                 best_d = d
                 best = room

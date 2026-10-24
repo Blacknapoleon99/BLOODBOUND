@@ -15,10 +15,19 @@ extends Node3D
 ## Theme follows the room's act (`BackdropKit.theme`), and the room id seeds the layout, so a
 ## room always looks the same. Every mesh is merged per object (one draw call each), casts no
 ## shadow, and the whole room's decor is hidden when the camera is far from it.
+##
+## The open world (DEC-063): a room inside the world gets a NEAR-ONLY backdrop (pillars and
+## masonry deep in the abyss between the islands; gibbets and ruin walls only where they stay
+## clear of every `keep_out` box, i.e. every other room and bridge), and the whole world gets one
+## full backdrop round its bounds (the mid band beyond its edges). The level hides room decor
+## with its room (`managed`).
 
-## The camera must be within this many metres (along X) of the room's centre for its decor to
-## show; the horizon covers everything further away.
+## The camera must be within this many metres (planar distance to the course's bounds) for its
+## decor to show; the horizon covers everything further away.
 const SHOW_RANGE: float = 300.0
+## Boxes (world) no gibbet or ruin wall may enter: set by OpenWorld before it attaches the
+## rooms' backdrops, cleared after. Empty = no constraint (the old chain).
+static var keep_out: Array[AABB] = []
 const NEAR_GAP: float = 10.0
 const MID_MIN: float = 60.0
 
@@ -34,11 +43,15 @@ var _flock: MultiMeshInstance3D
 var _flock_center: Vector3 = Vector3.ZERO
 var _flock_radius: float = 20.0
 var _time: float = 0.0
+## Only the near band (no islands, feature or flock): a room inside the open world.
+var near_only: bool = false
+## The level shows/hides this decor itself (with its room), so `_process` leaves `visible` be.
+var managed: bool = false
 
 
 ## Spawns the backdrop for a built open course (one line from LevelSection.build). Also
 ## makes sure the scene has a horizon.
-static func attach(section: LevelSection) -> Backdrop3D:
+static func attach(section: LevelSection, only_near: bool = false) -> Backdrop3D:
     var zmin: float = -Lane.half()
     var zmax: float = Lane.half()
     var ytop: float = 0.0
@@ -46,15 +59,21 @@ static func attach(section: LevelSection) -> Backdrop3D:
         zmin = minf(zmin, section.platform_z[i].x)
         zmax = maxf(zmax, section.platform_z[i].y)
         ytop = maxf(ytop, section.platforms[i].position.y)
-    var b: Backdrop3D = spawn(section, Vector2(section.origin_x, section.origin_x + section.width), Vector2(zmin, zmax), ytop, section.act, hash(String(section.id)), section.get_parent() if section.get_parent() != null else section)
+    var zmin_w: float = section.gz(-Lane.half())
+    var zmax_w: float = section.gz(Lane.half())
+    zmin = minf(zmin, zmin_w)
+    zmax = maxf(zmax, zmax_w)
+    ytop = maxf(ytop, section.origin_y)
+    var b: Backdrop3D = spawn(section, Vector2(section.origin_x, section.origin_x + section.width), Vector2(zmin, zmax), ytop, section.act, hash(String(section.id)), section.get_parent() if section.get_parent() != null else section, only_near)
     return b
 
 
 ## Spawns a backdrop around any play area (world bounds) under `parent`.
 ## `horizon_parent` receives the scene's single `BackdropHorizon` if it has none yet.
-static func spawn(parent: Node, x_range: Vector2, z_range: Vector2, highest: float, act_value: int, seed_in: int, horizon_parent: Node) -> Backdrop3D:
+static func spawn(parent: Node, x_range: Vector2, z_range: Vector2, highest: float, act_value: int, seed_in: int, horizon_parent: Node, only_near: bool = false) -> Backdrop3D:
     var b: Backdrop3D = Backdrop3D.new()
     b.name = "Backdrop"
+    b.near_only = only_near
     b.act = act_value
     b.seed_value = seed_in
     b.bounds_x = x_range
@@ -83,9 +102,27 @@ func _build() -> void:
     rng.seed = seed_value
     _build_near(rng)
     _build_gibbets(rng)
+    if near_only:
+        return
     _build_islands(rng)
     _build_feature(rng)
     _build_flock(rng)
+
+
+## True if a box of half extents `half` at `at` stays out of every `keep_out` box.
+static func _clear_of_keep_out(at: Vector3, half: Vector3) -> bool:
+    var box: AABB = AABB(at - half, half * 2.0)
+    for k: AABB in keep_out:
+        if k.intersects(box):
+            return false
+    return true
+
+
+## Planar distance from `p` to the course's bounds (0 inside).
+func distance_to(p: Vector3) -> float:
+    var dx: float = maxf(0.0, maxf(bounds_x.x - p.x, p.x - bounds_x.y))
+    var dz: float = maxf(0.0, maxf(bounds_z.x - p.z, p.z - bounds_z.y))
+    return Vector2(dx, dz).length()
 
 
 # --- NEAR band ---------------------------------------------------------------------------
@@ -107,7 +144,10 @@ func _build_near(rng: RandomNumberGenerator) -> void:
         # One tall ruin per side well back from the edge: a broken wall with a lit lancet.
         var rx: float = lerpf(bounds_x.x, bounds_x.y, rng.randf_range(0.2, 0.8))
         var rz: float = edge + side * rng.randf_range(22.0, 34.0)
-        _ruin_wall(m, Vector3(rx, -30.0, rz), rng.randf_range(32.0, 46.0), side, rng)
+        var rh: float = rng.randf_range(32.0, 46.0)
+        # Up to ~16 m above the abyss: only where no other room or bridge stands (DEC-063).
+        if _clear_of_keep_out(Vector3(rx, -30.0 + rh * 0.5 + 3.0, rz), Vector3(10.0, rh * 0.5 + 4.0, 4.0)):
+            _ruin_wall(m, Vector3(rx, -30.0, rz), rh, side, rng)
     add_child(BackdropKit.instance(m, act, false, "Near ruins"))
 
 
@@ -161,6 +201,8 @@ func _build_gibbets(rng: RandomNumberGenerator) -> void:
         var edge: float = (bounds_z.y if side > 0.0 else bounds_z.x) + side * rng.randf_range(12.0, 18.0)
         var pivot_pos: Vector3 = Vector3(lerpf(bounds_x.x, bounds_x.y, (i + 0.5) / count + rng.randf_range(-0.15, 0.15)), top_y + 40.0, edge)
         var length: float = pivot_pos.y - rng.randf_range(-4.0, 2.0)
+        if not _clear_of_keep_out(Vector3(pivot_pos.x, pivot_pos.y - length * 0.5, pivot_pos.z), Vector3(3.5, length * 0.5 + 3.0, 3.5)):
+            continue  # the chain would hang through another room or a bridge (DEC-063)
         var m: BackdropKit.Merge = BackdropKit.Merge.new()
         BackdropKit.chain(m, Vector3.ZERO, length, 0.55)
         BackdropKit.cage(m, Vector3.DOWN * length, 2.6, rng)
@@ -281,8 +323,8 @@ func _build_flock(rng: RandomNumberGenerator) -> void:
 
 func _process(delta: float) -> void:
     var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
-    if cam != null:
-        var near: bool = absf(cam.global_position.x - center().x) < SHOW_RANGE
+    if cam != null and not managed:
+        var near: bool = distance_to(cam.global_position) < SHOW_RANGE
         if visible != near:
             visible = near
     if not visible:

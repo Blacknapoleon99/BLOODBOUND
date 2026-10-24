@@ -95,8 +95,7 @@ func _physics_process(_delta: float) -> void:
     match state:
         State.ARMED:
             for player: Node3D in Players.standing():
-                if enabled and bool(player.get("in_3d_mode")) == three_d and player.global_position.x > trigger_x \
-                        and player.global_position.x < right_x and absf(player.global_position.y - global_position.y) < 4.0:
+                if enabled and bool(player.get("in_3d_mode")) == three_d and _triggered_by(player.global_position):
                     _start()
                     break
         State.ACTIVE:
@@ -106,6 +105,17 @@ func _physics_process(_delta: float) -> void:
                 state = State.CLEARED
                 _set_walls(false)
                 cleared.emit(self)
+
+
+## Side view: past `trigger_x` and short of `right_x`. A 3D arena ring (DEC-063): inside the ring
+## itself, so a room beside it in the open world (same X band, other Z) never springs it.
+## Either way within 4 m of the fight's floor height.
+func _triggered_by(p: Vector3) -> bool:
+    if absf(p.y - global_position.y) >= 4.0:
+        return false
+    if ring and three_d:
+        return inside_ring(p)
+    return p.x > trigger_x and p.x < right_x
 
 
 func _start() -> void:

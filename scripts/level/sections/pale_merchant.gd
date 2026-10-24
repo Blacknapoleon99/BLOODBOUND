@@ -31,7 +31,7 @@ func _course() -> void:
     pads(8.0, 8.0)
     route(&"chapel")
     plat(15.0, 0.0, 10.0, 12.0, 0.0, "Chapel floor", 1.5)
-    stall = MerchantStall.create(Vector3(gx(14.0), 0.0, -2.5))
+    stall = MerchantStall.create(Vector3(gx(14.0), gy(0.0), gz(-2.5)))
     add_child(stall)
     altar(16.0, 0.0, 3.5)
     route(&"garden")

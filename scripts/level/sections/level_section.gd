@@ -19,12 +19,21 @@ extends Node3D
 ## the exit pad (ground, high, climb...), optional side areas, secrets and loose Bone Shards.
 ## The course helpers (`pads`, `plat`, `pillar`, `wall3`, `climb`, `kick_shaft`, `lift`, `orbit`,
 ## `crumble`, `cellar`, `shard`, `spike_bed`, `blade`, `foe`, `arena`, `lever`, `hint`) take
-## local x and world z (the section sits at z = 0). Every platform carries a route tag
-## (`route()`), and the validator proves: the exit is reachable with BASIC jumps alone; each
-## declared route reaches it on its own (advanced moves allowed: climbing, wall kicks, triple
-## and long jumps); the common pads alone never do (no single corridor); every reward can be
-## reached. Rooms keep joining along X: the entry pad spans local x 0..10 and the exit pad the
-## last 8 m, both 8 m deep round z = 0 with their tops at y = 0.
+## LOCAL coordinates (x from the room's left edge, z from its centre line, heights from its pads).
+## Every platform carries a route tag (`route()`), and the validator proves: the exit is
+## reachable with BASIC jumps alone; each declared route reaches it on its own (advanced moves
+## allowed: climbing, wall kicks, triple and long jumps); the common pads alone never do (no
+## single corridor); every reward can be reached. The entry pad spans local x 0..10 and the exit
+## pad the last 8 m, both 8 m deep round local z = 0 with their tops at local y = 0.
+##
+## Placement (DEC-063, the open world): a room sits at `origin_x`, `origin_y`, `origin_z`
+## (`build(x, y, z)`); `gx`/`gy`/`gz` turn local coordinates into world ones, and every helper
+## does so before it places a node, so the section node itself stays at the world origin and
+## every child lives in world coordinates. The recorded walkable data keeps the long-standing
+## convention: `platforms` x is LOCAL (Rect2.position.x from the room's left edge) while its
+## top (Rect2.position.y) and `platform_z` are WORLD values. In the side view and the old chain
+## origin_y = origin_z = 0, so nothing changes there. `open_world` rooms (the 3D run's world)
+## have no exit arch (their pads are just more platforms) and get their backdrop from OpenWorld.
 
 var id: StringName = &"section"
 var title: String = "Section"
@@ -32,9 +41,19 @@ var act: int = 1
 var difficulty: int = 1
 var width: float = 40.0
 var origin_x: float = 0.0
+## World height of the room's pads (local y = 0) and world z of its centre line (DEC-063).
+var origin_y: float = 0.0
+var origin_z: float = 0.0
+## Part of the 3D run's open world (DEC-063): no exit arch; OpenWorld attaches the backdrop.
+var open_world: bool = false
+## The room's Backdrop3D (full 3D), so the level can hide it with the room.
+var backdrop: Backdrop3D
 var platforms: Array[Rect2] = []
 ## Depth of each platform (x = z from, y = z to), parallel to `platforms`.
 var platform_z: Array[Vector2] = []
+## False for platforms that move, crumble or break (lifts, orbits, slabs, cracked floors), so the
+## open world never lands a bridge on one (DEC-063). Parallel to `platforms`.
+var platform_static: Array[bool] = []
 ## Pairs of platform indices joined by a moving platform (ride from one end to the other).
 var links: Array[Vector2i] = []
 var checkpoint: Checkpoint
@@ -70,17 +89,21 @@ var dress_blocks: Array[Dictionary] = []
 var kit: GothicKit.Batch
 
 
-## Builds the room with its left edge at `at_x` (world). Call after adding it to the level.
-func build(at_x: float) -> void:
+## Builds the room with its left edge at `at_x` (world), its pads at height `at_y` and its centre
+## line at depth `at_z` (DEC-063). Call after adding it to the level.
+func build(at_x: float, at_y: float = 0.0, at_z: float = 0.0) -> void:
     origin_x = at_x
+    origin_y = at_y
+    origin_z = at_z
     name = "Section: " + title
     if Lane.full_3d:
         _course()
         _finish_course()
-        Backdrop3D.attach(self)  # background world around the course (DEC-055)
+        if not open_world:
+            backdrop = Backdrop3D.attach(self)  # background world around the course (DEC-055)
     else:
         _design()
-    checkpoint = Checkpoint.create(Vector3(gx(2.4), 1.2, 0.0), Vector3(2.0, 3.0, Lane.depth(3.0)))
+    checkpoint = Checkpoint.create(Vector3(gx(2.4), gy(0.0) + 1.2, gz(0.0)), Vector3(2.0, 3.0, Lane.depth(3.0)))
     checkpoint.name = "Checkpoint: " + title
     add_child(checkpoint)
     if not Lane.full_3d:
@@ -102,6 +125,27 @@ func _course() -> void:
 
 func gx(local_x: float) -> float:
     return origin_x + local_x
+
+
+## World height of a local height (the pads are at local 0).
+func gy(local_y: float) -> float:
+    return origin_y + local_y
+
+
+## World depth of a local z (the room's centre line is local 0).
+func gz(local_z: float) -> float:
+    return origin_z + local_z
+
+
+## The local top (height above the pads) of platform `i` (its recorded top is a world height).
+func local_top(i: int) -> float:
+    return platforms[i].position.y - origin_y
+
+
+## Planar extent in WORLD x/z of everything walkable (Rect2(x0, z0, w, d)).
+func world_rect() -> Rect2:
+    var fp: Rect2 = footprint()
+    return Rect2(fp.position.x + origin_x, fp.position.y, fp.size.x, fp.size.y)
 
 
 # --- Geometry helpers ---------------------------------------------------------------
@@ -126,21 +170,25 @@ func ledge(x0: float, x1: float, top: float, label: String = "Ledge") -> void:
     _platform(Rect2(x0, top, x1 - x0, 0.0), Vector2(z - LEDGE_DEPTH_3D * 0.5, z + LEDGE_DEPTH_3D * 0.5))
 
 
-## Records a walkable surface (depth defaults to the whole hall). Returns its index.
-func _platform(rect: Rect2, z_range: Vector2 = Vector2.INF) -> int:
-    platforms.append(rect)
-    platform_z.append(Vector2(-Lane.half(), Lane.half()) if z_range == Vector2.INF else z_range)
+## Records a walkable surface given in LOCAL coordinates (x, top and z range; depth defaults to
+## the whole hall) and stores its top and depth as world values. Returns its index.
+func _platform(rect: Rect2, z_range: Vector2 = Vector2.INF, is_static: bool = true) -> int:
+    platforms.append(Rect2(rect.position.x, gy(rect.position.y), rect.size.x, rect.size.y))
+    var zr: Vector2 = Vector2(-Lane.half(), Lane.half()) if z_range == Vector2.INF else z_range
+    platform_z.append(Vector2(gz(zr.x), gz(zr.y)))
     platform_route.append(_route)
+    platform_static.append(is_static)
     return platforms.size() - 1
 
 
-## Depth range of the walkable surface under local `x` at height `top` (the whole hall if none).
+## World depth range of the walkable surface under local `x` at LOCAL height `top` (the whole
+## hall if none).
 func z_range_at(x: float, top: float) -> Vector2:
     for i in platforms.size():
         var r: Rect2 = platforms[i]
-        if absf(r.position.y - top) < 0.05 and x >= r.position.x and x <= r.end.x:
+        if absf(r.position.y - gy(top)) < 0.05 and x >= r.position.x and x <= r.end.x:
             return platform_z[i]
-    return Vector2(-Lane.half(), Lane.half())
+    return Vector2(gz(-Lane.half()), gz(Lane.half()))
 
 
 ## Solid, non-walkable scenery that blocks movement (ceilings, pillars).
@@ -149,22 +197,22 @@ func block(x0: float, x1: float, y0: float, y1: float, label: String = "Wall") -
 
 
 func slab(center_x: float, top: float = 0.0, slab_width: float = 2.5) -> CollapsingSlab:
-    var s: CollapsingSlab = CollapsingSlab.create("Collapsing slab", Vector3(gx(center_x), top - 0.5, 0.0), Vector3(slab_width, 1.0, Lane.depth()))
+    var s: CollapsingSlab = CollapsingSlab.create("Collapsing slab", Vector3(gx(center_x), gy(top) - 0.5, gz(0.0)), Vector3(slab_width, 1.0, Lane.depth()))
     s.collapse_delay = 0.55
     add_child(s)
     slabs.append(s)
-    _platform(Rect2(center_x - slab_width * 0.5, top, slab_width, 0.0))
+    _platform(Rect2(center_x - slab_width * 0.5, top, slab_width, 0.0), Vector2.INF, false)
     return s
 
 
 ## A platform shuttling between local x `a` and `b` (centres) at top height `top`.
 func mover(a: float, b: float, top: float = 0.0, platform_width: float = 3.0, travel: float = 2.2) -> MovingPlatform:
-    var p: MovingPlatform = MovingPlatform.create("Moving platform", Vector3(gx(a), top - 0.3, 0.0), Vector3(gx(b), top - 0.3, 0.0), Vector3(platform_width, 0.6, Lane.depth()))
+    var p: MovingPlatform = MovingPlatform.create("Moving platform", Vector3(gx(a), gy(top) - 0.3, gz(0.0)), Vector3(gx(b), gy(top) - 0.3, gz(0.0)), Vector3(platform_width, 0.6, Lane.depth()))
     p.travel_time = travel
     p.pause_time = 0.6
     add_child(p)
-    _platform(Rect2(a - platform_width * 0.5, top, platform_width, 0.0))
-    _platform(Rect2(b - platform_width * 0.5, top, platform_width, 0.0))
+    _platform(Rect2(a - platform_width * 0.5, top, platform_width, 0.0), Vector2.INF, false)
+    _platform(Rect2(b - platform_width * 0.5, top, platform_width, 0.0), Vector2.INF, false)
     links.append(Vector2i(platforms.size() - 2, platforms.size() - 1))
     return p
 
@@ -173,16 +221,16 @@ func spikes(center_x: float, strip_width: float = 2.0, offset: float = 0.0, top:
     var trap: SpikeTrap
     if Lane.full_3d:
         var zr: Vector2 = z_range_at(center_x, top)  # on a ledge: as deep as the ledge
-        trap = SpikeTrap.create("Spike trap", gx(center_x), top, strip_width, offset, (zr.x + zr.y) * 0.5, zr.y - zr.x - 0.4)
+        trap = SpikeTrap.create("Spike trap", gx(center_x), gy(top), strip_width, offset, (zr.x + zr.y) * 0.5, zr.y - zr.x - 0.4)
     else:
-        trap = SpikeTrap.create("Spike trap", gx(center_x), top, strip_width, offset)
+        trap = SpikeTrap.create("Spike trap", gx(center_x), gy(top), strip_width, offset)
     add_child(trap)
     traps.append(trap)
     return trap
 
 
 func pendulum(x: float, floor_top: float = 0.0, offset: float = 0.0) -> PendulumBlade:
-    var blade_node: PendulumBlade = PendulumBlade.create("Pendulum blade", Vector3(gx(x), floor_top + 5.9, 0.0), 5.0, offset)
+    var blade_node: PendulumBlade = PendulumBlade.create("Pendulum blade", Vector3(gx(x), gy(floor_top) + 5.9, gz(0.0)), 5.0, offset)
     add_child(blade_node)
     traps.append(blade_node)
     return blade_node
@@ -190,8 +238,8 @@ func pendulum(x: float, floor_top: float = 0.0, offset: float = 0.0) -> Pendulum
 
 ## A roaming enemy that stays dead once killed. `lo`/`hi` bound its movement (local x).
 func enemy(type: StringName, x: float, lo: float, hi: float, floor_top: float = 0.0) -> Node3D:
-    var zr: Vector2 = z_range_at(x, floor_top) if Lane.full_3d else Vector2.ZERO
-    var e: Node3D = EnemyFactory.spawn(type, self, gx(x), gx(lo), gx(hi), floor_top + 1.0, (zr.x + zr.y) * 0.5)
+    var zr: Vector2 = z_range_at(x, floor_top) if Lane.full_3d else Vector2(gz(0.0), gz(0.0))
+    var e: Node3D = EnemyFactory.spawn(type, self, gx(x), gx(lo), gx(hi), gy(floor_top) + 1.0, (zr.x + zr.y) * 0.5)
     enemies.append(e)
     return e
 
@@ -205,7 +253,9 @@ func ambush(label: String, trigger: float, left: float, right: float, spawns: Ar
         copy["x"] = gx(float(spawn["x"]))
         world_spawns.append(copy)
     var a: Ambush = Ambush.create(label, gx(trigger), gx(left), gx(right), world_spawns)
-    a.position.y = floor_top
+    if a.ring:
+        a.set_ring(Vector2(a.ring_center.x, gz(0.0)), a.ring_radius)
+    a.position.y = gy(floor_top)
     add_child(a)
     ambushes.append(a)
     return a
@@ -215,14 +265,14 @@ func ambush(label: String, trigger: float, left: float, right: float, spawns: Ar
 ## span out of your ground() calls) over a niche 1.5 m down holding a reliquary of `kind`
 ## (&"shards", &"card", &"relics"). Break it, drop in, claim it, hop back out (1.5 m).
 func secret_cellar(hole_x: float, kind: StringName, shards: int = 25) -> LootChest:
-    var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(hole_x + 1.0), -0.5, 0.0), Vector3(2.0, 1.0, Lane.depth()))
+    var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(hole_x + 1.0), gy(-0.5), gz(0.0)), Vector3(2.0, 1.0, Lane.depth()))
     add_child(crack)
     secrets.append(crack)
-    _platform(Rect2(hole_x, 0.0, 2.0, 0.0))
+    _platform(Rect2(hole_x, 0.0, 2.0, 0.0), Vector2.INF, false)
     ground(hole_x, hole_x + 2.0, -1.5, -3.0, "Secret niche")
     block(hole_x - 1.0, hole_x, -3.0, -1.0, "Niche wall")  # sealed sides: no slipping under the floor
     block(hole_x + 2.0, hole_x + 3.0, -3.0, -1.0, "Niche wall")
-    var chest: LootChest = LootChest.create(Vector3(gx(hole_x + 1.0), -1.5, -1.0))
+    var chest: LootChest = LootChest.create(Vector3(gx(hole_x + 1.0), gy(-1.5), gz(-1.0)))
     chest.kind = kind
     chest.shards = shards
     add_child(chest)
@@ -233,21 +283,21 @@ func secret_cellar(hole_x: float, kind: StringName, shards: int = 25) -> LootChe
 ## A lever at local `lever_x` (standing height `lever_top`) that, once pulled, makes a bone
 ## bridge solid over local [x0, x1] at height `top`.
 func shortcut(lever_x: float, lever_top: float, x0: float, x1: float, top: float = 0.0) -> LeverShortcut:
-    var zr: Vector2 = z_range_at(lever_x, lever_top) if Lane.full_3d else Vector2.ZERO
-    var s: LeverShortcut = LeverShortcut.create(Vector3(gx(lever_x), lever_top, (zr.x + zr.y) * 0.5), gx(x0), gx(x1), top)
+    var zr: Vector2 = z_range_at(lever_x, lever_top) if Lane.full_3d else Vector2(gz(0.0), gz(0.0))
+    var s: LeverShortcut = LeverShortcut.create(Vector3(gx(lever_x), gy(lever_top), (zr.x + zr.y) * 0.5), gx(x0), gx(x1), gy(top), gz(0.0))
     add_child(s)
     shortcuts.append(s)
     return s
 
 
 func altar(x: float, floor_top: float = 0.0, z: float = 0.0) -> BloodAltar:
-    var a: BloodAltar = BloodAltar.create("Blood Altar", Vector3(gx(x), floor_top, z))
+    var a: BloodAltar = BloodAltar.create("Blood Altar", Vector3(gx(x), gy(floor_top), gz(z)))
     add_child(a)
     altars.append(a)
     return a
 
 
-# --- Open 3D course kit (DEC-052; local x, world z) ---------------------------------------
+# --- Open 3D course kit (DEC-052; local x, z and heights, see gx/gy/gz) --------------------
 
 const PAD_DEPTH: float = 8.0  # entry/exit pads: 8 m deep round z = 0
 
@@ -267,7 +317,8 @@ func pads(entry_len: float = 10.0, exit_len: float = 8.0) -> void:
     _route = &""
     plat(entry_len * 0.5, 0.0, entry_len, PAD_DEPTH, 0.0, "Entry pad", 1.5)
     plat(width - exit_len * 0.5, 0.0, exit_len, PAD_DEPTH, 0.0, "Exit pad", 1.5)
-    _exit_arch()
+    if not open_world:  # in the open world the pads are just more platforms (DEC-063)
+        _exit_arch()
     _route = keep
 
 
@@ -292,14 +343,15 @@ func wall3(cx: float, cz: float, w: float, d: float, y0: float, y1: float, label
 ## A climbable block (bone handholds) from `bottom` to `top`; its top is walkable. Climbing it
 ## is an ADVANCED link from any platform at its foot (within 2.5 m, at a height it spans).
 func climb(cx: float, cz: float, w: float, d: float, bottom: float, top: float, label: String = "Climb wall") -> int:
-    var wall: ClimbWall = ClimbWall.create(label, Vector3(gx(cx), (bottom + top) * 0.5, cz), Vector3(w, top - bottom, d), _palette.lightened(0.08), false)
+    var wall: ClimbWall = ClimbWall.create(label, Vector3(gx(cx), gy((bottom + top) * 0.5), gz(cz)), Vector3(w, top - bottom, d), _palette.lightened(0.08), false)
     add_child(wall)
     _kit().add_box(wall.position, Vector3(w, top - bottom, d), &"climb", label)  # drawn with the room (DEC-056)
     _kit().add_handholds(wall.position, Vector3(w, top - bottom, d))
     climb_walls.append(wall)
     dress_blocks.append({"pos": wall.position, "size": Vector3(w, top - bottom, d), "kind": &"climb", "walkable": false})
     var index: int = _platform(Rect2(cx - w * 0.5, top, w, 0.0), Vector2(cz - d * 0.5, cz + d * 0.5))
-    _climbs.append({"x0": cx - w * 0.5, "x1": cx + w * 0.5, "z0": cz - d * 0.5, "z1": cz + d * 0.5, "bottom": bottom, "top": top, "index": index})
+    # Recorded like the platforms: local x, world depth and heights.
+    _climbs.append({"x0": cx - w * 0.5, "x1": cx + w * 0.5, "z0": gz(cz - d * 0.5), "z1": gz(cz + d * 0.5), "bottom": gy(bottom), "top": gy(top), "index": index})
     return index
 
 
@@ -308,7 +360,7 @@ func climb(cx: float, cz: float, w: float, d: float, bottom: float, top: float, 
 ## opens along X) and the landing sits 4 m on in +X; otherwise they run along Z and the landing
 ## sits 4 m on in +Z. Kicking up is an ADVANCED link from `base` to the landing (its index).
 func kick_shaft(cx: float, cz: float, base: int, height: float, along_x: bool = true, label: String = "Kick shaft") -> int:
-    var floor_top: float = platforms[base].position.y
+    var floor_top: float = local_top(base)
     var keep: StringName = _route
     for side: float in [-1.0, 1.0]:
         if along_x:
@@ -327,14 +379,14 @@ func kick_shaft(cx: float, cz: float, base: int, height: float, along_x: bool = 
 
 ## A platform shuttling between local points `a` and `b` (x, top, z): across a gap, up a shaft.
 func lift(a: Vector3, b: Vector3, w: float = 3.0, d: float = 3.0, travel: float = 2.6) -> MovingPlatform:
-    var p: MovingPlatform = MovingPlatform.create("Moving platform", Vector3(gx(a.x), a.y - 0.3, a.z), Vector3(gx(b.x), b.y - 0.3, b.z), Vector3(w, 0.6, d))
+    var p: MovingPlatform = MovingPlatform.create("Moving platform", Vector3(gx(a.x), gy(a.y) - 0.3, gz(a.z)), Vector3(gx(b.x), gy(b.y) - 0.3, gz(b.z)), Vector3(w, 0.6, d))
     p.travel_time = travel
     p.pause_time = 0.8
     add_child(p)
     for end: Vector3 in [a, b]:  # rubble must not hang into a lift's path
-        dress_blocks.append({"pos": Vector3(gx(end.x), end.y - 0.3, end.z), "size": Vector3(w, 0.6, d), "kind": &"iron", "walkable": false})
-    var i: int = _platform(Rect2(a.x - w * 0.5, a.y, w, 0.0), Vector2(a.z - d * 0.5, a.z + d * 0.5))
-    var j: int = _platform(Rect2(b.x - w * 0.5, b.y, w, 0.0), Vector2(b.z - d * 0.5, b.z + d * 0.5))
+        dress_blocks.append({"pos": Vector3(gx(end.x), gy(end.y) - 0.3, gz(end.z)), "size": Vector3(w, 0.6, d), "kind": &"iron", "walkable": false})
+    var i: int = _platform(Rect2(a.x - w * 0.5, a.y, w, 0.0), Vector2(a.z - d * 0.5, a.z + d * 0.5), false)
+    var j: int = _platform(Rect2(b.x - w * 0.5, b.y, w, 0.0), Vector2(b.z - d * 0.5, b.z + d * 0.5), false)
     links.append(Vector2i(i, j))
     return p
 
@@ -342,15 +394,15 @@ func lift(a: Vector3, b: Vector3, w: float = 3.0, d: float = 3.0, travel: float 
 ## A platform circling (local cx, cz) at height `top`. Riding it reaches every point of its
 ## orbit (8 samples are recorded and linked in a ring).
 func orbit(cx: float, cz: float, top: float, radius: float, period: float = 9.0, angle0: float = 0.0, size: float = 3.0) -> OrbitingPlatform:
-    var p: OrbitingPlatform = OrbitingPlatform.create("Orbiting platform", Vector3(gx(cx), top - 0.3, cz), radius, period, angle0, Vector3(size, 0.6, size))
+    var p: OrbitingPlatform = OrbitingPlatform.create("Orbiting platform", Vector3(gx(cx), gy(top) - 0.3, gz(cz)), radius, period, angle0, Vector3(size, 0.6, size))
     add_child(p)
-    dress_blocks.append({"pos": Vector3(gx(cx), top - 0.3, cz), "size": Vector3(radius * 2.0 + size, 0.6, radius * 2.0 + size), "kind": &"iron", "walkable": false})
+    dress_blocks.append({"pos": Vector3(gx(cx), gy(top) - 0.3, gz(cz)), "size": Vector3(radius * 2.0 + size, 0.6, radius * 2.0 + size), "kind": &"iron", "walkable": false})
     var first: int = platforms.size()
     for k in 8:
         var a: float = TAU * k / 8.0
         var px: float = cx + cos(a) * radius
         var pz: float = cz + sin(a) * radius
-        _platform(Rect2(px - size * 0.5, top, size, 0.0), Vector2(pz - size * 0.5, pz + size * 0.5))
+        _platform(Rect2(px - size * 0.5, top, size, 0.0), Vector2(pz - size * 0.5, pz + size * 0.5), false)
     for k in 8:
         links.append(Vector2i(first + k, first + (k + 1) % 8))
     return p
@@ -358,11 +410,11 @@ func orbit(cx: float, cz: float, top: float, radius: float, period: float = 9.0,
 
 ## A crumbling slab at (local x, z): stand still and it drops (restored on respawn).
 func crumble(cx: float, cz: float, top: float, w: float = 2.6, d: float = 2.6) -> CollapsingSlab:
-    var s: CollapsingSlab = CollapsingSlab.create("Collapsing slab", Vector3(gx(cx), top - 0.5, cz), Vector3(w, 1.0, d))
+    var s: CollapsingSlab = CollapsingSlab.create("Collapsing slab", Vector3(gx(cx), gy(top) - 0.5, gz(cz)), Vector3(w, 1.0, d))
     s.collapse_delay = 0.55
     add_child(s)
     slabs.append(s)
-    _platform(Rect2(cx - w * 0.5, top, w, 0.0), Vector2(cz - d * 0.5, cz + d * 0.5))
+    _platform(Rect2(cx - w * 0.5, top, w, 0.0), Vector2(cz - d * 0.5, cz + d * 0.5), false)
     return s
 
 
@@ -375,12 +427,12 @@ func cellar(cx: float, cz: float, top: float, kind: StringName, shards: int = 25
     _block("Cellar dais", cx - 1.0, cx + 1.0, top - 3.0, top, tint, cz - 2.0, 2.0, &"ossuary")
     _block("Cellar dais", cx - 1.0, cx + 1.0, top - 3.0, top, tint, cz + 2.0, 2.0, &"ossuary")
     _platform(Rect2(cx - 3.0, top, 6.0, 0.0), Vector2(cz - 3.0, cz + 3.0))
-    var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(cx), top - 0.5, cz), Vector3(2.0, 1.0, 2.0))
+    var crack: BreakableFloor = BreakableFloor.create(Vector3(gx(cx), gy(top) - 0.5, gz(cz)), Vector3(2.0, 1.0, 2.0))
     add_child(crack)
     secrets.append(crack)
     _block("Secret niche", cx - 1.0, cx + 1.0, top - 3.0, top - 1.5, _palette.darkened(0.2), cz, 2.0, &"wall")
-    _platform(Rect2(cx - 1.0, top - 1.5, 2.0, 0.0), Vector2(cz - 1.0, cz + 1.0))
-    var chest: LootChest = LootChest.create(Vector3(gx(cx), top - 1.5, cz - 0.4))
+    _platform(Rect2(cx - 1.0, top - 1.5, 2.0, 0.0), Vector2(cz - 1.0, cz + 1.0), false)
+    var chest: LootChest = LootChest.create(Vector3(gx(cx), gy(top) - 1.5, gz(cz) - 0.4))
     chest.kind = kind
     chest.shards = shards
     add_child(chest)
@@ -390,7 +442,7 @@ func cellar(cx: float, cz: float, top: float, kind: StringName, shards: int = 25
 
 ## A loose Bone Shard floating 1 m over (local x, z) at standing height `top`.
 func shard(x: float, z: float, top: float, amount: int = 3) -> ShardPickup:
-    var pickup: ShardPickup = ShardPickup.create(Vector3(gx(x), top + 1.0, z), amount)
+    var pickup: ShardPickup = ShardPickup.create(Vector3(gx(x), gy(top) + 1.0, gz(z)), amount)
     add_child(pickup)
     pickups.append(pickup)
     return pickup
@@ -398,7 +450,7 @@ func shard(x: float, z: float, top: float, amount: int = 3) -> ShardPickup:
 
 ## A spike strip `w` x `d` on the floor at (local x, z), height `top`.
 func spike_bed(cx: float, cz: float, w: float, d: float, top: float = 0.0, offset: float = 0.0) -> SpikeTrap:
-    var trap: SpikeTrap = SpikeTrap.create("Spike trap", gx(cx), top, w, offset, cz, d)
+    var trap: SpikeTrap = SpikeTrap.create("Spike trap", gx(cx), gy(top), w, offset, gz(cz), d)
     add_child(trap)
     traps.append(trap)
     return trap
@@ -408,7 +460,7 @@ func spike_bed(cx: float, cz: float, w: float, d: float, top: float = 0.0, offse
 ## along X (across a walkway running along X its blade spans the walkway's depth) unless
 ## `along_z` (it swings along Z, for walkways running along Z).
 func blade(cx: float, cz: float, top: float = 0.0, offset: float = 0.0, span: float = 4.0, along_z: bool = false) -> PendulumBlade:
-    var b: PendulumBlade = PendulumBlade.create("Pendulum blade", Vector3(gx(cx), top + 5.9, cz), 5.0, offset, span)
+    var b: PendulumBlade = PendulumBlade.create("Pendulum blade", Vector3(gx(cx), gy(top) + 5.9, gz(cz)), 5.0, offset, span)
     if along_z:
         b.rotation.y = PI * 0.5
     add_child(b)
@@ -420,12 +472,12 @@ func blade(cx: float, cz: float, top: float = 0.0, offset: float = 0.0, span: fl
 ## off that platform's edges.
 func foe(type: StringName, x: float, z: float, top: float = 0.0) -> Node3D:
     var leash: float = 6.0
-    var i: int = platform_under(x, z, top)
+    var i: int = platform_under(x, gz(z), gy(top))
     if i >= 0:
         var r: Rect2 = platforms[i]
         var zr: Vector2 = platform_z[i]
-        leash = minf(minf(x - r.position.x, r.end.x - x), minf(z - zr.x, zr.y - z)) - 0.7
-    var e: Node3D = EnemyFactory.spawn(type, self, gx(x), gx(x - 6.0), gx(x + 6.0), top + 1.0, z)
+        leash = minf(minf(x - r.position.x, r.end.x - x), minf(gz(z) - zr.x, zr.y - gz(z))) - 0.7
+    var e: Node3D = EnemyFactory.spawn(type, self, gx(x), gx(x - 6.0), gx(x + 6.0), gy(top) + 1.0, gz(z))
     if "leash_radius" in e:
         e.set("leash_radius", 10.0 if type == &"wraith" else clampf(leash, 0.8, 12.0))  # wraiths fly
     enemies.append(e)
@@ -442,9 +494,9 @@ func arena(label: String, cx: float, cz: float, radius: float, spawns: Array, to
         copy["x"] = gx(cx)
         world_spawns.append(copy)
     var a: Ambush = Ambush.create(label, gx(cx - radius), gx(cx - radius), gx(cx + radius), world_spawns)
-    a.set_ring(Vector2(gx(cx), cz), radius)
+    a.set_ring(Vector2(gx(cx), gz(cz)), radius)
     a.spawn_leash = leash
-    a.position.y = top
+    a.position.y = gy(top)
     add_child(a)
     ambushes.append(a)
     return a
@@ -453,7 +505,7 @@ func arena(label: String, cx: float, cz: float, radius: float, spawns: Array, to
 ## A lever at (local x, z) that makes a bone bridge solid over local x0..x1 at depth `z` (and
 ## height `top`). The bridge is a reward (a way back, a shortcut), never part of a route.
 func lever(lx: float, lz: float, ltop: float, x0: float, x1: float, z: float, top: float, depth: float = 2.4) -> LeverShortcut:
-    var s: LeverShortcut = LeverShortcut.create(Vector3(gx(lx), ltop, lz), gx(x0), gx(x1), top, z, depth)
+    var s: LeverShortcut = LeverShortcut.create(Vector3(gx(lx), gy(ltop), gz(lz)), gx(x0), gx(x1), gy(top), gz(z), depth)
     add_child(s)
     shortcuts.append(s)
     return s
@@ -464,7 +516,7 @@ func hint(text: String, x: float, z: float, top: float) -> Label3D:
     var label: Label3D = Label3D.new()
     label.name = "Sign"
     label.text = text
-    label.position = Vector3(gx(x), top + 2.6, z)
+    label.position = Vector3(gx(x), gy(top) + 2.6, gz(z))
     label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
     label.font_size = 48
     label.pixel_size = 0.006
@@ -478,7 +530,8 @@ func hint(text: String, x: float, z: float, top: float) -> Label3D:
     return label
 
 
-## Index of the platform whose top is at `top` (± 0.05) and covers local (x, z); -1 if none.
+## Index of the platform whose top is at `top` (± 0.05) and covers (x, z): local x, WORLD top and
+## z (the recorded convention); -1 if none.
 func platform_under(x: float, z: float, top: float) -> int:
     for i in platforms.size():
         var r: Rect2 = platforms[i]
@@ -492,7 +545,7 @@ func platform_under(x: float, z: float, top: float) -> int:
 func _exit_arch() -> void:
     var arch: Node3D = GothicDressing.exit_arch()  # carved pointed arch, blood-lit inside (DEC-054)
     arch.name = "Exit arch"
-    arch.position = Vector3(gx(width - 1.0), 0.0, 0.0)
+    arch.position = Vector3(gx(width - 1.0), gy(0.0), gz(0.0))
     add_child(arch)
 
 
@@ -777,8 +830,8 @@ func height_range() -> Vector2:
 func _platform_at(local_x: float) -> int:
     for i in platforms.size():
         var r: Rect2 = platforms[i]
-        if absf(r.position.y) < 0.01 and local_x >= r.position.x and local_x <= r.end.x \
-                and platform_z[i].x <= 0.0 and platform_z[i].y >= 0.0:
+        if absf(r.position.y - origin_y) < 0.01 and local_x >= r.position.x and local_x <= r.end.x \
+                and platform_z[i].x <= origin_z and platform_z[i].y >= origin_z:
             return i
     return -1
 
@@ -791,7 +844,7 @@ func _floor_kind(label: String, cx: float, cz: float, top: float) -> StringName:
         return &"floor_blood"
     if _route == &"":
         return &"floor"
-    var roll: float = fposmod(sin(cx * 12.9898 + cz * 78.233 + top * 37.719 + origin_x) * 43758.5453, 1.0)
+    var roll: float = fposmod(sin(cx * 12.9898 + cz * 78.233 + top * 37.719 + origin_x + origin_z * 3.1) * 43758.5453, 1.0)
     if roll < 0.2:
         return &"floor_blood"
     return &"floor_cobble" if routes.find(_route) % 3 == 1 else &"floor"
@@ -814,7 +867,7 @@ func _commit_kit() -> void:
 func _block(label: String, x0: float, x1: float, y0: float, y1: float, color: Color, z: float = 0.0, z_depth: float = -1.0, kind: StringName = &"wall") -> void:
     var body: StaticBody3D = StaticBody3D.new()
     body.name = label
-    body.position = Vector3(gx((x0 + x1) * 0.5), (y0 + y1) * 0.5, z)
+    body.position = Vector3(gx((x0 + x1) * 0.5), gy((y0 + y1) * 0.5), gz(z))
     var size: Vector3 = Vector3(x1 - x0, y1 - y0, z_depth if z_depth > 0.0 else Lane.depth())
     var shape: CollisionShape3D = CollisionShape3D.new()
     var box: BoxShape3D = BoxShape3D.new()
