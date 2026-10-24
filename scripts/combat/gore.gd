@@ -6,11 +6,14 @@ extends RefCounted
 ## Each combatant bleeds its own fluid, chosen by class: red blood (soldiers, hounds, knights, the
 ## Gravewarden, the Bishop, the hero), dark ichor and bone shards (Bone Archer, Bone Crawler) and a
 ## burst of black mist (Flying Wraith); anything else (a breakable slab) only puffs stone dust.
+## The full-3D creatures (DEC-064): Flayed Stalker, Limb Spider and Stitched Brute bleed blood (the
+## Brute bursts extra heavy), the Hollow Mourner bleeds dark mist like a wraith, and the Lantern
+## Wight sheds tallow and ash (WAX: pale drips and a melted puddle, no gibs).
 ## GameSettings.reduced_gore turns every fluid into grey ash and skips decals, pools and gibs.
 ## Hooks: HitFeedback.play() calls hit(); Health calls on_death() when a combatant dies.
 ## Nothing here reads or writes combat state, so it can never change an outcome.
 
-enum Fluid { BLOOD, ICHOR, ECTO, DUST }
+enum Fluid { BLOOD, ICHOR, ECTO, DUST, WAX }
 
 ## Tints applied to the grayscale splat textures and to droplets: deep, wet and dark.
 const BLOOD_TINT: Color = Color(0.42, 0.006, 0.018)
@@ -18,6 +21,7 @@ const ICHOR_TINT: Color = Color(0.2, 0.085, 0.035)
 const ECTO_TINT: Color = Color(0.1, 0.06, 0.14)
 const ASH_TINT: Color = Color(0.22, 0.21, 0.24)
 const DUST_TINT: Color = Color(0.36, 0.33, 0.3)
+const WAX_TINT: Color = Color(0.5, 0.46, 0.36)
 ## The colour reported on a hit's "hit_fx" node (`spray_color` meta), as HitFeedback always did.
 const BLOOD_FX_COLOR: Color = Color(0.55, 0.02, 0.04)
 const FLESH_COLOR: Color = Color(0.3, 0.035, 0.04)
@@ -115,6 +119,10 @@ static func on_death(body: Node) -> void:
         scale = 2.2
     elif body is Gravewarden:
         scale = 1.6
+    elif body is StitchedBrute:
+        scale = 2.0
+    elif body is LimbSpider:
+        scale = 0.8
     var center: Vector3 = node.global_position + Vector3(0.0, 0.35 if not is_player else 0.9, 0.0)
     var ground: Dictionary = _ground_below(node, center)
     var droplets: BloodDroplets = _droplets(host)
@@ -224,8 +232,10 @@ static func supports_decals() -> bool:
 static func fluid_for(victim: Node, team: StringName = &"") -> Fluid:
     if victim is BoneArcher or victim is BoneCrawler:
         return Fluid.ICHOR
-    if victim is FlyingWraith:
+    if victim is FlyingWraith or victim is HollowMourner:
         return Fluid.ECTO
+    if victim is LanternWight:
+        return Fluid.WAX
     if team == &"breakable" or team == &"neutral" and not (victim is CharacterBody3D):
         return Fluid.DUST
     return Fluid.BLOOD
@@ -241,6 +251,8 @@ static func tint_for(fluid: Fluid) -> Color:
             return ECTO_TINT
         Fluid.DUST:
             return DUST_TINT
+        Fluid.WAX:
+            return WAX_TINT
     return BLOOD_TINT
 
 
@@ -265,6 +277,8 @@ static func _mist_color(fluid: Fluid) -> Color:
             return Color(0.12, 0.07, 0.16, 0.85)
         Fluid.DUST:
             return Color(0.45, 0.42, 0.38, 0.7)
+        Fluid.WAX:
+            return Color(0.3, 0.28, 0.27, 0.8)  # ash
     return Color(0.72, 0.04, 0.05, 0.8)
 
 
