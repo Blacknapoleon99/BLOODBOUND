@@ -24,6 +24,7 @@ func _run() -> void:
     change_scene_to_file("res://scenes/main.tscn")
     await _wait(20)
     var main: Node3D = current_scene as Node3D
+    main.set("_cull_clock", 1e9)  # every room drawn whatever the camera
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     var eye: Camera3D = Camera3D.new()
     eye.fov = 60.0
@@ -32,7 +33,8 @@ func _run() -> void:
     eye.current = true
     var spots: Array = [["opening", Vector3(0.0, 1.0, 0.0), 30.0]]
     for room: LevelSection in main.get("sections"):
-        spots.append([String(room.id), Vector3(room.origin_x + room.width * 0.5, 2.0, 0.0), room.width])
+        var r: Rect2 = room.world_rect()  # DEC-063: rooms spread in X and Z at varied heights
+        spots.append([String(room.id), Vector3(r.get_center().x, room.origin_y + 2.0, r.get_center().y), room.width])
     for spot: Array in spots:
         var c: Vector3 = spot[1]
         var size: float = spot[2]

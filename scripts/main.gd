@@ -1,6 +1,9 @@
 extends Node3D
 ## Procedural greybox level: causeway → Plagued Soldier → portcullis → Pursuit Approach
 ## (collapsing slabs, moving platform, the Bishop hurling lances) → Hollow Bishop arena.
+## The 3D run (DEC-063) is an OPEN WORLD instead of a line of rooms: the causeway is the hub,
+## every room lies round it joined by bridges (OpenWorld), and the cathedral gate at the world's
+## east edge opens once the Gravewarden is slain and enough room standards are lit.
 ## The optional Reality Fracture (free 3D arena) is entered at the amber gate; see RealityFracture.
 ## Goal: easily replaceable greybox; level rules (checkpoints, resets, victory) live here.
 
@@ -56,6 +59,15 @@ var ambushes: Array[Ambush] = []
 var sections: Array[LevelSection] = []
 ## The 3D run's practice stations round the opening causeway (DEC-052; null in the side view).
 var opening: OpeningGrounds
+## The 3D run's open world (DEC-063; null in the side view and in classic mode). `sections`
+## then holds every room of the world, in no particular order.
+var world: OpenWorld
+var open_world: bool = false
+## The gate between the world and the Pursuit Approach (open world only).
+var cathedral_gate: StaticBody3D
+var cathedral_open: bool = false
+var _cull_clock: float = 0.0
+var _cull_rects: Dictionary = {}  # LevelSection -> Rect2 (world x/z)
 var map_offset: float = 0.0
 var traps: Array[Node3D] = []  # SpikeTrap and PendulumBlade hazards
 var respawn_point: Vector3 = SPAWN_POSITION
@@ -201,7 +213,9 @@ func _ready() -> void:
     offer_overlay = CardOfferOverlay.create()
     offer_overlay.resolved.connect(_on_offer_resolved)
     add_child(offer_overlay)
-    if full_3d:
+    if open_world:
+        _flash("3D RUN: the world is open. Roam the bridges to any room in any order; slay the Gravewarden and light %d room standards to open the cathedral gate (east). Q locks on." % OpenWorld.GATE_STANDARDS, 8.0)
+    elif full_3d:
         _flash("3D RUN: cross the open courses (your own way: every room has several routes), defeat the plagued soldier, and reach the cathedral. Q locks on.", 7.0)
     else:
         _flash("Cross the causeway, defeat the plagued soldier, and face what waits beyond the gate.", 7.0)
@@ -221,7 +235,7 @@ func _process(delta: float) -> void:
     var in_arena: bool = in_fracture()
     if cam3d == null:
         _update_camera(delta)
-    elif Players.leader().global_position.x > APPROACH_START_X + map_offset + 0.3:
+    elif Players.leader().global_position.x > APPROACH_START_X + map_offset + 0.3 and (cathedral_open or not open_world):
         enter_side_view()
     _apply_shake(delta)
     hurt_vignette.color.a = move_toward(hurt_vignette.color.a, 0.0, 1.4 * delta)
@@ -238,13 +252,17 @@ func _process(delta: float) -> void:
         Audio.sfx(&"player_fall", 0.03)  # falling into the abyss
     if cam3d != null:
         _track_safe_ground(delta)
+    if open_world:
+        _update_gate()
+        _cull_world(delta)
     for p: CharacterBody3D in players.duplicate():
         if p.global_position.y < -9.0:
             _fall_respawn(p)
     _tick_revives(delta)
     var lead: Node3D = Players.leader()
 
-    if not in_arena and enemy_alive and absf(player.global_position.x - (PORTCULLIS_X - 0.8)) < 1.0:
+    if not in_arena and enemy_alive and absf(player.global_position.x - (PORTCULLIS_X - 0.8)) < 1.0 \
+            and absf(player.global_position.z) < 6.0 and absf(player.global_position.y - 0.85) < 3.0:
         _flash("The portcullis is sealed while the plagued soldier stands.", 1.0)
     if not in_arena and boss.phase == HollowBishop.Phase.DORMANT and lead.global_position.x > PURSUIT_START_X + map_offset:
         boss.awaken()
@@ -287,7 +305,11 @@ func _process(delta: float) -> void:
         arena_state = "GUARDIAN: DEFEATED — ENTER THE PORTAL" if fracture.portal_open else "GUARDIAN: %d HP" % fracture.guardian.health.current
     var checkpoint_state: String = "CHECKPOINT: SET" if checkpoint.is_active else "CHECKPOINT: —"
     var room: LevelSection = current_section()
-    if room != null:
+    if open_world:
+        # No room numbers in the open world: where you are, and the cathedral gate's progress.
+        var place: String = room.title.to_upper() if room != null else ("THE CAUSEWAY" if _in_hub(player.global_position) else "THE WILDS")
+        checkpoint_state = place + "    " + gate_status()
+    elif room != null:
         checkpoint_state = "ROOM %d/%d: %s" % [sections.find(room) + 1, sections.size(), room.title.to_upper()]
     checkpoint_state += "    DECK %d" % card_system.deck.total_cards()
     if not RunState.relics.is_empty():
@@ -409,6 +431,8 @@ func _on_player_died(who: CharacterBody3D = null) -> void:
         _revive_progress[who] = 0.0
         _flash("PLAYER %d IS DOWN: partner, hold Interact beside them to revive!" % (int(who.get("player_index")) + 1), 3.5)
         return
+    if open_world and cam3d != null:
+        respawn_point = nearest_checkpoint(who.global_position)  # the open world: no "last" room
     for p: CharacterBody3D in players:
         p.call("set_downed", false)
         p.call("revive_at", respawn_point + Vector3(1.4 * int(p.get("player_index")), 0.0, 0.0))
@@ -1127,6 +1151,8 @@ func _respawn(who: CharacterBody3D = null) -> void:
         (who.get("health") as Health).apply_damage(1)
         _flash("Pulled from the abyss beside your partner (-1 HP).", 2.5)
         return
+    if open_world and cam3d != null:
+        respawn_point = nearest_checkpoint(who.global_position)
     for p: CharacterBody3D in players:
         p.call("teleport_to", respawn_point + Vector3(1.4 * int(p.get("player_index")), 0.0, 0.0))
     _reset_hazards()
@@ -1276,15 +1302,19 @@ func _build_greybox_geometry() -> void:
     add_child(portcullis)
     _make_visual("Portcullis bars", Vector3.ZERO, Vector3(0.3, 5.0, Lane.depth(3.6)), Color(0.32, 0.3, 0.34), portcullis)
 
-    _build_sections()
+    open_world = full_3d and not LevelLayout.classic
     if full_3d:
         # Open courses (DEC-052/062): no walls round the start at all; practice stations float
-        # off both sides of the causeway on their own floors.
+        # off both sides of the causeway on their own floors. In the open world, the hub.
         opening = OpeningGrounds.new()
+        opening.open_world = open_world
         add_child(opening)
         opening.build_grounds()
         _wire_course(opening)
+    _build_sections()
     _build_approach()
+    if open_world:
+        _build_cathedral_gate()
     # Ambushes: E1 after the soldier (its altar is the reward), E2 on the landing mid-pursuit.
     var e1_spawns: Array[Dictionary] = [{"type": &"husk", "x": 13.6}, {"type": &"hound", "x": 16.0}, {"type": &"archer", "x": 17.5}]
     var o: float = map_offset
@@ -1361,10 +1391,22 @@ func _build_approach() -> void:
 
 
 ## Builds the run's shuffled rooms (LevelLayout) from x = APPROACH_START_X onward and shifts the
-## approach and arena after them by their total width.
+## approach and arena after them by their total width. The 3D run builds the open world instead
+## (DEC-063): every room round the hub, the bridges, and the approach beyond its east edge.
 func _build_sections() -> void:
     var x: float = APPROACH_START_X
     var run_seed: int = RunState.seed_value if RunState.active else 4242
+    if open_world:
+        world = OpenWorld.create(self, opening, LevelLayout.world_rooms(), run_seed, _hub_solids())
+        for section: LevelSection in world.rooms:
+            sections.append(section)
+            _wire_course(section)
+            section.checkpoint.activated.connect(_on_checkpoint_activated)
+            _cull_rects[section] = section.world_rect()
+        _cull_rects[opening] = opening.world_rect()
+        _wire_course(world.wilds)
+        map_offset = world.approach_x - APPROACH_START_X
+        return
     for script: Script in LevelLayout.plan(run_seed):
         var section: LevelSection = script.new() as LevelSection
         add_child(section)
@@ -1421,8 +1463,11 @@ func enter_side_view() -> void:
     _flash("The cathedral's causeway: the Bishop waits beyond (side view until the 3D Bishop arrives).", 4.0)
 
 
-## The room the player is in ("" in the opening and the Bishop's approach).
+## The room the player is in ("" in the opening and the Bishop's approach; in the open world,
+## null on the hub and the bridges).
 func current_section() -> LevelSection:
+    if open_world:
+        return world.room_at(player.global_position, 1.0)
     var px: float = player.global_position.x
     for section: LevelSection in sections:
         if px >= section.origin_x and px < section.origin_x + section.width:
@@ -1486,3 +1531,131 @@ func _make_visual(label: String, center: Vector3, size: Vector3, color: Color, p
         material.roughness = 0.9
         mesh_node.material_override = material
     parent.add_child(mesh_node)
+
+
+# --- The open world (DEC-063) ----------------------------------------------------------------
+
+## The level's own solid blocks round the hub (causeway, steps, portcullis) for OpenWorld's
+## bridge planner, as {"box": AABB, "owner"}; the portcullis is tagged so only the soldier's
+## bridge may pass it.
+func _hub_solids() -> Array[Dictionary]:
+    var out: Array[Dictionary] = []
+    for c: Node in get_children():
+        if not (c is StaticBody3D) or c.get_child_count() == 0 or not (c.get_child(0) is CollisionShape3D):
+            continue
+        var box: BoxShape3D = (c.get_child(0) as CollisionShape3D).shape as BoxShape3D
+        if box == null:
+            continue
+        var at: Vector3 = (c as StaticBody3D).position
+        out.append({"box": AABB(at - box.size * 0.5, box.size + Vector3(0.0, OpenWorld.CLEARANCE, 0.0)), "owner": &"portcullis" if c == portcullis else &"hub"})
+    # The gate ossuary's arena ring (E1) on the gate causeway.
+    out.append({"box": AABB(Vector3(9.3, -1.0, -4.5), Vector3(9.0, 7.0, 9.0)), "owner": &"hub"})
+    return out
+
+
+## The cathedral gate: iron bars across the forecourt's far edge, too tall to jump and wider than
+## the bridge and the approach, sealed until `gate_ready()`.
+func _build_cathedral_gate() -> void:
+    cathedral_gate = StaticBody3D.new()
+    cathedral_gate.name = "Cathedral gate"
+    cathedral_gate.position = Vector3(APPROACH_START_X + map_offset - 0.5, 3.0, 0.0)
+    var shape: CollisionShape3D = CollisionShape3D.new()
+    var box: BoxShape3D = BoxShape3D.new()
+    box.size = Vector3(0.6, 12.0, 26.0)
+    shape.shape = box
+    cathedral_gate.add_child(shape)
+    add_child(cathedral_gate)
+    _make_visual("Cathedral gate bars", Vector3(0.0, 1.5, 0.0), Vector3(0.4, 9.0, 26.0), Color(0.3, 0.26, 0.28), cathedral_gate)
+
+
+## True once the Gravewarden is slain.
+func warden_slain() -> bool:
+    for section: LevelSection in sections:
+        if section.id == &"gravewarden_hall":
+            var hall: Ambush = section.get("hall") as Ambush
+            return hall != null and hall.state == Ambush.State.CLEARED
+    return false
+
+
+## Room standards (checkpoints) lit so far.
+func standards_lit() -> int:
+    var lit: int = 0
+    for section: LevelSection in sections:
+        if section.checkpoint != null and section.checkpoint.is_active:
+            lit += 1
+    return lit
+
+
+func gate_ready() -> bool:
+    return warden_slain() and standards_lit() >= OpenWorld.GATE_STANDARDS
+
+
+## The HUD's gate line: what is still missing, or that the way is open.
+func gate_status() -> String:
+    if cathedral_open:
+        return "CATHEDRAL GATE: OPEN (EAST)"
+    return "CATHEDRAL GATE: GRAVEWARDEN %s, STANDARDS %d/%d" % ["SLAIN" if warden_slain() else "ALIVE", mini(standards_lit(), OpenWorld.GATE_STANDARDS), OpenWorld.GATE_STANDARDS]
+
+
+func _update_gate() -> void:
+    if cathedral_open or cathedral_gate == null or not gate_ready():
+        return
+    cathedral_open = true
+    (cathedral_gate.get_child(0) as CollisionShape3D).set_deferred(&"disabled", true)
+    var tween: Tween = create_tween()
+    tween.tween_property(cathedral_gate, "position:y", 14.0, 2.0).set_ease(Tween.EASE_OUT)
+    Audio.sfx(&"walls_rise")
+    _flash("THE CATHEDRAL GATE GRINDS OPEN. The Hollow Bishop waits beyond it, at the world's east edge.", 6.0)
+
+
+## True on the hub's causeway and stations.
+func _in_hub(p: Vector3) -> bool:
+    return opening != null and (_cull_rects.get(opening, Rect2()) as Rect2).grow(1.0).has_point(Vector2(p.x, p.z)) and p.y < 8.0
+
+
+## The lit checkpoint nearest `at` (planar, height counts half), or the start.
+func nearest_checkpoint(at: Vector3) -> Vector3:
+    var best: Vector3 = SPAWN_POSITION
+    var best_d: float = Vector2(at.x - best.x, at.z - best.z).length() + absf(at.y - best.y) * 0.5
+    var all: Array[Checkpoint] = [checkpoint]
+    for section: LevelSection in sections:
+        all.append(section.checkpoint)
+    for cp: Checkpoint in all:
+        if cp == null or not cp.is_active:
+            continue
+        var p: Vector3 = cp.respawn_position
+        var d: float = Vector2(at.x - p.x, at.z - p.z).length() + absf(at.y - p.y) * 0.5
+        if d < best_d:
+            best_d = d
+            best = p
+    return best
+
+
+## The whole world is live at once: rooms (and their decor) out of sight range are hidden, and
+## foes far from the camera sleep (process disabled) until you come near.
+func _cull_world(delta: float) -> void:
+    _cull_clock -= delta
+    if _cull_clock > 0.0:
+        return
+    _cull_clock = 0.25
+    var eye: Vector3 = cam3d.camera.global_position if cam3d != null else player.global_position
+    for section: LevelSection in _cull_rects:
+        var r: Rect2 = _cull_rects[section]
+        var d: float = Vector2(maxf(0.0, maxf(r.position.x - eye.x, eye.x - r.end.x)), maxf(0.0, maxf(r.position.y - eye.z, eye.z - r.end.y))).length()
+        var show: bool = d < OpenWorld.SHOW_RANGE
+        if section.visible != show:
+            section.visible = show
+            if section.backdrop != null:
+                section.backdrop.visible = show
+        _set_awake(section.enemies, d < OpenWorld.AI_RANGE)
+    for foe: Node3D in world.wild_foes:
+        if is_instance_valid(foe):
+            var near: bool = Vector2(foe.global_position.x - eye.x, foe.global_position.z - eye.z).length() < OpenWorld.AI_RANGE
+            _set_awake([foe], near)
+
+
+func _set_awake(foes: Array, awake: bool) -> void:
+    var mode: ProcessMode = Node.PROCESS_MODE_INHERIT if awake else Node.PROCESS_MODE_DISABLED
+    for foe: Variant in foes:
+        if is_instance_valid(foe) and (foe as Node).process_mode != mode:
+            (foe as Node).process_mode = mode

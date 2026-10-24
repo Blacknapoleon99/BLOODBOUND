@@ -191,6 +191,7 @@ func _run() -> void:
     await _dec058_roam_checks()
     await _m24_3d_room_checks()
     await _open_course_checks()  # DEC-052: the rooms as open 3D courses
+    await _open_world_checks()  # DEC-063: the 3D run as one open world round the hub
     await _m25_moveset_checks()
     await _m26_climb_checks()
     await _m27_motor_contract_checks()
@@ -3306,8 +3307,11 @@ func _m24_3d_room_checks() -> void:
     _bind()
     var cam: ThirdPersonCamera = _main.get("cam3d")
     var sections: Array = _main.get("sections")
-    _check(bool(_main.get("full_3d")) and cam != null and cam.camera.current and bool(_player.get("in_3d_mode")) and sections.size() == 8,
-            "a 3D run builds the map as halls with the third-person camera (%d rooms)" % sections.size())
+    # DEC-063: the 3D run is the open world: every room (both acts, the elite, the merchant) at
+    # once, not the 8 the chain picked.
+    var world_rooms: int = LevelLayout.ACT1.size() + LevelLayout.ACT2.size() + 2
+    _check(bool(_main.get("full_3d")) and cam != null and cam.camera.current and bool(_player.get("in_3d_mode")) and sections.size() == world_rooms,
+            "a 3D run builds the open world's %d rooms with the third-person camera (%d rooms)" % [world_rooms, sections.size()])
     _check(not _enemy.plane_locked, "the opening's plagued soldier fights in 3D")
     _enemy.set_ai_enabled(false)
     var landed_all: bool = true
@@ -3315,7 +3319,8 @@ func _m24_3d_room_checks() -> void:
     for room: LevelSection in sections:
         _player.call("teleport_to", room.checkpoint.global_position + Vector3(0.0, 0.3, 2.5))
         await _seconds(0.4)
-        if not (_player.is_on_floor() and absf(_player.global_position.y - 0.85) < 0.2):
+        # DEC-063: rooms stand at varied heights; the pads are at origin_y.
+        if not (_player.is_on_floor() and absf(_player.global_position.y - room.origin_y - 0.85) < 0.2):
             landed_all = false
             bad_room = room.title
     _check(landed_all, "every 3D room's entry stands on solid floor across its depth (bad: %s)" % bad_room)
@@ -3357,7 +3362,7 @@ func _m24_3d_room_checks() -> void:
         await physics_frame
         max_z = maxf(max_z, _player.global_position.z)
     _key(KEY_D, false)
-    _check(walls == 0 and max_z > Lane.half() + 0.3, "no hall wall: running sideways goes past the open edge (walls %d, furthest z %.2f)" % [walls, max_z])
+    _check(walls == 0 and max_z - first.origin_z > Lane.half() + 0.3, "no hall wall: running sideways goes past the open edge (walls %d, furthest z %.2f)" % [walls, max_z - first.origin_z])
     _player.call("teleport_to", first.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
     await _seconds(0.3)
     # Hazards sit on their course (DEC-052: spike beds cover their walkway, not a 10 m hall).
@@ -3367,15 +3372,15 @@ func _m24_3d_room_checks() -> void:
         for trap: Node3D in room.traps:
             if trap is SpikeTrap:
                 spike_count += 1
-                placed_spikes = placed_spikes and room.platform_under(trap.global_position.x - room.origin_x, trap.global_position.z, trap.global_position.y) >= 0
+                placed_spikes = placed_spikes and room.platform_under(trap.global_position.x - room.origin_x, trap.global_position.z, trap.global_position.y) >= 0  # world z/top
     _check(placed_spikes, "every spike bed in the 3D rooms lies on its course's walkway (%d beds)" % spike_count)
     # A 3D ambush: an arena ring of bone walls, foes spread round it.
     var hall: LevelSection = (load("res://scripts/level/sections/ossuary_ambush.gd") as Script).new() as LevelSection
     _main.add_child(hall)
-    hall.build(-300.0)  # before the opening: past the Approach would hand the run to the side view
+    hall.build(-300.0, 0.0, 400.0)  # off the open world's edge (DEC-063); past the Approach would hand the run to the side view
     Ambush.enabled = true
     var trap_room: Ambush = hall.ambushes[0]
-    _player.call("teleport_to", Vector3(hall.gx(6.0), 1.2, 0.0))
+    _player.call("teleport_to", Vector3(hall.gx(6.0), 1.2, hall.gz(0.0)))
     await _seconds(0.3)
     _player.call("teleport_to", Vector3(trap_room.ring_center.x - 2.0, 1.2, trap_room.ring_center.y + 1.0))
     await _seconds(0.4)
@@ -3396,9 +3401,27 @@ func _m24_3d_room_checks() -> void:
     hall.queue_free()
     (_player.get("health") as Health).restore_full()
     # The handoff: at the Pursuit Approach the run returns to the side view for the Bishop.
+    # DEC-063: the cathedral gate on the world's east edge holds until the Gravewarden is slain
+    # and enough room standards are lit (the loop above lit every room's).
     var approach_x: float = 18.2 + float(_main.get("map_offset"))
     _player.call("teleport_to", Vector3(approach_x - 2.0, 1.2, 2.0))
     await _seconds(0.3)
+    var gate: StaticBody3D = _main.get("cathedral_gate")
+    _check(gate != null and not bool(_main.get("cathedral_open")) and not (gate.get_child(0) as CollisionShape3D).disabled
+            and int(_main.call("standards_lit")) >= OpenWorld.GATE_STANDARDS and (_main.get("hud") as Label).text.contains("GRAVEWARDEN ALIVE"),
+            "the cathedral gate stays shut while the Gravewarden lives, even with %d standards lit; the HUD says what is missing" % int(_main.call("standards_lit")))
+    _player.call("teleport_to", Vector3(approach_x + 1.5, 1.2, 2.0))
+    await _frames(6)
+    _check(_main.get("cam3d") != null and bool(_player.get("in_3d_mode")), "no side-view hand-off past a shut gate")
+    _player.call("teleport_to", Vector3(approach_x - 2.0, 1.2, 2.0))
+    await _seconds(0.3)
+    for room: LevelSection in sections:
+        if room.id == &"gravewarden_hall":
+            (room.get("hall") as Ambush).state = Ambush.State.CLEARED  # as if the warden had fallen
+    await _seconds(0.3)
+    _check(bool(_main.get("cathedral_open")) and (_main.get("hud") as Label).text.contains("GATE GRINDS OPEN") and (_main.get("hud") as Label).text.contains("CATHEDRAL GATE: OPEN"),
+            "slaying the Gravewarden opens the cathedral gate, with a message")
+    await _seconds(2.2)
     _player.call("teleport_to", Vector3(approach_x + 1.5, 1.2, 2.0))
     await _frames(6)
     var side_cam: Camera3D = _main.get("camera")
@@ -3517,19 +3540,146 @@ func _open_course_checks() -> void:
     _check(pickup.taken and not pickup.visible and RunState.shards == shards0 + pickup.amount, "a loose Bone Shard is collected by touch (+%d)" % pickup.amount)
     var health: Health = _player.get("health") as Health
     health.restore_full()
-    var spot: Vector3 = Vector3(room.gx(6.0), 1.2, 0.0)
+    # DEC-063: the room stands somewhere in the open world (gy/gz: its pads' height and centre line).
+    var spot: Vector3 = Vector3(room.gx(6.0), room.gy(0.0) + 1.2, room.gz(0.0))
     _player.call("teleport_to", spot)
     await _seconds(0.7)
-    var safe_here: bool = _main.call("is_safe_ground", Vector3(room.gx(6.0), 0.85, 0.0), _player)
-    var safe_edge: bool = _main.call("is_safe_ground", Vector3(room.gx(6.0), 0.85, 3.6), _player)
+    var safe_here: bool = _main.call("is_safe_ground", Vector3(room.gx(6.0), room.gy(0.0) + 0.85, room.gz(0.0)), _player)
+    var safe_edge: bool = _main.call("is_safe_ground", Vector3(room.gx(6.0), room.gy(0.0) + 0.85, room.gz(3.6)), _player)
     _check(safe_here and not safe_edge, "safe ground means at least 1 m clear of every edge")
     var hp0: int = health.current
-    _player.call("teleport_to", Vector3(room.gx(6.0), -10.0, 25.0))
+    _player.call("teleport_to", Vector3(room.gx(6.0), -10.0, room.gz(25.0)))
     await _seconds(0.5)
     var back: Vector3 = _player.global_position
     _check(_player.is_on_floor() and Vector2(back.x - spot.x, back.z - spot.z).length() < 1.0 and health.current == hp0 - 1,
             "falling off an open course lands you back on the last safe ground for 1 HP (%.1f, %.1f, %.1f)" % [back.x, back.y, back.z])
     health.restore_full()
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    LevelLayout.classic = true
+    RunState.full_3d = false
+    RunState.end_run()
+    change_scene_to_file("res://scenes/main.tscn")
+    await _frames(10)
+    _bind()
+
+
+## DEC-063: the 3D run is one open world. Every room round the hub, spread in X and Z at
+## varied heights; every room reachable from the hub and back with basic jumps alone (the
+## soldier's bridge left out); loops, not a corridor; optional advanced shortcuts; creatures in
+## the wilds; far rooms hidden and their foes asleep; the nearest lit standard for a respawn;
+## ring ambushes that only spring inside their ring.
+func _open_world_checks() -> void:
+    LevelLayout.classic = false
+    RunState.full_3d = true
+    var all_reach: bool = true
+    var all_loops: bool = true
+    var notes: Array[String] = []
+    for seed_value: int in [77, 3, 6]:
+        RunState.new_run(seed_value)
+        change_scene_to_file("res://scenes/main.tscn")
+        await _frames(12)
+        _bind()
+        var world: OpenWorld = _main.get("world")
+        var nodes: Array[Dictionary] = world.world_nodes()
+        var adj: Array[PackedInt32Array] = world.adjacency(nodes, false, true)
+        var start: int = OpenWorld.node_of(nodes, world.hub, world.hub.entry_platform())
+        var there: Dictionary = OpenWorld.reach(adj, start)
+        var back: Dictionary = OpenWorld.reach(adj, start, true)
+        var missing: Array[String] = []
+        for room: LevelSection in world.rooms:
+            var n: int = OpenWorld.node_of(nodes, room, room.entry_platform())
+            if not there.has(n) or not back.has(n):
+                missing.append(String(room.id))
+        var fore: bool = there.has(OpenWorld.node_of(nodes, world.wilds, world.forecourt))
+        all_reach = all_reach and missing.is_empty() and fore and start >= 0
+        var degrees: Array[int] = []
+        for k in world.rooms.size():
+            degrees.append(world._degree(k + 1))
+        all_loops = all_loops and degrees.min() >= 2 and world.loop_count() >= 3
+        notes.append("seed %d: %d links, %d loops, degrees %s, unreachable %s, forecourt %s" % [seed_value, world.links.size(), world.loop_count(), degrees, missing, fore])
+        if seed_value != 77:
+            continue
+        # Seed 77 in detail.
+        var scripts: Dictionary = {}
+        for room: LevelSection in world.rooms:
+            scripts[room.get_script()] = true
+        var lo: Vector2 = Vector2(INF, INF)
+        var hi: Vector2 = Vector2(-INF, -INF)
+        var heights: Dictionary = {}
+        for room: LevelSection in world.rooms:
+            var c: Vector2 = room.world_rect().get_center()
+            lo = Vector2(minf(lo.x, c.x), minf(lo.y, c.y))
+            hi = Vector2(maxf(hi.x, c.x), maxf(hi.y, c.y))
+            heights[room.origin_y] = true
+        var overlap: bool = false
+        for i in world.rooms.size():
+            for j in range(i + 1, world.rooms.size()):
+                overlap = overlap or world.rooms[i].world_rect().grow(4.0).intersects(world.rooms[j].world_rect())
+        _check(scripts.size() == LevelLayout.world_rooms().size() and hi.x - lo.x > 150.0 and hi.y - lo.y > 150.0 and heights.size() >= 3 and not overlap,
+                "the open world holds every room (%d), spread %.0f m in X and %.0f m in Z round the hub at %d heights, with void between" % [scripts.size(), hi.x - lo.x, hi.y - lo.y, heights.size()])
+        var hub_c: Vector2 = world.hub.world_rect().get_center()
+        var quadrants: Dictionary = {}
+        for room: LevelSection in world.rooms:
+            var d: Vector2 = room.world_rect().get_center() - hub_c
+            quadrants[Vector2i(signi(int(d.x)), signi(int(d.y)))] = true
+        _check(quadrants.size() >= 4, "rooms lie on every side of the hub (%d quadrants), not along a line" % quadrants.size())
+        # Advanced shortcuts are optional extras: some exist, and the advanced graph reaches all.
+        var adv: int = 0
+        for l: Dictionary in world.links:
+            if l["kind"] != &"basic":
+                adv += 1
+        var adj_adv: Array[PackedInt32Array] = world.adjacency(nodes, true, true)
+        _check(adv >= 2 and OpenWorld.reach(adj_adv, start).size() >= there.size(),
+                "optional advanced shortcuts (long-jump gaps, climb walls) join rooms too (%d)" % adv)
+        # The soldier's bridge leaves through the portcullis and is never needed.
+        var gated: int = 0
+        for l: Dictionary in world.links:
+            if l["gated"]:
+                gated += 1
+        _check(gated <= 1 and missing.is_empty(), "the bridge past the portcullis waits for the plagued soldier; the world never needs it (%d)" % gated)
+        _check(world.wild_foes.size() >= 5, "creatures roam the wilds between the rooms (%d on crags)" % world.wild_foes.size())
+        # The cathedral: east of everything, reachable once the gate opens.
+        var east: float = -INF
+        for room: LevelSection in world.rooms:
+            east = maxf(east, room.world_rect().end.x)
+        var nodes_open: Array[Dictionary] = world.world_nodes(true)
+        var reach_open: Dictionary = OpenWorld.reach(world.adjacency(nodes_open, false, true), OpenWorld.node_of(nodes_open, world.hub, world.hub.entry_platform()))
+        _check(world.approach_x > east + 20.0 and reach_open.has(nodes_open.size() - 1),
+                "the cathedral approach lies beyond the world's east edge and is reachable with basic jumps once the gate opens")
+        # Culling: far rooms hidden with their decor, their foes asleep; the near room awake.
+        _enemy.set_ai_enabled(false)
+        var here: LevelSection = world.rooms[0]
+        var far: LevelSection = here
+        for room: LevelSection in world.rooms:
+            if room.world_rect().get_center().distance_to(here.world_rect().get_center()) > far.world_rect().get_center().distance_to(here.world_rect().get_center()):
+                far = room
+        _player.call("teleport_to", here.checkpoint.global_position + Vector3(0.0, 0.3, 0.0))
+        await _seconds(0.6)
+        var far_foes_asleep: bool = true
+        for e: Node3D in far.enemies:
+            if is_instance_valid(e):
+                far_foes_asleep = far_foes_asleep and e.process_mode == Node.PROCESS_MODE_DISABLED
+        var near_awake: bool = true
+        for e: Node3D in here.enemies:
+            if is_instance_valid(e):
+                near_awake = near_awake and e.process_mode != Node.PROCESS_MODE_DISABLED
+        _check(here.visible and not far.visible and far.backdrop != null and not far.backdrop.visible and far_foes_asleep and near_awake,
+                "far rooms are hidden with their decor and their foes sleep; the room you stand in is live (%s hidden from %s)" % [far.id, here.id])
+        _check((_main.get("hud") as Label).text.contains(here.title.to_upper()), "the HUD names the room you are in")
+        # Respawn: the lit standard nearest to where you fell.
+        var nearest: Vector3 = _main.call("nearest_checkpoint", here.checkpoint.global_position + Vector3(3.0, 0.0, 0.0))
+        _check(nearest.is_equal_approx(here.checkpoint.respawn_position), "death returns you to the nearest lit standard, not the last one")
+        # A ring ambush springs only inside its ring, not from a room beside it in X.
+        var ring_ok: bool = true
+        for room: LevelSection in world.rooms:
+            for a: Ambush in room.ambushes:
+                if a.ring:
+                    var outside: Vector3 = Vector3(a.ring_center.x, a.global_position.y + 0.85, a.ring_center.y + a.ring_radius + 30.0)
+                    var inside: Vector3 = Vector3(a.ring_center.x, a.global_position.y + 0.85, a.ring_center.y)
+                    ring_ok = ring_ok and not a._triggered_by(outside) and a._triggered_by(inside)
+        _check(ring_ok, "3D arena rings spring only when you step inside them")
+    _check(all_reach, "every room is reachable from the hub and back with basic jumps alone, and so is the cathedral forecourt (%s)" % [notes])
+    _check(all_loops, "the world is not a corridor: every room has 2+ bridges and the bridges form 3+ loops")
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     LevelLayout.classic = true
     RunState.full_3d = false

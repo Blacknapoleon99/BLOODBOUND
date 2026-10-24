@@ -10,6 +10,10 @@ extends LevelSection
 ## Built in world coordinates (origin_x = 0). Not one of the run's rooms: no pads, no
 ## checkpoint (the opening has its own). Every station stays well back from the portcullis, so
 ## no perch is a springboard past the plagued soldier.
+##
+## The open world (DEC-063): these grounds are the HUB. The run's rooms lie all round them and
+## bridges leave from the hub's causeway and stations; the one east of the portcullis waits for
+## the plagued soldier, the others don't.
 
 func _init() -> void:
     id = &"opening_grounds"
@@ -27,7 +31,8 @@ func build_grounds() -> void:
     _finish_course()
     GothicDressing.dress(self)  # decor only (DEC-054)
     _commit_kit()  # modelled architecture (DEC-056)
-    Backdrop3D.attach(self)  # background world (DEC-055)
+    if not open_world:  # the open world's hub: OpenWorld attaches its backdrop (DEC-063)
+        backdrop = Backdrop3D.attach(self)  # background world (DEC-055)
 
 
 func _course() -> void:

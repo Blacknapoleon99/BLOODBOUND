@@ -735,7 +735,57 @@ func is_completable() -> bool:
 ## Platforms reachable from the entry. `advanced` adds climbs, wall kicks, triple and long
 ## jumps; `allowed(i)` filters which platforms may be used.
 func reachable(advanced: bool, allowed: Callable) -> Dictionary:
+    return reach_from(_platform_at(0.5), advanced, allowed)
+
+
+## Index of the entry pad (the open world's hub: the platform under local x 0.5 on the centre
+## line), -1 if none.
+func entry_platform() -> int:
+    return _platform_at(0.5)
+
+
+## The platforms you can reach from the entry pad AND get back to it from with BASIC jumps
+## alone (rides included). The open world lands its bridges only on these, so no bridge ever
+## strands you in a room (DEC-063).
+func core_platforms() -> Array[int]:
     var start: int = _platform_at(0.5)
+    var out: Array[int] = []
+    if start < 0:
+        return out
+    var n: int = platforms.size()
+    var fwd: Array[PackedInt32Array] = []
+    var back: Array[PackedInt32Array] = []
+    for i in n:
+        fwd.append(PackedInt32Array())
+        back.append(PackedInt32Array())
+    for i in n:
+        for j in n:
+            if i != j and (links.has(Vector2i(i, j)) or links.has(Vector2i(j, i)) or can_jump(platforms[i], platforms[j], platform_z[i], platform_z[j])):
+                fwd[i].append(j)
+                back[j].append(i)
+    var there: Dictionary = _bfs(start, fwd)
+    var home: Dictionary = _bfs(start, back)
+    for i: int in there:
+        if home.has(i):
+            out.append(i)
+    out.sort()
+    return out
+
+
+static func _bfs(start: int, adj: Array[PackedInt32Array]) -> Dictionary:
+    var seen: Dictionary = {start: true}
+    var queue: Array[int] = [start]
+    while not queue.is_empty():
+        var i: int = queue.pop_front()
+        for j: int in adj[i]:
+            if not seen.has(j):
+                seen[j] = true
+                queue.append(j)
+    return seen
+
+
+## Platforms reachable from platform `start` (see `reachable`).
+func reach_from(start: int, advanced: bool, allowed: Callable) -> Dictionary:
     var seen: Dictionary = {}
     if start < 0 or not allowed.call(start):
         return seen
