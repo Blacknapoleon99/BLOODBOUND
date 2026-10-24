@@ -1278,9 +1278,8 @@ func _build_greybox_geometry() -> void:
 
     _build_sections()
     if full_3d:
-        # Open courses (DEC-052): no side walls; the cathedral's back wall stays behind the
-        # start, and practice stations float off both sides of the causeway.
-        _make_solid("Opening back wall", Vector3(-19.3, -1.0, 0.0), Vector3(0.6, 26.0, Lane.DEPTH_3D + 1.2), Color(0.1, 0.1, 0.13))
+        # Open courses (DEC-052/062): no walls round the start at all; practice stations float
+        # off both sides of the causeway on their own floors.
         opening = OpeningGrounds.new()
         add_child(opening)
         opening.build_grounds()

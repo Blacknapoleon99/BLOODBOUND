@@ -440,7 +440,9 @@ func _update_reaction_visuals(delta: float) -> void:
         return
     # Lean into swings, recoil when hurt.
     var lean: float = 0.0
-    if melee.is_busy() and melee.phase == MeleeAttack.Phase.ACTIVE:
+    if _full_3d():
+        pass  # the side view's lean is about the world Z axis: in 3D it tipped the hero sideways (DEC-062)
+    elif melee.is_busy() and melee.phase == MeleeAttack.Phase.ACTIVE:
         lean = -0.3 * facing_direction
     elif is_stunned():
         lean = 0.35 * facing_direction

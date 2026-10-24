@@ -169,6 +169,11 @@ var action_src_time: float = -1.0
 ## The 3D hero: the motor state (PlatformerMotor.State) that owns the whole-body one-shot now
 ## playing (a standing swing: ATTACK; the dash roll: DASH), or -1.
 var full_owner: int = -1
+## Foot grounding (DEC-062): the hero's skeleton and toe bones, and how far the model is lifted
+## so a planted toe never sinks through the floor (the run clips dip the toes up to 14 cm below).
+var _skel: Skeleton3D
+var _toes: Array[int] = []
+var _foot_lift: float = 0.0
 ## Cached busiest-window start per Animation resource.
 static var _window_cache: Dictionary = {}
 ## Cached [start, length] spans found from the hips' height (see _hips_span).
@@ -838,13 +843,43 @@ func _apply_pose(delta: float) -> void:
     var ease_step: float = deg_to_rad(170.0) * delta
     _lean_pitch = move_toward(_lean_pitch, lean_pitch, ease_step)
     _lean_roll = move_toward(_lean_roll, lean_roll, ease_step)
-    pitch += _lean_pitch
-    roll += _lean_roll
     _squash = lerpf(_squash, squash, 1.0 - exp(-18.0 * delta))
-    var turn: Basis = Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.BACK, roll)
+    # Flips and spins turn about the body's centre; the run lean and turn roll tilt the whole body
+    # from the feet (DEC-062: about the centre they swung the planted feet sideways in turns).
+    var flip: Basis = Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.BACK, roll)
+    var lean: Basis = Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, _lean_pitch) * Basis(Vector3.BACK, _lean_roll) * Basis(Vector3.UP, -_yaw)
+    var turn: Basis = lean * flip
     var pivot: Vector3 = Vector3.ZERO  # the body's centre in the visual root's space
-    var origin: Vector3 = pivot + turn * (_base_origin - pivot)
+    var origin: Vector3 = pivot + flip * (_base_origin - pivot)
+    origin = _base_origin + lean * (origin - _base_origin)
+    origin.y += _ground_feet(motor, delta)
     model.transform = Transform3D(turn * Basis.from_scale(Vector3(_base_scale.x, _base_scale.y * _squash, _base_scale.z)), origin)
+
+
+## Lifts the model while the hero stands, walks or runs so the lower toe never ends up below the
+## floor (the visual root's feet height). Fast to lift, slower to settle, so it never jitters;
+## off in the air and on walls. Returns the lift in metres.
+func _ground_feet(motor: PlatformerMotor, delta: float) -> float:
+    var want: float = 0.0
+    if motor != null and real_moveset and motor.state in [PlatformerMotor.State.GROUND, PlatformerMotor.State.DECEL,
+            PlatformerMotor.State.BRAKE, PlatformerMotor.State.SKID, PlatformerMotor.State.LAND, PlatformerMotor.State.ATTACK]:
+        if _skel == null:
+            var found: Array[Node] = model.find_children("*", "Skeleton3D", true, false)
+            _skel = found[0] as Skeleton3D if not found.is_empty() else null
+            if _skel != null:
+                for i in _skel.get_bone_count():
+                    var bone: String = _skel.get_bone_name(i)
+                    if bone.ends_with("LeftToeBase") or bone.ends_with("RightToeBase"):
+                        _toes.append(i)
+        var root: Node3D = model.get_parent() as Node3D
+        if _skel != null and root != null and not _toes.is_empty():
+            var low: float = INF
+            for toe: int in _toes:
+                var at: Vector3 = root.global_transform.affine_inverse() * (_skel.global_transform * _skel.get_bone_global_pose(toe).origin)
+                low = minf(low, at.y - _foot_lift)  # where the toe would be without the lift
+            want = clampf(_base_origin.y + 0.02 - low, 0.0, 0.2)
+    _foot_lift = lerpf(_foot_lift, want, 1.0 - exp(-(30.0 if want > _foot_lift else 8.0) * delta))
+    return _foot_lift
 
 
 func character_velocity() -> Vector3:

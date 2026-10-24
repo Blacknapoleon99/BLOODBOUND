@@ -11,6 +11,9 @@ extends Node3D
 ##   or gets farther than LOCK_BREAK. While locked the camera swings behind the player to frame
 ##   the target, the player faces it (`Player.lock_target`) and cards aim at it.
 ## - `add_trauma` (group "camera_shaker") shakes it for hits, like the side-view camera.
+## - Platformer framing (DEC-062): the height stays level through a jump (it follows the last
+##   ground, and only chases the body when it climbs out of or falls below a band), and when you
+##   leave the camera alone it eases round behind a forward or diagonal run.
 
 const LOCK_RANGE: float = 18.0
 const LOCK_BREAK: float = 24.0
@@ -20,6 +23,19 @@ const MOUSE_SENSITIVITY: float = 0.0035
 const STICK_SPEED: float = 3.2  # rad/s at full deflection
 const FOLLOW_RATE: float = 16.0
 const LOCK_TURN_RATE: float = 7.0
+## Vertical framing: airborne, the focus holds the last ground height until the body rises more
+## than AIR_BAND_UP above it or drops below it; landing eases back at GROUND_Y_RATE.
+const AIR_BAND_UP: float = 2.6
+const GROUND_Y_RATE: float = 7.0
+const AIR_Y_RATE: float = 4.0
+## Auto-follow: after FOLLOW_IDLE s without manual look input, the yaw eases toward the run's
+## heading at FOLLOW_YAW_RATE (scaled by speed): a forward or diagonal run straightens out behind
+## the hero. Never while locked on, airborne, strafing square across the view or running at it.
+const FOLLOW_IDLE: float = 0.9
+const FOLLOW_YAW_RATE: float = 0.9
+
+## Off for scripted tests that need a fixed yaw.
+static var auto_follow: bool = true
 
 signal lock_changed(target: Node3D)
 
@@ -34,6 +50,8 @@ var lock_target: Node3D
 var _marker: MeshInstance3D
 var _trauma: float = 0.0
 var _focus: Vector3 = Vector3.INF
+var _ground_y: float = INF
+var _look_idle: float = 0.0
 
 
 static func create(target_player: CharacterBody3D) -> ThirdPersonCamera:
@@ -74,6 +92,8 @@ func flat_basis() -> Basis:
 func _unhandled_input(event: InputEvent) -> void:
     if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and lock_target == null:
         var motion: InputEventMouseMotion = event
+        if motion.relative.length() > 0.5:
+            _look_idle = 0.0
         yaw -= motion.relative.x * MOUSE_SENSITIVITY
         pitch = clampf(pitch - motion.relative.y * MOUSE_SENSITIVITY, PITCH_MIN, PITCH_MAX)
     elif event.is_action_pressed(&"lock_on"):
@@ -89,9 +109,13 @@ func _process(delta: float) -> void:
         return
     _validate_lock()
     var look: Vector2 = Input.get_vector(&"look_left", &"look_right", &"look_up", &"look_down")
+    _look_idle += delta
+    if look.length() > 0.1:
+        _look_idle = 0.0
     if lock_target == null:
         yaw -= look.x * STICK_SPEED * delta
         pitch = clampf(pitch - look.y * STICK_SPEED * 0.6 * delta, PITCH_MIN, PITCH_MAX)
+        _auto_follow(delta)
     else:
         # Swing behind the player so the target sits ahead of them on screen.
         var to_target: Vector3 = lock_target.global_position - player.global_position
@@ -103,7 +127,11 @@ func _process(delta: float) -> void:
     var target: Vector3 = player.get_global_transform_interpolated().origin + Vector3(0.0, height, 0.0)
     if _focus == Vector3.INF or _focus.distance_to(target) > 12.0:
         _focus = target  # first frame / teleport: cut
-    _focus = _focus.lerp(target, 1.0 - exp(-FOLLOW_RATE * delta))
+        _ground_y = target.y
+    var y_rate: float = _frame_height(target.y)
+    var flat: Vector3 = Vector3(target.x, _focus.y, target.z)
+    _focus = _focus.lerp(flat, 1.0 - exp(-FOLLOW_RATE * delta))
+    _focus.y = lerpf(_focus.y, _ground_y, 1.0 - exp(-y_rate * delta))
     global_position = _focus
     rotation = Vector3(pitch, yaw, 0.0)
     arm.spring_length = distance
@@ -113,6 +141,43 @@ func _process(delta: float) -> void:
     camera.h_offset = randf_range(-0.25, 0.25) * shake
     camera.v_offset = randf_range(-0.25, 0.25) * shake
     _update_marker()
+
+
+## Picks the height the focus settles to (`_ground_y`) and how fast: the body's height on the
+## ground or a climb; mid-jump the last ground height, unless the body leaves the band.
+func _frame_height(body_y: float) -> float:
+    var grounded: bool = player.is_on_floor()
+    var motor: PlatformerMotor = player.get("motor") as PlatformerMotor
+    if motor != null and motor.state in [PlatformerMotor.State.HANG, PlatformerMotor.State.CLIMB,
+            PlatformerMotor.State.PULL_UP, PlatformerMotor.State.WALL_SLIDE, PlatformerMotor.State.CLIMB_LEAP]:
+        grounded = true  # walls and ledges: frame the hero where they are
+    if grounded or _ground_y == INF:
+        _ground_y = body_y
+        return GROUND_Y_RATE
+    if body_y > _ground_y + AIR_BAND_UP:
+        _ground_y = body_y - AIR_BAND_UP
+    elif body_y < _ground_y:
+        _ground_y = body_y
+        return GROUND_Y_RATE * 1.5  # falling: keep the hero in frame
+    return AIR_Y_RATE
+
+
+## Eases the yaw round behind a grounded run when the player has left the camera alone.
+func _auto_follow(delta: float) -> void:
+    if not auto_follow or _look_idle < FOLLOW_IDLE or not player.is_on_floor():
+        return
+    var v: Vector2 = Vector2(player.velocity.x, player.velocity.z)
+    var speed: float = v.length()
+    if speed < 2.0:
+        return
+    var dir: Vector2 = v / speed
+    var forward: Vector2 = Vector2(-sin(yaw), -cos(yaw))  # where the camera looks, flat
+    var along: float = forward.dot(dir)
+    if along < 0.35:
+        return  # strafing across the view or running at the camera: leave the view be
+    var want: float = atan2(-dir.x, -dir.y)
+    var rate: float = FOLLOW_YAW_RATE * clampf(speed / PlatformerMotor.RUN_SPEED, 0.0, 1.2)
+    yaw = lerp_angle(yaw, want, 1.0 - exp(-rate * delta))
 
 
 func add_trauma(amount: float) -> void:
