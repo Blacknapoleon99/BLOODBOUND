@@ -269,7 +269,7 @@ func _animate(delta: float) -> void:
     rig.turn(&"pelvis", Vector3(lean * 0.4, 0.06 * sin(anim_t * 3.6), 0.0))
     rig.turn(&"spine", Vector3(lean + 0.2 * _haul - 0.1 * _sweep, -0.4 * _haul + 0.5 * _sweep, 0.08 * sin(ps)))
     var ht: Vector3 = twitch(&"head", Vector3(0.3, 0.5, 0.6), 1.0, delta)
-    rig.turn(&"head", Vector3(0.45 + 0.2 * sin(ps * 1.7) + ht.x, 0.4 * sin(ps * 2.3) + ht.y, 0.5 * sin(ps * 0.9) + ht.z))
+    rig.turn(&"head", Vector3(0.45 + 0.2 * sin(ps * 1.7) + ht.x, 0.4 * sin(ps * 2.3) + ht.y, 0.3 * sin(ps * 0.9) + ht.z))
     # Left arm: dangling, too long, fingers twitching; right arm: the lantern.
     rig.turn(&"arm_L_up", Vector3(0.15 * sin(anim_t * 3.6) - 0.3 * sp + 0.2 * sin(ps), 0.0, 0.08))
     rig.turn(&"arm_L_lo", Vector3(-0.2 - 0.15 * sin(ps * 3.1), 0.0, 0.0))

@@ -84,6 +84,7 @@ func _studio() -> void:
     scene.add_child(GothicEnvironment.torch_light(Vector3(-2.0, 2.6, -3.0), 2.4, 9.0))
     EnemyFactory.full_3d = true
     _player = (load("res://scenes/player.tscn") as PackedScene).instantiate() as Node3D
+    _player.add_to_group(&"player")
     scene.add_child(_player)
     _player.global_position = Vector3(-6.0, 1.0, 0.0)
     _player.set("in_3d_mode", true)

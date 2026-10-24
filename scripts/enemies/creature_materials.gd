@@ -72,10 +72,10 @@ static func material(role: StringName) -> Material:
                 m.metallic = 0.85
                 m.roughness = 0.55
         &"wax":
-            m = GothicMaterials.standard("wax", Color(0.6, 0.6, 0.6), 0.3, false)
-            m.roughness = 0.7
-            m.rim_enabled = true
-            m.rim = 0.3
+            m = GothicMaterials.standard("wax", Color(0.62, 0.61, 0.6), 0.3, false)
+            m.roughness_texture = null
+            m.roughness = 0.82
+            m.metallic_specular = 0.35
             m.vertex_color_use_as_albedo = true
             m.emission_enabled = true
             m.emission = Color(0.35, 0.16, 0.05) * 0.1

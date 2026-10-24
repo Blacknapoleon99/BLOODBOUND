@@ -838,23 +838,24 @@ def lantern_wight():
     bm.to_mesh(mantle.data)
     bm.free()
     R.part("spine", "pelvis", (0, 1.62, 0), [torso, mantle] + drips, tris=5000)
-    hd = organic([sphere(0.105, (0, 2.94, 0.16), (0.82, 1.75, 1.0), "wax"),
-                  sphere(0.06, (0, 2.74, 0.21), (0.75, 1.3, 0.85), "wax")] +
+    hd = organic([sphere(0.1, (0, 3.0, 0.13), (0.85, 1.2, 1.05), "wax"),
+                  sphere(0.075, (0, 2.84, 0.19), (0.8, 1.6, 0.8), "wax"),
+                  sphere(0.035, (0.05, 2.9, 0.22), (0.7, 0.8, 0.7), "wax"), sphere(0.035, (-0.05, 2.9, 0.22), (0.7, 0.8, 0.7), "wax")] +
                  [tube([(x, 2.92, 0.24), (x * 1.1, 2.8, 0.255), (x, 2.68 - abs(x) * 2.0, 0.24)], [0.013, 0.011, 0.016], 6, "wax") for x in (-0.05, -0.012, 0.03, 0.06)],
                  voxel=0.006, name="head", role="wax")
     for s in (1, -1):
-        boolean(hd, sphere(0.032, (s * 0.036, 2.94, 0.235), (1.0, 1.5, 1.0), "dark", 10, 6))
-    boolean(hd, sphere(0.022, (0, 2.78, 0.255), (1.1, 3.0, 1.0), "dark", 8, 6))
-    hp = [hd, eye((0.036, 2.93, 0.225), 0.011), eye((-0.036, 2.93, 0.225), 0.011)]
+        boolean(hd, sphere(0.034, (s * 0.038, 2.94, 0.235), (1.0, 1.45, 1.0), "dark", 10, 6))
+    boolean(hd, sphere(0.024, (0, 2.77, 0.25), (1.2, 3.2, 1.2), "dark", 8, 6))
+    hp = [hd, eye((0.038, 2.925, 0.222), 0.012), eye((-0.038, 2.925, 0.222), 0.012)]
     for k in range(5):
         a = (k - 2) * 0.55
-        base = (math.sin(a) * 0.065, 3.1 - abs(k - 2) * 0.05, 0.16 + math.cos(a) * 0.02 - 0.02)
-        h = 0.08 + 0.09 * H(k, 8)
+        base = (math.sin(a) * 0.065, 3.1 - abs(k - 2) * 0.03, 0.13 + math.cos(a) * 0.02 - 0.02)
+        h = 0.1 + 0.1 * H(k, 8)
         tilt = (0.25 * (H(k, 9) - 0.5), 0.0, a * 0.35)
-        c = cyl(0.016, 0.014, h, 8, base, tilt, "wax")
+        c = cyl(0.022, 0.019, h, 8, base, tilt, "wax")
         hp.append(c)
         top = (base[0] - math.sin(tilt[2]) * h, base[1] + h * math.cos(tilt[2]), base[2])
-        hp.append(sphere(0.018, A(top, (0, 0.024, 0)), (0.7, 1.8, 0.7), "flame", 8, 5))
+        hp.append(sphere(0.024, A(top, (0, 0.03, 0)), (0.7, 1.9, 0.7), "flame", 8, 5))
     R.part("head", "spine", (0, 2.75, 0.12), hp, tris=2400)
     R.end("crown_end", "head", (0, 3.08, 0.14))
     for s, tag in ((1, "L"), (-1, "R")):
